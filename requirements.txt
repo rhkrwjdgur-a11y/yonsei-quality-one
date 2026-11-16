@@ -1,0 +1,4 @@
+fastapi>=0.115.0
+gspread>=6.1.0
+google-auth>=2.35.0
+requests>=2.32.0

@@ -2767,10 +2767,11 @@ def api_generate_ai_briefing():
             continue
 
     return {"ok": True, "source": "factual_engine", "briefing": factual_fallback}
-from fastapi.responses import FileResponse
+from fastapi import FastAPI
 
-@app.get("/")
-def serve_frontend():
-    html_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "public", "index.html")
-    return FileResponse(html_path)
+def create_app():
+    app = FastAPI()
+    return app
+
+app = create_app()
 # ============================ [api/index.py - PART 2 / 2 끝] ============================

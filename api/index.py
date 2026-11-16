@@ -1,6 +1,6 @@
 # ==============================================================================
 # [api/index.py - PART 1 / 2]
-# YONSEI QUALITY ONE 백엔드 API 엔진 (9개 구글 시트 실시간 파서 & 공정 이력 DB 로더)
+# YONSEI QUALITY ONE 백엔드 API 엔진 (FastAPI 최상단 선언 + 9개 시트 파서)
 # ==============================================================================
 import json
 import os
@@ -15,10 +15,24 @@ import gspread
 import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from google.oauth2.service_account import Credentials as ServiceAccountCredentials
 from pydantic import BaseModel
+
+# ==============================================================================
+# 0. Vercel FastAPI 진입점(Entrypoint) 최상단 정의 — 인식 오류 원천 차단
+# ==============================================================================
+app = FastAPI(title="YONSEI QUALITY ONE API", version="2.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
 # ==============================================================================
 # 1. 기본 상수 · 한국 표준시(KST, UTC+9) · 기본값 정의
@@ -271,7 +285,6 @@ def open_sheet_threadsafe(creds, sheet_urls_map: dict, key_or_title: str):
     if key_or_title in sheet_urls_map:
         raw_val = str(sheet_urls_map[key_or_title]).strip()
         if raw_val:
-            # 괄호나 설명 문구가 섞여 있어도 스프레드시트 고유 Key 또는 순수 URL 자동 추출
             m_key = re.search(r"/spreadsheets/d/([a-zA-Z0-9\-_]+)", raw_val)
             try:
                 if m_key:
@@ -1052,8 +1065,8 @@ def parse_rt_process_worksheet(ws):
         flt_str = next((str(br[13]).strip() or str(br[14]).strip() for br in b_rows if (str(br[13]).strip() or str(br[14]).strip()) not in ["", "-"]), "-")
 
         std_temp = next((re.sub(r"\s+", " ", str(br[18])).strip() for br in b_rows if str(br[18]).strip() not in ["", "-", "멸균온도"]), "")
-        std_press = next((re.sub(r"\s+", " ", str(br[19])).strip() for br in b_rows if str(br[19])).strip() not in ["", "-", "균질압"]), "")
-        std_hold = next((re.sub(r"\s+", " ", str(br[20])).strip() for br in b_rows if str(br[20])).strip() not in ["", "-", "멸균시간"]), "")
+        std_press = next((re.sub(r"\s+", " ", str(br[19])).strip() for br in b_rows if str(br[19]).strip() not in ["", "-", "균질압"]), "")
+        std_hold = next((re.sub(r"\s+", " ", str(br[20])).strip() for br in b_rows if str(br[20]).strip() not in ["", "-", "멸균시간"]), "")
         std_v_prod = next((re.sub(r"\s+", " ", str(br[21])).strip() for br in b_rows if str(br[21]).strip() not in ["", "-", "호기별 제품"]), "")
 
         matched_prods = ho_products.get(pack_ho, [])
@@ -1590,11 +1603,11 @@ def fetch_process_soy_sheet(creds, sheet_urls_map: dict):
 # ============================ [api/index.py - PART 1 / 2 끝] ============================
 # ==============================================================================
 # [api/index.py - PART 2 / 2]
-# 협력업체·심사·표시사항·원자재 파서 + 5분 캐시 병렬 엔진 + 양방향 저장/역추적 FastAPI 라우터
+# 협력업체·심사·표시사항·원자재 파서 + 5분 캐시 병렬 엔진 + FastAPI 엔드포인트
 # ==============================================================================
 
 # ==============================================================================
-# 5. [4] 협력업체 심사 결과 DB 파서 (순수 Python 무결성 구현)
+# 5. [4] 협력업체 심사 결과 DB 파서
 # ==============================================================================
 def fetch_supplier_sheet(creds, sheet_urls_map: dict):
     sh, err = open_sheet_threadsafe(creds, sheet_urls_map, "supplier")
@@ -2171,7 +2184,6 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
         lbl_rows, err_lbl = f_lbl.result()
         raw_sub, raw_m_cnt, err_raw = f_raw.result()
 
-    # 마스터 제품명 통합 ('제품명 식품안전나라' A열 최우선)
     master_prods = []
     seen_norm = set()
 
@@ -2193,7 +2205,6 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
     for r in dy_hp:
         add_prod_unique(r.get("제품명", ""))
 
-    # 1) 원가절감 파생 지표 (부문 + 식품안전팀 + 품질관리팀)
     rec_flags_cost = [bool(r.get("_기록여부", False)) for r in cost_rows] if cost_rows else None
 
     def summarize_cost_col(col_act: str, col_std: str, target_uk: float):
@@ -2230,7 +2241,6 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
     cost_qc_sum = summarize_cost_col("품질관리팀_실적(만원)", "품질관리팀_기준(만원)", cost_targets["품질관리팀"])
     sig_cost = "green" if (cost_dept_sum["actual_uk"] >= cost_targets["부문"] or cost_dept_sum["proj_uk"] >= cost_targets["부문"]) else ("red" if cost_rows else "gray")
 
-    # 2) 클레임 파생 지표 (전사 + 유제품/상온 부문별 2025·2026)
     claim_target_ppm = 1.12
     row_26_sum = next((r for r in claim_cat if r["연도"] == "2026년" and r["유형"] == "합계"), None)
     claim_actual_ppm = float(row_26_sum["합계_PPM"]) if row_26_sum else 0.0
@@ -2250,7 +2260,6 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
             "rt": build_division_claim_summary(claim_cat, yr, RT_CATEGORIES)
         }
 
-    # 3) 공정 요약 지표
     rt_t_lines = rt_today["lines_records"] if rt_today else []
     active_rt_cnt = sum(1 for r in rt_t_lines if r["생산 제품명"] != "(비가동)")
     wait_rt_cnt = sum(1 for r in rt_t_lines if r["_cls"] == "cell-yellow")
@@ -2269,7 +2278,6 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
     soy_uninspected_cnt = sum(1 for r in soy_b if not bool(r.get("검사완료여부", False)))
     soy_contam_total = sum(int(to_float(r.get("오염수량", 0), 0)) for r in soy_b if bool(r.get("검사완료여부", False)))
 
-    # 4) 협력업체 요약
     target_exec = 88.3
     total_sup_cnt = len(sup_m)
     unsub_sup_cnt = sum(1 for r in sup_m if r.get("점수") == "미제출")
@@ -2280,7 +2288,6 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
     out_sup_cnt = sum(1 for r in sup_m if r.get("결과") == "등급 외")
     sig_supplier = "green" if sup_exec_rate >= target_exec else ("yellow" if sup_exec_rate >= 75.0 else ("red" if total_sup_cnt > 0 else "gray"))
 
-    # 5) 수동 KPI 병합 & 특이사항 보드
     merged_manual = {k: {**v, "notes": list(v["notes"])} for k, v in DEFAULT_MANUAL_KPIS.items()}
     for mk_k, mk_val in saved_manual_kpis.items():
         if mk_k in merged_manual:
@@ -2289,7 +2296,6 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
     label_memo_final = saved_lbl_memo if saved_lbl_memo is not None else DEFAULT_LABEL_MEMO
     claim_issues_final = saved_clm_issues if saved_clm_issues is not None else [dict(x) for x in DEFAULT_CLAIM_ISSUES]
 
-    # 6) 표시사항 & 원자재 요약
     label_analytics = build_label_analytics(lbl_rows)
     sub_raw_cnt = len(raw_sub)
     verified_raw_cnt = sum(1 for r in raw_sub if re.search(r"완료|적합", str(r.get("검증상태", ""))))
@@ -2411,19 +2417,8 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
 
 
 # ==============================================================================
-# 8. FastAPI 앱 및 REST 엔드포인트 (읽기 · LOT 역추적 · 양방향 시트 저장 · AI 브리핑)
+# 8. 요청 데이터 모델 & REST 엔드포인트 (PART 1 최상단 `app` 인스턴스에 직접 연결)
 # ==============================================================================
-app = FastAPI(title="YONSEI QUALITY ONE API", version="2.0.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"]
-)
-
-
 class AuditSchedulePayload(BaseModel):
     action: str  # "add" | "update" | "delete" | "quick_status"
     uid: Optional[str] = ""
@@ -2449,6 +2444,23 @@ class ManualKpiPayload(BaseModel):
 class SpecialBoardPayload(BaseModel):
     label_memo: Optional[str] = None
     claim_issues: Optional[List[Dict[str, Any]]] = None
+
+
+@app.get("/")
+def serve_frontend():
+    """루트(/) 접속 시 public/index.html 반환 (vercel.json 없이 무설정 라우팅 완벽 대응)"""
+    candidates = [
+        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "public", "index.html"),
+        os.path.join(os.getcwd(), "public", "index.html"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return FileResponse(path, media_type="text/html")
+    return HTMLResponse(
+        content="<h3>public/index.html 파일을 찾을 수 없습니다. GitHub 저장소의 public/index.html 경로를 확인해 주세요.</h3>",
+        status_code=404
+    )
 
 
 @app.get("/api/health")
@@ -2767,11 +2779,4 @@ def api_generate_ai_briefing():
             continue
 
     return {"ok": True, "source": "factual_engine", "briefing": factual_fallback}
-from fastapi import FastAPI
-
-def create_app():
-    app = FastAPI()
-    return app
-
-app = create_app()
 # ============================ [api/index.py - PART 2 / 2 끝] ============================

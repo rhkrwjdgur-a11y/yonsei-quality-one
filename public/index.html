@@ -1,0 +1,2271 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YONSEI QUALITY ONE | 품질안전 통합 관제 플랫폼</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
+      background-color: #F7F8FA;
+      color: #111827;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* 커스텀 슬림 스크롤바 */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
+
+    /* 엔터프라이즈 카드 & 배지 */
+    .qo-card {
+      background: #FFFFFF;
+      border: 1px solid #EAECF0;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(16, 24, 40, 0.04);
+    }
+    .qo-card-hover {
+      transition: all 0.16s ease;
+    }
+    .qo-card-hover:hover {
+      border-color: #BFDBFE;
+      box-shadow: 0 6px 16px rgba(37, 99, 235, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge-ok { background-color: #ECFDF5; color: #047857; }
+    .badge-warn { background-color: #FFFBEB; color: #B45309; }
+    .badge-err { background-color: #FEF2F2; color: #DC2626; }
+    .badge-info { background-color: #EFF6FF; color: #1D4ED8; }
+    .badge-neutral { background-color: #F3F4F6; color: #4B5563; }
+
+    /* 공정 관제 테이블 셀 상태 색상 (백엔드 클래스 1:1 호환) */
+    .mon-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      background: #FFFFFF;
+      border: 1px solid #EAECF0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .mon-table th {
+      background: #F9FAFB;
+      color: #374151;
+      font-weight: 700;
+      padding: 9px 10px;
+      border-bottom: 1px solid #EAECF0;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .mon-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #F2F4F7;
+      color: #1F2937;
+      vertical-align: middle;
+      line-height: 1.45;
+    }
+    .mon-table tr:hover td { background-color: #F9FAFB; }
+    .cell-green { background-color: #ECFDF5 !important; color: #047857 !important; font-weight: 600; }
+    .cell-yellow { background-color: #FFFBEB !important; color: #B45309 !important; font-weight: 600; }
+    .cell-red { background-color: #FEF2F2 !important; color: #DC2626 !important; font-weight: 600; }
+    .cell-gray { background-color: #F9FAFB !important; color: #9CA3AF !important; }
+
+    /* 사이드바 메뉴 버튼 */
+    .nav-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 11px;
+      border-radius: 8px;
+      font-size: 13.2px;
+      font-weight: 500;
+      color: #4B5563;
+      transition: all 0.14s ease;
+      text-align: left;
+    }
+    .nav-btn:hover { background-color: #F3F4F6; color: #111827; }
+    .nav-btn.active {
+      background-color: #EFF6FF;
+      color: #1D4ED8;
+      font-weight: 700;
+      border: 1px solid #DBEAFE;
+    }
+
+    /* 서브 탭 버튼 */
+    .subtab-btn {
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #6B7280;
+      border-bottom: 2px solid transparent;
+      transition: all 0.14s ease;
+    }
+    .subtab-btn:hover { color: #111827; }
+    .subtab-btn.active {
+      color: #1D4ED8;
+      border-bottom-color: #2563EB;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex select-none sm:select-auto">
+
+  <!-- ===================================================================== -->
+  <!-- 좌측 고정 사이드바 (3단 분류: 품질안전부문 / 식품안전팀 / 품질관리팀) -->
+  <!-- ===================================================================== -->
+  <aside class="w-[240px] shrink-0 bg-white border-r border-[#EAECF0] flex flex-col justify-between h-full">
+    <div class="p-3.5 overflow-y-auto">
+      <!-- 브랜드 헤더 -->
+      <div onclick="navigate('main')" class="flex items-center gap-2.5 px-2 pb-3.5 mb-3 border-b border-[#F2F4F7] cursor-pointer">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-700 to-blue-600 text-white font-black text-sm flex items-center justify-center shadow-sm">
+          Y
+        </div>
+        <div>
+          <div class="text-[14.5px] font-extrabold text-gray-900 tracking-tight leading-tight">YONSEI QUALITY</div>
+          <div class="text-[10.8px] font-medium text-gray-500">Integrated Quality Platform</div>
+        </div>
+      </div>
+
+      <!-- 1. 품질안전부문 (통합) -->
+      <div class="text-[11px] font-bold text-gray-400 px-2.5 pt-1 pb-1.5">품질안전부문 (통합)</div>
+      <div class="space-y-0.5 mb-3">
+        <button class="nav-btn active" data-nav="main" onclick="navigate('main')">
+          <i data-lucide="layout-grid" class="w-4 h-4"></i><span>통합 대시보드</span>
+        </button>
+        <button class="nav-btn" data-nav="dept_kpi8" onclick="navigate('dept_kpi8')">
+          <i data-lucide="bar-chart-3" class="w-4 h-4"></i><span>2026 부문 8대 KPI</span>
+        </button>
+      </div>
+
+      <!-- 2. 식품안전팀 (QA) -->
+      <div class="text-[11px] font-bold text-gray-400 px-2.5 pt-2 pb-1.5">식품안전팀 (QA)</div>
+      <div class="space-y-0.5 mb-3">
+        <button class="nav-btn" data-nav="label_status" onclick="navigate('label_status')">
+          <i data-lucide="file-check-2" class="w-4 h-4"></i><span>표시사항 진행 현황</span>
+        </button>
+        <button class="nav-btn" data-nav="label_issue" onclick="navigate('label_issue')">
+          <i data-lucide="database" class="w-4 h-4"></i><span>원자재 표시사항 DB</span>
+        </button>
+        <button class="nav-btn" data-nav="kpi_5" onclick="navigate('kpi_5')">
+          <i data-lucide="gauge" class="w-4 h-4"></i><span>심사점수 · 일정 관리</span>
+        </button>
+        <button class="nav-btn" data-nav="supplier" onclick="navigate('supplier')">
+          <i data-lucide="building-2" class="w-4 h-4"></i><span>협력업체 서류심사</span>
+        </button>
+        <button class="nav-btn" data-nav="fs_haccp_risk" onclick="navigate('fs_haccp_risk')">
+          <i data-lucide="shield-check" class="w-4 h-4"></i><span>HACCP · 법적 RISK</span>
+        </button>
+      </div>
+
+      <!-- 3. 품질관리팀 (QC) -->
+      <div class="text-[11px] font-bold text-gray-400 px-2.5 pt-2 pb-1.5">품질관리팀 (QC)</div>
+      <div class="space-y-0.5">
+        <button class="nav-btn" data-nav="process" onclick="navigate('process')">
+          <i data-lucide="activity" class="w-4 h-4"></i><span>공정 및 배양 실시간 관제</span>
+        </button>
+        <button class="nav-btn" data-nav="lot_trace" onclick="navigate('lot_trace')">
+          <i data-lucide="search-check" class="w-4 h-4"></i><span>생산이력 · LOT 역추적</span>
+        </button>
+        <button class="nav-btn" data-nav="claim" onclick="navigate('claim')">
+          <i data-lucide="trending-down" class="w-4 h-4"></i><span>클레임 발생률 분석</span>
+        </button>
+        <button class="nav-btn" data-nav="qc_defect_sub" onclick="navigate('qc_defect_sub')">
+          <i data-lucide="package-check" class="w-4 h-4"></i><span>핵심불량 · 부자재 관리</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 하단 동기화 정보 -->
+    <div class="p-3.5 border-t border-[#F2F4F7] bg-[#FCFCFD]">
+      <button onclick="loadBundle(true)" id="btn-sidebar-sync" class="w-full py-1.5 px-3 rounded-lg border border-gray-200 bg-white hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700 text-xs font-semibold text-gray-700 flex items-center justify-center gap-1.5 transition">
+        <i data-lucide="refresh-cw" class="w-3.5 h-3.5" id="icon-sync"></i>
+        <span>시트 실시간 동기화</span>
+      </button>
+      <div class="mt-2 text-[10.8px] text-gray-400 leading-relaxed px-0.5">
+        <div>기준 : <span id="lbl-loaded-at">데이터 연결 중...</span></div>
+        <div>연세유업 아산공장 품질안전부문</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===================================================================== -->
+  <!-- 우측 메인 컨텐츠 영역 (상단 글로벌 헤더 + 동적 뷰포트 컨테이너)         -->
+  <!-- ===================================================================== -->
+  <div class="flex-1 flex flex-col h-full min-w-0">
+
+    <!-- 상단 글로벌 바 (고정 54px) -->
+    <header class="h-[54px] shrink-0 bg-white border-b border-[#EAECF0] px-6 flex items-center justify-between gap-4">
+      <!-- 글로벌 LOT / 제품명 즉시 검색창 -->
+      <div class="relative w-full max-w-md">
+        <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+        <input
+          id="global-search-input"
+          type="text"
+          placeholder="LOT(소비기한 예: 27.05.13) 또는 제품명 입력 후 Enter..."
+          class="w-full pl-9 pr-16 py-1.5 text-[13px] bg-[#F9FAFB] border border-gray-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-500 transition"
+          onkeydown="if(event.key==='Enter') triggerGlobalSearch();"
+        />
+        <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10.5px] font-semibold text-gray-400 border border-gray-200 rounded px-1.5 py-0.5 bg-white">Enter</span>
+      </div>
+
+      <!-- 우측 상태 배지 & AI 브리핑 버튼 -->
+      <div class="flex items-center gap-2.5 shrink-0">
+        <button onclick="openAiBriefingModal()" class="px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold flex items-center gap-1.5 transition">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+          <span>AI 모닝 브리핑</span>
+        </button>
+        <div class="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11.8px] font-semibold">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+          <span id="top-live-pill">실시간 운영 중</span>
+        </div>
+        <button onclick="loadBundle(true)" title="새로고침" class="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-blue-600 hover:bg-gray-50 transition">
+          <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- 동적 메인 뷰포트 (main/dept_kpi8은 overflow-hidden 100% 고정, 세부 화면은 overflow-y-auto 자유 스크롤) -->
+    <main id="app-viewport" class="flex-1 min-h-0 overflow-hidden px-6 py-4 flex flex-col">
+      <!-- 초기 로딩 스켈레톤 -->
+      <div class="h-full flex flex-col items-center justify-center text-center">
+        <div class="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-3"></div>
+        <div class="text-sm font-bold text-gray-800">구글 시트 실시간 데이터를 불러오는 중입니다...</div>
+        <div class="text-xs text-gray-500 mt-1">최초 연결 시 9개 시트 병렬 동기화에 약 3~6초가 소요됩니다.</div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- 공통 모달창 (특이사항 편집 / 클레임 이슈 등록 / AI 브리핑)              -->
+  <!-- ===================================================================== -->
+  <div id="modal-backdrop" class="fixed inset-0 bg-gray-900/40 backdrop-blur-[1px] z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-xl border border-gray-200 shadow-xl w-full max-w-lg overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+        <h3 id="modal-title" class="text-[15px] font-bold text-gray-900">편집</h3>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div id="modal-body" class="p-5 text-sm text-gray-700 max-h-[72vh] overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <!-- 토스트 알림 -->
+  <div id="toast-box" class="fixed bottom-5 right-5 z-50 hidden px-4 py-2.5 rounded-lg bg-gray-900 text-white text-xs font-semibold shadow-lg"></div>
+
+  <script>
+    // =========================================================================
+    // 전역 상태 관리 & 공통 유틸리티
+    // =========================================================================
+    const STATE = {
+      view: 'main',
+      bundle: null,
+      charts: {},
+      // 세부 화면별 서브탭 & 필터 상태 유지
+      claimTab: 'all',
+      claimDivYear: '2026년',
+      claimDivType: 'dairy',
+      claimTableYear: '전체',
+      procTab: 'rt',
+      rtHistIdx: 0,
+      dairySubTab: 'milk',
+      dairyOnlyRun: true,
+      dairyHistDate: '',
+      dairyHistLine: 'ALL',
+      soySelTab: '',
+      soyHistMode: 'insp',
+      soyHistDate: '',
+      lotQuery: { product: 'ALL', exp: '', kw: '', result: null, loading: false },
+      labelTab: 'rev',
+      labelSearchKw: '',
+      rawSearchKw: '',
+      supTab: 'list',
+      supGubun: '전체',
+      supGrade: '전체',
+      supKw: '',
+      auditSelIdx: 0,
+      fsTab: 'kpi_8',
+      qcTab: 'kpi_9'
+    };
+
+    const AUDIT_STAGES = [
+      { name: '심사준비중', short: '준비중', pct: 20 },
+      { name: '심사중', short: '심사중', pct: 50 },
+      { name: '서류심사중', short: '서류심사', pct: 75 },
+      { name: '현장심사중', short: '현장심사', pct: 85 },
+      { name: '심사종료', short: '심사종료', pct: 100 }
+    ];
+
+    const CLAIM_STEPS = [
+      { step: 1, label: '접수·확인필요' },
+      { step: 2, label: '원인분석중' },
+      { step: 3, label: '조치예정' },
+      { step: 4, label: '조치완료' }
+    ];
+
+    const ACTIVE_NAV_ALIAS = {
+      cost: 'dept_kpi8',
+      kpi_11: 'supplier',
+      kpi_8: 'fs_haccp_risk',
+      kpi_12: 'fs_haccp_risk',
+      kpi_9: 'qc_defect_sub',
+      kpi_10: 'qc_defect_sub'
+    };
+
+    function esc(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function fmtNum(n, digits = 0) {
+      const v = Number(n || 0);
+      return v.toLocaleString('ko-KR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    }
+
+    function signalDotHtml(sig) {
+      const map = {
+        green: 'bg-emerald-500 ring-4 ring-emerald-500/15',
+        yellow: 'bg-amber-500 ring-4 ring-amber-500/15',
+        red: 'bg-red-500 ring-4 ring-red-500/15',
+        gray: 'bg-gray-400 ring-4 ring-gray-400/15'
+      };
+      return `<span class="inline-block w-2.5 h-2.5 rounded-full ${map[sig] || map.green}"></span>`;
+    }
+
+    function showToast(msg, isErr = false) {
+      const el = document.getElementById('toast-box');
+      el.textContent = msg;
+      el.className = `fixed bottom-5 right-5 z-50 px-4 py-2.5 rounded-lg text-white text-xs font-semibold shadow-lg ${isErr ? 'bg-red-600' : 'bg-gray-900'}`;
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 2800);
+    }
+
+    function destroyCharts() {
+      Object.values(STATE.charts).forEach(ch => {
+        try { ch.destroy(); } catch (e) {}
+      });
+      STATE.charts = {};
+    }
+
+    function openModal(title, bodyHtml) {
+      document.getElementById('modal-title').textContent = title;
+      document.getElementById('modal-body').innerHTML = bodyHtml;
+      const bd = document.getElementById('modal-backdrop');
+      bd.classList.remove('hidden');
+      bd.classList.add('flex');
+      lucide.createIcons();
+    }
+
+    function closeModal() {
+      const bd = document.getElementById('modal-backdrop');
+      bd.classList.add('hidden');
+      bd.classList.remove('flex');
+    }
+
+    function getKoreanTodayLabel() {
+      const days = ['일', '월', '화', '수', '목', '금', '토'];
+      const d = new Date();
+      return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${days[d.getDay()]})`;
+    }
+
+    // =========================================================================
+    // 네비게이션 라우터 (main & dept_kpi8 = No-Scroll 100vh / 세부 = 자유 스크롤)
+    // =========================================================================
+    function navigate(viewName, extra = {}) {
+      if (viewName === 'kpi_8' || viewName === 'kpi_12') {
+        STATE.fsTab = viewName;
+        viewName = 'fs_haccp_risk';
+      } else if (viewName === 'kpi_9' || viewName === 'kpi_10') {
+        STATE.qcTab = viewName;
+        viewName = 'qc_defect_sub';
+      } else if (viewName === 'kpi_11') {
+        STATE.supTab = 'kpi';
+        viewName = 'supplier';
+      }
+
+      if (extra.procTab) STATE.procTab = extra.procTab;
+      STATE.view = viewName;
+
+      // 사이드바 활성 표시 동기화
+      const navTarget = ACTIVE_NAV_ALIAS[viewName] || viewName;
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        if (btn.dataset.nav === navTarget) btn.classList.add('active');
+        else btn.classList.remove('active');
+      });
+
+      // 뷰포트 스크롤 모드 차등 적용
+      const vp = document.getElementById('app-viewport');
+      if (viewName === 'main' || viewName === 'dept_kpi8') {
+        vp.classList.remove('overflow-y-auto');
+        vp.classList.add('overflow-hidden');
+      } else {
+        vp.classList.remove('overflow-hidden');
+        vp.classList.add('overflow-y-auto');
+        vp.scrollTop = 0;
+      }
+
+      renderCurrentView();
+    }
+
+    function jumpToLotTrace(prodKw = '', expStr = '') {
+      STATE.lotQuery.product = 'ALL';
+      STATE.lotQuery.kw = prodKw || '';
+      STATE.lotQuery.exp = expStr || '';
+      navigate('lot_trace');
+      if (STATE.lotQuery.kw || STATE.lotQuery.exp) {
+        executeLotTraceSearch();
+      }
+    }
+
+    function triggerGlobalSearch() {
+      const inp = document.getElementById('global-search-input');
+      const q = (inp.value || '').trim();
+      if (!q) return;
+      inp.value = '';
+      if (/\d{1,4}[\.\-\/]\d{1,2}/.test(q)) {
+        jumpToLotTrace('', q);
+      } else {
+        jumpToLotTrace(q, '');
+      }
+    }
+
+    // =========================================================================
+    // 백엔드 API 데이터 로드 (/api/bundle)
+    // =========================================================================
+    async function loadBundle(force = false) {
+      const syncIcon = document.getElementById('icon-sync');
+      if (syncIcon) syncIcon.classList.add('animate-spin');
+
+      try {
+        const res = await fetch(`/api/bundle?force=${force ? 1 : 0}`);
+        const data = await res.json();
+        STATE.bundle = data;
+
+        if (data.loaded_at) {
+          document.getElementById('lbl-loaded-at').textContent = data.loaded_at;
+          document.getElementById('top-live-pill').textContent = `실시간 운영 중 · ${data.loaded_time_short || ''}`;
+        }
+
+        // 초기 기본 선택값 세팅
+        if (data.process) {
+          if (!STATE.soySelTab && data.process.soy_default_tab) {
+            STATE.soySelTab = data.process.soy_default_tab;
+          }
+          if (!STATE.dairyHistDate && data.process.dairy_hist_p && data.process.dairy_hist_p.length > 0) {
+            const dts = [...new Set(data.process.dairy_hist_p.map(r => r['생산일자']).filter(Boolean))].sort().reverse();
+            if (dts.length) STATE.dairyHistDate = dts[0];
+          }
+          if (!STATE.soyHistDate && data.process.soy_hist && data.process.soy_hist.length > 0) {
+            const col = data.process.soy_hist[0]['확정검사일_탭기준'] !== undefined ? '확정검사일_탭기준' : '검사일_표기';
+            const dts = [...new Set(data.process.soy_hist.map(r => r[col]).filter(Boolean))].sort().reverse();
+            if (dts.length) STATE.soyHistDate = dts[0];
+          }
+        }
+        if (data.claim && data.claim.years && data.claim.years.length > 0) {
+          if (!data.claim.years.includes(STATE.claimDivYear)) {
+            STATE.claimDivYear = data.claim.years[0];
+          }
+        }
+
+        renderCurrentView();
+        if (force) showToast('구글 시트 최신 데이터 동기화 완료');
+      } catch (err) {
+        showToast('데이터 동기화 중 오류가 발생했습니다.', true);
+        console.error(err);
+      } finally {
+        if (syncIcon) syncIcon.classList.remove('animate-spin');
+      }
+    }
+
+    // =========================================================================
+    // [화면 1] 통합 대시보드 — 출근 모닝 브리핑 전용 (스크롤 없는 2x2 고정 그리드)
+    // =========================================================================
+    function renderMainMorningDashboard(vp, b) {
+      const ps = b.process.summary;
+      const lb = b.label_status;
+      const au = b.audit.summary;
+      const scheds = b.audit.schedules || [];
+      const sp = b.special_boards || { label_memo: '', claim_issues: [] };
+      const rawDb = b.raw_db || { allergy_cnt: 0 };
+
+      // 1) 공정 상태 배지 판정
+      let rtBadge = '<span class="badge-pill badge-ok">CCP 적합</span>';
+      let rtDot = 'bg-emerald-500';
+      if (ps.red_rt_cnt > 0) {
+        rtBadge = '<span class="badge-pill badge-err">기준이탈 확인</span>';
+        rtDot = 'bg-red-500';
+      } else if (ps.wait_rt_cnt > 0) {
+        rtBadge = `<span class="badge-pill badge-warn">확인대기 ${ps.wait_rt_cnt}건</span>`;
+        rtDot = 'bg-amber-500';
+      }
+
+      const dyBadge = ps.active_dairy_cnt > 0
+        ? `<span class="badge-pill badge-ok">점검완료 (${ps.active_dairy_cnt}건)</span>`
+        : '<span class="badge-pill badge-neutral">금일 생산대기</span>';
+      const dyDot = ps.active_dairy_cnt > 0 ? 'bg-emerald-500' : 'bg-gray-400';
+
+      let soyBadge = '<span class="badge-pill badge-ok">검사완료 (적합)</span>';
+      let soyDot = 'bg-emerald-500';
+      if (ps.soy_contam_total > 0) {
+        soyBadge = `<span class="badge-pill badge-err">오염 ${ps.soy_contam_total}건</span>`;
+        soyDot = 'bg-red-500';
+      } else if (ps.soy_blocks_cnt === 0) {
+        soyBadge = '<span class="badge-pill badge-neutral">기록대기</span>';
+        soyDot = 'bg-gray-400';
+      } else if (ps.soy_uninspected_cnt > 0) {
+        soyBadge = `<span class="badge-pill badge-warn">검사전 ${ps.soy_uninspected_cnt}호기</span>`;
+        soyDot = 'bg-amber-500';
+      }
+
+      // 어제 마감 & 오늘 실시간 공정 특이사항 통합 피드
+      const noteItems = [];
+      (ps.yest_notes || []).forEach(n => {
+        noteItems.push(`<div class="py-1.5 border-b border-gray-100 last:border-0 text-[12.3px] leading-snug"><span class="inline-block px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold text-[11px] mr-1.5">전일 ${esc(ps.rt_yest_tab)} 마감</span>${esc(n)}</div>`);
+      });
+      (ps.today_notes || []).forEach(n => {
+        noteItems.push(`<div class="py-1.5 border-b border-gray-100 last:border-0 text-[12.3px] leading-snug"><span class="inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold text-[11px] mr-1.5">금일 ${esc(ps.rt_today_tab)} 실시간</span>${esc(n)}</div>`);
+      });
+      const notesHtml = noteItems.length > 0
+        ? noteItems.join('')
+        : `<div class="h-full flex items-center text-[12.5px] font-semibold text-emerald-700">전일(${esc(ps.rt_yest_tab)}) 마감 및 금일(${esc(ps.rt_today_tab)}) 현재 설비·공정 특이사항 없이 정상 가동 중입니다.</div>`;
+
+      // 2) 표시사항 검토중 리스트
+      const revList = lb.reviewing_list || [];
+      const revHtml = revList.length > 0
+        ? revList.map(r => `
+            <div onclick="navigate('label_status')" class="py-1.5 px-1 border-b border-gray-100 last:border-0 flex items-center justify-between gap-2 hover:bg-gray-50 cursor-pointer rounded">
+              <div class="truncate text-[12.4px] text-gray-800">
+                <span class="font-bold text-blue-600 mr-1">[${esc(r['요청부서'] || '미기입')}]</span>${esc(r['제목'] || '(제목 없음)')}
+              </div>
+              <span class="badge-pill badge-info shrink-0">검토중</span>
+            </div>
+          `).join('')
+        : '<div class="text-xs text-gray-400 py-4 text-center">현재 검토 대기 중인 표시사항 품목이 없습니다.</div>';
+
+      // 3) 심사 5단계 클릭형 진행 게이지 & D-Day 목록
+      const stageBtnsHtml = AUDIT_STAGES.map(st => {
+        const reached = au.pct >= st.pct;
+        const isCurrent = au.status === st.name && au.has_data;
+        return `
+          <button onclick="quickChangeAuditStatus('${st.name}')" title="클릭 시 '${st.name}' 단계로 시트 즉시 저장"
+            class="flex-1 py-1 px-1 rounded text-[11px] font-bold border transition truncate ${
+              isCurrent
+                ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                : reached
+                  ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                  : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
+            }">
+            ${st.short} ${st.pct}%
+          </button>
+        `;
+      }).join('');
+
+      const todayIso = b.loaded_date || '';
+      const schedHtml = scheds.length > 0
+        ? scheds.map(sr => {
+            const dt = sr['심사일자'] || '';
+            const shortDt = dt.length >= 10 ? dt.slice(5) : dt;
+            let badge = `<span class="badge-pill badge-neutral">${esc(sr['진행현황'])}</span>`;
+            if (dt && todayIso) {
+              const diff = Math.round((new Date(dt) - new Date(todayIso)) / 86400000);
+              if (diff === 0) badge = '<span class="badge-pill badge-err">금일 심사</span>';
+              else if (diff > 0) badge = `<span class="badge-pill ${diff <= 7 ? 'badge-warn' : 'badge-info'}">D-${diff}</span>`;
+              else if (sr['진행현황'] === '심사종료') badge = `<span class="badge-pill badge-ok">종료${sr['점수'] ? '·' + esc(sr['점수']) : ''}</span>`;
+            }
+            return `
+              <div onclick="navigate('kpi_5')" class="py-1.5 px-1 border-b border-gray-100 last:border-0 flex items-center justify-between gap-2 hover:bg-gray-50 cursor-pointer rounded text-[12.4px]">
+                <div class="truncate"><span class="font-bold text-gray-700 mr-1.5">${esc(shortDt)}</span>${esc(sr['심사명'])} <span class="text-[11px] text-gray-400">(${esc(sr['진행현황'])})</span></div>
+                ${badge}
+              </div>
+            `;
+          }).join('')
+        : '<div class="text-xs text-gray-400 py-4 text-center">등록된 심사 일정이 없습니다. 우측 상단 일정관리에서 등록하세요.</div>';
+
+      // 4) 클레임·부적합 사례 및 조치 단계
+      const claimIssues = sp.claim_issues || [];
+      const claimIssuesHtml = claimIssues.length > 0
+        ? claimIssues.map((ci, idx) => {
+            const curStep = Number(ci['진행단계'] || (ci['상태'] === '조치 완료' ? 4 : ci['상태'] === '조치 예정' ? 3 : ci['상태'] === '진행 중' ? 2 : 1));
+            const pKw = ci['제품키워드'] || '';
+            const eKw = ci['소비기한'] || '';
+            const lotMeta = (pKw || eKw) ? `${pKw} ${eKw}`.trim() : '전체 이력 조회';
+
+            const stepBars = CLAIM_STEPS.map(s => `
+              <button onclick="updateClaimIssueStep(${idx}, ${s.step})" title="클릭 시 '${s.label}' 단계로 변경"
+                class="flex-1 h-1.5 rounded-full transition ${curStep >= s.step ? (curStep === 4 ? 'bg-emerald-500' : 'bg-blue-600') : 'bg-gray-200'}"></button>
+            `).join('');
+
+            const stepBadgeCls = curStep === 4 ? 'badge-ok' : (curStep === 1 ? 'badge-err' : 'badge-info');
+            const stepLabel = (CLAIM_STEPS.find(x => x.step === curStep) || CLAIM_STEPS[0]).label;
+
+            return `
+              <div class="p-2.5 rounded-lg border border-gray-100 bg-[#FCFCFD] mb-2 last:mb-0">
+                <div class="flex items-center justify-between gap-2">
+                  <div class="truncate text-[12.6px] font-bold text-gray-900">${esc(ci['특이사항'])}</div>
+                  <div class="flex items-center gap-1.5 shrink-0">
+                    <span class="badge-pill ${stepBadgeCls}">${esc(stepLabel)}</span>
+                    <button onclick="jumpToLotTrace('${esc(pKw)}', '${esc(eKw)}')" class="px-2 py-0.5 rounded border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-bold transition">
+                      LOT 추적 ›
+                    </button>
+                  </div>
+                </div>
+                <div class="flex items-center justify-between gap-3 mt-2">
+                  <div class="flex-1 flex items-center gap-1">${stepBars}</div>
+                  <span class="text-[11px] text-gray-500 font-medium shrink-0">${esc(lotMeta)} (${curStep}/4단계)</span>
+                </div>
+              </div>
+            `;
+          }).join('')
+        : '<div class="text-xs text-gray-400 py-6 text-center">현재 진행 중인 클레임·부적합 특이사항이 없습니다.</div>';
+
+      const errBanner = (b.errors && b.errors.length > 0)
+        ? `<span onclick="openErrorsModal()" class="cursor-pointer badge-pill badge-warn ml-2">연동 확인 ${b.errors.length}건 ›</span>`
+        : '';
+
+      vp.innerHTML = `
+        <!-- 상단 모닝 브리핑 타이틀 바 (고정 높이) -->
+        <div class="shrink-0 flex items-center justify-between pb-3">
+          <div>
+            <div class="flex items-center">
+              <h1 class="text-[18.5px] font-extrabold text-gray-900 border-l-4 border-blue-600 pl-2.5 leading-tight">
+                품질안전 모닝 브리핑 통합 관제
+              </h1>
+              ${errBanner}
+            </div>
+            <p class="text-[12px] text-gray-500 pl-3.5 mt-0.5">
+              ${getKoreanTodayLabel()} &nbsp;·&nbsp; 전일 마감 및 금일 공정 상태, 표시사항 심의, 심사 진행도, 클레임 조치 현황만 한눈에 요약합니다.
+            </p>
+          </div>
+          <button onclick="navigate('dept_kpi8')" class="px-3.5 py-1.5 rounded-lg bg-white border border-gray-200 hover:border-blue-300 hover:text-blue-700 text-xs font-bold text-gray-700 shadow-2xs flex items-center gap-1.5 transition">
+            <i data-lucide="bar-chart-3" class="w-3.5 h-3.5 text-blue-600"></i>
+            <span>2026 부문 8대 KPI 현황판 보기 ›</span>
+          </button>
+        </div>
+
+        <!-- 2x2 고정 그리드 (남은 세로 화면 100% 정밀 분할, 외부 스크롤 Zero) -->
+        <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 grid-rows-2 gap-3.5">
+
+          <!-- [1] 좌상: 어제 마감 & 오늘 실시간 공정 특이사항 -->
+          <div class="qo-card p-4 flex flex-col min-h-0">
+            <div class="flex items-center justify-between pb-2.5 border-b border-gray-100 shrink-0">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+                <span class="text-[14.5px] font-bold text-gray-900">어제 마감 & 오늘 실시간 공정 현황</span>
+              </div>
+              <button onclick="navigate('process')" class="text-xs font-semibold text-gray-500 hover:text-blue-600">공정 관제 상세 ›</button>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 my-2.5 shrink-0">
+              <div onclick="navigate('process', {procTab:'rt'})" class="p-2.5 rounded-lg bg-[#F9FAFB] border border-gray-100 hover:border-blue-200 cursor-pointer transition">
+                <div class="flex items-center justify-between text-[11.5px] text-gray-500 font-semibold">
+                  <span>상온 멸균·포장</span><span class="w-2 h-2 rounded-full ${rtDot}"></span>
+                </div>
+                <div class="text-[13px] font-extrabold text-gray-900 mt-1">${esc(ps.rt_today_tab)}탭 · ${ps.active_rt_cnt}건 가동</div>
+                <div class="mt-1">${rtBadge}</div>
+              </div>
+              <div onclick="navigate('process', {procTab:'dairy'})" class="p-2.5 rounded-lg bg-[#F9FAFB] border border-gray-100 hover:border-blue-200 cursor-pointer transition">
+                <div class="flex items-center justify-between text-[11.5px] text-gray-500 font-semibold">
+                  <span>유제품 포장</span><span class="w-2 h-2 rounded-full ${dyDot}"></span>
+                </div>
+                <div class="text-[13px] font-extrabold text-gray-900 mt-1">우유·발효유 라인</div>
+                <div class="mt-1">${dyBadge}</div>
+              </div>
+              <div onclick="navigate('process', {procTab:'soy'})" class="p-2.5 rounded-lg bg-[#F9FAFB] border border-gray-100 hover:border-blue-200 cursor-pointer transition">
+                <div class="flex items-center justify-between text-[11.5px] text-gray-500 font-semibold">
+                  <span>두유 배양검사</span><span class="w-2 h-2 rounded-full ${soyDot}"></span>
+                </div>
+                <div class="text-[13px] font-extrabold text-gray-900 mt-1">${esc(ps.soy_default_tab)}탭 · ${fmtNum(ps.soy_total_samples)}개</div>
+                <div class="mt-1">${soyBadge}</div>
+              </div>
+            </div>
+
+            <div class="text-[11.8px] font-bold text-gray-600 mb-1 shrink-0">전일 마감 및 금일 현장 설비·품질 특이사항</div>
+            <div class="flex-1 min-h-0 overflow-y-auto px-3 py-2 rounded-lg bg-[#F9FAFB] border border-gray-200/80">
+              ${notesHtml}
+            </div>
+          </div>
+
+          <!-- [2] 우상: 표시사항 심의 진행 목록 & 특이사항 메모 -->
+          <div class="qo-card p-4 flex flex-col min-h-0">
+            <div class="flex items-center justify-between pb-2.5 border-b border-gray-100 shrink-0">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-indigo-600"></span>
+                <span class="text-[14.5px] font-bold text-gray-900">표시사항 심의 현황 및 특이사항</span>
+                <span class="badge-pill badge-info">검토중 ${lb.reviewing_cnt}건</span>
+                ${rawDb.allergy_cnt > 0 ? `<span class="badge-pill badge-warn">신규알레르기 ${rawDb.allergy_cnt}건</span>` : ''}
+              </div>
+              <div class="flex items-center gap-2">
+                <button onclick="navigate('label_issue')" class="text-xs font-semibold text-gray-500 hover:text-blue-600">원자재 DB ›</button>
+                <button onclick="navigate('label_status')" class="text-xs font-semibold text-blue-600 hover:underline">전체보기 ›</button>
+              </div>
+            </div>
+
+            <div class="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12 gap-3 pt-2.5">
+              <div class="md:col-span-7 flex flex-col min-h-0">
+                <div class="flex items-center justify-between text-[11.8px] font-bold text-gray-600 mb-1 shrink-0">
+                  <span>현재 식품안전팀 검토 진행 품목</span>
+                  <span class="text-gray-400 font-medium">누적 완료 ${fmtNum(lb.completed_cnt)}건</span>
+                </div>
+                <div class="flex-1 min-h-0 overflow-y-auto px-2.5 py-1.5 rounded-lg border border-gray-200/80 bg-white">
+                  ${revHtml}
+                </div>
+              </div>
+
+              <div class="md:col-span-5 flex flex-col min-h-0">
+                <div class="flex items-center justify-between text-[11.8px] font-bold text-amber-800 mb-1 shrink-0">
+                  <span>표시사항 특이사항 메모</span>
+                  <button onclick="openLabelMemoModal()" class="text-[11px] font-bold text-blue-600 hover:underline">메모 편집</button>
+                </div>
+                <div onclick="openLabelMemoModal()" title="클릭하여 특이사항 메모 수정"
+                  class="flex-1 min-h-0 overflow-y-auto p-2.5 rounded-lg bg-amber-50/70 border border-amber-200/80 text-[12.2px] text-amber-950 leading-relaxed cursor-pointer whitespace-pre-line">
+                  ${esc(sp.label_memo || '등록된 표시사항 특이사항 메모가 없습니다.')}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- [3] 좌하: 대내외 심사 일정 & 실시간 진행 단계 게이지 -->
+          <div class="qo-card p-4 flex flex-col min-h-0">
+            <div class="flex items-center justify-between pb-2.5 border-b border-gray-100 shrink-0">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                <span class="text-[14.5px] font-bold text-gray-900">심사 일정 및 실시간 진행 현황</span>
+              </div>
+              <button onclick="navigate('kpi_5')" class="text-xs font-semibold text-blue-600 hover:underline">일정 등록·관리 ›</button>
+            </div>
+
+            <div class="mt-2.5 p-2.5 rounded-lg bg-[#F8FAFC] border border-gray-200/80 shrink-0">
+              <div class="flex items-center justify-between gap-2 text-[12.5px]">
+                <span class="font-bold text-gray-900 truncate">${esc(au.banner_text)}</span>
+                <span class="font-extrabold shrink-0" style="color:${esc(au.color)}">${esc(au.status)} (${au.pct}%)</span>
+              </div>
+              <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden my-2">
+                <div class="h-full rounded-full transition-all duration-300" style="width:${au.pct}%; background-color:${esc(au.color)};"></div>
+              </div>
+              <div class="flex items-center gap-1">
+                ${stageBtnsHtml}
+              </div>
+            </div>
+
+            <div class="text-[11.8px] font-bold text-gray-600 mt-2.5 mb-1 shrink-0">연간 대내외 심사 일정 및 D-Day</div>
+            <div class="flex-1 min-h-0 overflow-y-auto px-2.5 py-1 rounded-lg border border-gray-200/80 bg-white">
+              ${schedHtml}
+            </div>
+          </div>
+
+          <!-- [4] 우하: 클레임 · 부적합 사례 조치 진행도 & LOT 역추적 -->
+          <div class="qo-card p-4 flex flex-col min-h-0">
+            <div class="flex items-center justify-between pb-2.5 border-b border-gray-100 shrink-0">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                <span class="text-[14.5px] font-bold text-gray-900">클레임 · 부적합 진행 현황 및 LOT 역추적</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <button onclick="openClaimIssueModal()" class="px-2 py-0.5 rounded border border-gray-200 hover:border-blue-300 text-[11.5px] font-semibold text-gray-700">+ 사례 등록/관리</button>
+                <button onclick="navigate('lot_trace')" class="text-xs font-semibold text-blue-600 hover:underline">역추적 전체화면 ›</button>
+              </div>
+            </div>
+
+            <div class="flex-1 min-h-0 overflow-y-auto pt-2.5 pr-0.5">
+              ${claimIssuesHtml}
+            </div>
+          </div>
+
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // [화면 2] 2026 부문 8대 KPI 현황판 (스크롤 없는 4x2 고정 그리드)
+    // =========================================================================
+    function renderDeptKpi8View(vp, b) {
+      const cs = b.cost.dept;
+      const cl = b.claim;
+      const sup = b.supplier;
+      const mk = b.manual_kpis;
+
+      const supRateDisp = sup.total_cnt > 0 ? sup.exec_rate : mk.kpi_11.actual_num;
+      const supSigDisp = sup.total_cnt > 0 ? sup.signal : mk.kpi_11.signal;
+
+      const cards = [
+        {
+          id: 'k1', title: '1. 원가 절감', view: 'cost', sig: b.cost.signal,
+          targetTxt: `${b.cost.targets['부문']}억원 이상`,
+          actualTxt: `${cs.actual_uk}억원 (${cs.rate}% 달성)`,
+          pill: `연말 추세 예측 : ${cs.proj_uk}억원`,
+          hasBar: true, tNum: b.cost.targets['부문'], aNum: cs.actual_uk, unit: '억'
+        },
+        {
+          id: 'k2', title: '2. 클레임 발생률', view: 'claim', sig: cl.signal,
+          targetTxt: `${cl.target_ppm} ppm 이하`,
+          actualTxt: `${cl.actual_ppm} ppm (총 ${fmtNum(cl.total_cnt)}건)`,
+          pill: `2월 예상 추세 : ${Number(cl.feb_pred || 0).toFixed(2)} ppm`,
+          hasBar: true, tNum: cl.target_ppm, aNum: cl.actual_ppm, unit: 'ppm'
+        },
+        {
+          id: 'k3', title: mk.kpi_8.title, view: 'kpi_8', sig: mk.kpi_8.signal,
+          targetTxt: mk.kpi_8.target_text, actualTxt: mk.kpi_8.actual_text, pill: mk.kpi_8.sub_badge,
+          hasBar: true, tNum: mk.kpi_8.target_num, aNum: mk.kpi_8.actual_num, unit: ''
+        },
+        {
+          id: 'k4', title: mk.kpi_9.title, view: 'kpi_9', sig: mk.kpi_9.signal,
+          targetTxt: mk.kpi_9.target_text, actualTxt: mk.kpi_9.actual_text, pill: mk.kpi_9.sub_badge,
+          hasBar: true, tNum: mk.kpi_9.target_num, aNum: mk.kpi_9.actual_num, unit: ''
+        },
+        {
+          id: 'k5', title: mk.kpi_10.title, view: 'kpi_10', sig: mk.kpi_10.signal,
+          targetTxt: mk.kpi_10.target_text, actualTxt: mk.kpi_10.actual_text, pill: mk.kpi_10.sub_badge,
+          hasBar: false, notesTitle: mk.kpi_10.notes_title, notes: mk.kpi_10.notes
+        },
+        {
+          id: 'k6', title: '6. 협력업체 관리강화', view: 'supplier', sig: supSigDisp,
+          targetTxt: `실행률 ${sup.target_exec}% 이상`,
+          actualTxt: `${supRateDisp}% (제출 ${sup.sub_cnt}/${sup.total_cnt}개사)`,
+          pill: `승인 ${sup.ok_cnt} · 지도 ${sup.guide_cnt} · 등급외 ${sup.out_cnt}`,
+          hasBar: true, tNum: sup.target_exec, aNum: supRateDisp, unit: '%'
+        },
+        {
+          id: 'k7', title: '7. 심사점수', view: 'kpi_5', sig: mk.kpi_5.signal,
+          targetTxt: mk.kpi_5.target_text, actualTxt: mk.kpi_5.actual_text, pill: mk.kpi_5.sub_badge,
+          hasBar: true, tNum: mk.kpi_5.target_num, aNum: mk.kpi_5.actual_num, unit: ''
+        },
+        {
+          id: 'k8', title: mk.kpi_12.title, view: 'kpi_12', sig: mk.kpi_12.signal,
+          targetTxt: mk.kpi_12.target_text, actualTxt: mk.kpi_12.actual_text, pill: mk.kpi_12.sub_badge,
+          hasBar: false, notesTitle: mk.kpi_12.notes_title, notes: mk.kpi_12.notes
+        }
+      ];
+
+      vp.innerHTML = `
+        <div class="shrink-0 flex items-center justify-between pb-3">
+          <div>
+            <h1 class="text-[18.5px] font-extrabold text-gray-900 border-l-4 border-blue-600 pl-2.5 leading-tight">
+              2026 품질안전부문 8대 업적 KPI Summary
+            </h1>
+            <p class="text-[12px] text-gray-500 pl-3.5 mt-0.5">
+              어느 카드든 클릭하면 해당 지표의 팀별·부문별 세부 추세 및 편집 화면으로 이동합니다.
+            </p>
+          </div>
+          <button onclick="navigate('main')" class="px-3.5 py-1.5 rounded-lg bg-white border border-gray-200 hover:border-blue-300 text-xs font-bold text-gray-700 transition">
+            ← 모닝 브리핑 대시보드로 돌아가기
+          </button>
+        </div>
+
+        <div class="flex-1 min-h-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 grid-rows-2 gap-3.5">
+          ${cards.map(c => {
+            let bottomVisual = '';
+            if (c.hasBar) {
+              const maxV = Math.max(Number(c.tNum) || 0, Number(c.aNum) || 0, 1) * 1.22;
+              const tPct = Math.min(100, Math.max(10, ((Number(c.tNum) || 0) / maxV) * 100));
+              const aPct = Math.min(100, Math.max(10, ((Number(c.aNum) || 0) / maxV) * 100));
+              bottomVisual = `
+                <div class="flex-1 min-h-0 flex items-end justify-center gap-7 px-4 pt-3 pb-1 border-t border-gray-100 mt-2">
+                  <div class="flex flex-col items-center h-full justify-end w-14">
+                    <span class="text-[11px] font-bold text-gray-500 mb-1">${c.tNum}${c.unit}</span>
+                    <div class="w-10 bg-gray-200 rounded-t-md" style="height:${tPct}%"></div>
+                    <span class="text-[11px] font-semibold text-gray-500 mt-1">목표</span>
+                  </div>
+                  <div class="flex flex-col items-center h-full justify-end w-14">
+                    <span class="text-[11.5px] font-extrabold text-blue-700 mb-1">${c.aNum}${c.unit}</span>
+                    <div class="w-10 bg-blue-600 rounded-t-md" style="height:${aPct}%"></div>
+                    <span class="text-[11px] font-bold text-gray-700 mt-1">실적</span>
+                  </div>
+                </div>
+              `;
+            } else {
+              bottomVisual = `
+                <div class="flex-1 min-h-0 overflow-y-auto p-2.5 rounded-lg bg-[#F9FAFB] border border-gray-100 mt-2 text-[11.8px] text-gray-700">
+                  <div class="font-bold text-gray-900 mb-1">✓ ${esc(c.notesTitle || '')}</div>
+                  ${(c.notes || []).map(n => `<div class="py-0.5 text-gray-600">- ${esc(n)}</div>`).join('')}
+                </div>
+              `;
+            }
+
+            return `
+              <div onclick="navigate('${c.view}')" class="qo-card qo-card-hover p-4 flex flex-col min-h-0 cursor-pointer">
+                <div class="flex items-center justify-between pb-2 border-b border-gray-100 shrink-0">
+                  <span class="text-[14px] font-bold text-gray-900">${esc(c.title)}</span>
+                  <div class="flex items-center gap-2">
+                    ${signalDotHtml(c.sig)}
+                    <span class="text-[11px] font-semibold text-gray-400">상세 ›</span>
+                  </div>
+                </div>
+                <div class="pt-2 text-[12.5px] space-y-0.5 shrink-0">
+                  <div class="text-gray-600"><span class="text-blue-600 font-bold mr-1">•</span>목표 : <b class="text-gray-800">${esc(c.targetTxt)}</b></div>
+                  <div class="text-gray-600"><span class="text-blue-600 font-bold mr-1">•</span>실적 : <b class="text-gray-900">${esc(c.actualTxt)}</b></div>
+                  <div class="pt-1"><span class="badge-pill badge-info">${esc(c.pill)}</span></div>
+                </div>
+                ${bottomVisual}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+    // =========================================================================
+    // [공통] 세부 페이지 상단 서브 네비게이션 헤더
+    // =========================================================================
+    function subPageHeaderHtml(titleTxt, subtitleTxt = '') {
+      return `
+        <div class="flex flex-wrap items-center justify-between gap-3 pb-3.5 mb-4 border-b border-gray-200">
+          <div>
+            <h1 class="text-[19px] font-extrabold text-gray-900 border-l-4 border-blue-600 pl-2.5 leading-tight">${esc(titleTxt)}</h1>
+            ${subtitleTxt ? `<p class="text-xs text-gray-500 pl-3.5 mt-1">${esc(subtitleTxt)}</p>` : ''}
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="navigate('main')" class="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:border-blue-300 text-xs font-bold text-gray-700 transition">
+              ← 모닝 브리핑
+            </button>
+            <button onclick="navigate('dept_kpi8')" class="px-3 py-1.5 rounded-lg bg-white border border-gray-200 hover:border-blue-300 text-xs font-bold text-blue-700 transition">
+              2026 부문 8대 KPI ›
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderDynamicRecordsTable(records, hideCols = []) {
+      if (!records || records.length === 0) {
+        return '<div class="p-6 text-center text-xs text-gray-400 bg-white rounded-lg border border-gray-200">조회된 데이터가 없습니다.</div>';
+      }
+      const cols = Object.keys(records[0]).filter(c => !c.startsWith('_') && !hideCols.includes(c));
+      return `
+        <div class="overflow-x-auto rounded-lg border border-gray-200 bg-white max-h-[460px]">
+          <table class="mon-table border-0">
+            <thead class="sticky top-0 z-10">
+              <tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr>
+            </thead>
+            <tbody>
+              ${records.map(r => `
+                <tr>${cols.map(c => `<td class="text-center whitespace-pre-line">${esc(r[c] ?? '-')}</td>`).join('')}</tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // [세부 1] 원가 절감 (부문 통합 + 좌 식안팀 / 우 품관팀 비교 + 월별 테이블)
+    // =========================================================================
+    function renderCostDetailView(vp, b) {
+      const c = b.cost;
+      const d = c.dept, fs = c.fs, qc = c.qc;
+      const rows = c.rows || [];
+
+      vp.innerHTML = `
+        ${subPageHeaderHtml('1. 원가 절감 — 부문 통합 및 팀별 추세 분석', '품질안전부문 통합 실적 및 식품안전팀 · 품질관리팀 월별 달성 추이')}
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+          <div class="qo-card p-3.5">
+            <div class="text-xs font-semibold text-gray-500">품질안전부문 누적 (목표 ${c.targets['부문']}억)</div>
+            <div class="text-xl font-extrabold text-gray-900 mt-1">${fmtNum(d.actual_man, 1)} 만원 <span class="text-sm text-blue-600">(${d.actual_uk}억)</span></div>
+            <div class="mt-1"><span class="badge-pill badge-info">달성률 ${d.rate}%</span></div>
+          </div>
+          <div class="qo-card p-3.5">
+            <div class="text-xs font-semibold text-gray-500">식품안전팀 누적 (목표 ${c.targets['식품안전팀']}억)</div>
+            <div class="text-xl font-extrabold text-gray-900 mt-1">${fmtNum(fs.actual_man, 1)} 만원 <span class="text-sm text-blue-600">(${fs.actual_uk}억)</span></div>
+            <div class="mt-1"><span class="badge-pill badge-info">달성률 ${fs.rate}% (월기준 ${fs.pass_months}/${fs.recorded_months})</span></div>
+          </div>
+          <div class="qo-card p-3.5">
+            <div class="text-xs font-semibold text-gray-500">품질관리팀 누적 (목표 ${c.targets['품질관리팀']}억)</div>
+            <div class="text-xl font-extrabold text-gray-900 mt-1">${fmtNum(qc.actual_man, 1)} 만원 <span class="text-sm text-blue-600">(${qc.actual_uk}억)</span></div>
+            <div class="mt-1"><span class="badge-pill badge-info">달성률 ${qc.rate}% (월기준 ${qc.pass_months}/${qc.recorded_months})</span></div>
+          </div>
+          <div class="qo-card p-3.5">
+            <div class="text-xs font-semibold text-gray-500">부문 연말(2월말) 추세 예상치</div>
+            <div class="text-xl font-extrabold text-gray-900 mt-1">${fmtNum(d.proj_man, 1)} 만원 <span class="text-sm text-emerald-600">(${d.proj_uk}억)</span></div>
+            <div class="mt-1"><span class="badge-pill ${d.proj_uk >= c.targets['부문'] ? 'badge-ok' : 'badge-warn'}">월 기울기 ${d.slope >= 0 ? '+' : ''}${d.slope}만/월</span></div>
+          </div>
+        </div>
+
+        <div class="qo-card p-4 mb-4">
+          <div class="text-sm font-bold text-gray-900 mb-2">[품질안전부문 통합] 3월~2월 원가절감 실적 및 AI 잔여월 예상 추세도 (단위: 만원)</div>
+          <div class="h-[310px]"><canvas id="chart-cost-dept"></canvas></div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+          <div class="qo-card p-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-bold text-gray-900">식품안전팀 (목표 ${c.targets['식품안전팀']}억 · 연말예상 ${fs.proj_uk}억)</span>
+              <span class="badge-pill ${fs.proj_uk >= c.targets['식품안전팀'] ? 'badge-ok' : 'badge-warn'}">${fs.proj_uk >= c.targets['식품안전팀'] ? '목표 순항' : '추세 보완 필요'}</span>
+            </div>
+            <div class="h-[260px]"><canvas id="chart-cost-fs"></canvas></div>
+          </div>
+          <div class="qo-card p-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-sm font-bold text-gray-900">품질관리팀 (목표 ${c.targets['품질관리팀']}억 · 연말예상 ${qc.proj_uk}억)</span>
+              <span class="badge-pill ${qc.proj_uk >= c.targets['품질관리팀'] ? 'badge-ok' : 'badge-warn'}">${qc.proj_uk >= c.targets['품질관리팀'] ? '목표 순항' : '추세 보완 필요'}</span>
+            </div>
+            <div class="h-[260px]"><canvas id="chart-cost-qc"></canvas></div>
+          </div>
+        </div>
+
+        <div class="qo-card p-4 mb-6">
+          <div class="text-sm font-bold text-gray-900 mb-2.5">월별 · 팀별 원가절감 상세 수치 테이블</div>
+          ${renderDynamicRecordsTable(rows, ['_기록여부'])}
+        </div>
+      `;
+
+      if (rows.length > 0) {
+        const labels = rows.map(r => r['월']);
+        STATE.charts.costDept = new Chart(document.getElementById('chart-cost-dept'), {
+          data: {
+            labels,
+            datasets: [
+              { type: 'bar', label: '식품안전팀 실적', data: rows.map(r => r['식품안전팀_실적(만원)']), backgroundColor: '#1E3A8A', stack: 'st1', order: 3 },
+              { type: 'bar', label: '품질관리팀 실적', data: rows.map(r => r['품질관리팀_실적(만원)']), backgroundColor: '#3B82F6', stack: 'st1', order: 3 },
+              { type: 'line', label: '부문 월 기준', data: rows.map(r => r['부문_기준(만원)']), borderColor: '#DC2626', borderWidth: 2, borderDash: [5, 5], pointRadius: 0, order: 1 },
+              { type: 'line', label: '실적 회귀 추세선', data: d.act_line, borderColor: '#7C3AED', borderWidth: 2.5, spanGaps: false, order: 1 },
+              { type: 'line', label: '잔여월 예상 추세선', data: d.fc_line, borderColor: '#0EA5E9', borderWidth: 2.5, borderDash: [4, 4], spanGaps: false, order: 1 }
+            ]
+          },
+          options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { beginAtZero: true } } }
+        });
+
+        const drawTeamChart = (canvasId, colAct, colStd, summaryObj, barColor) => {
+          STATE.charts[canvasId] = new Chart(document.getElementById(canvasId), {
+            data: {
+              labels,
+              datasets: [
+                { type: 'bar', label: '월 실적(만원)', data: rows.map(r => r[colAct]), backgroundColor: barColor, borderRadius: 4, order: 3 },
+                { type: 'line', label: '팀 월 기준선', data: rows.map(r => r[colStd]), borderColor: '#EF4444', borderWidth: 2, borderDash: [5, 5], pointRadius: 0, order: 1 },
+                { type: 'line', label: '실적 추세선', data: summaryObj.act_line, borderColor: '#6366F1', borderWidth: 2.2, order: 1 },
+                { type: 'line', label: '예상 추세선', data: summaryObj.fc_line, borderColor: '#0EA5E9', borderWidth: 2.2, borderDash: [4, 4], order: 1 }
+              ]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+          });
+        };
+        drawTeamChart('chart-cost-fs', '식품안전팀_실적(만원)', '식품안전팀_기준(만원)', fs, '#1D4ED8');
+        drawTeamChart('chart-cost-qc', '품질관리팀_실적(만원)', '품질관리팀_기준(만원)', qc, '#3B82F6');
+      }
+    }
+
+    // =========================================================================
+    // [세부 2] 클레임 발생률 분석 (전사 추이 / 부문별 월단위 / 전체 유형 집계표)
+    // =========================================================================
+    function renderClaimDetailView(vp, b) {
+      const cl = b.claim;
+      const years = cl.years || ['2026년'];
+      const curTab = STATE.claimTab;
+
+      let tabBody = '';
+      if (curTab === 'all') {
+        const sub26 = (cl.category_rows || []).filter(r => r['연도'] === '2026년' && r['유형'] !== '합계');
+        sub26.sort((a, z) => (z['합계_건수'] || 0) - (a['합계_건수'] || 0));
+        const topCat = sub26.length ? `${sub26[0]['유형']} (${fmtNum(sub26[0]['합계_건수'])}건, ${sub26[0]['합계_PPM']}ppm)` : '-';
+
+        tabBody = `
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            <div class="qo-card p-3.5">
+              <div class="text-xs font-semibold text-gray-500">2026년 전사 누적 클레임</div>
+              <div class="text-xl font-extrabold text-gray-900 mt-1">${fmtNum(cl.total_cnt)} 건</div>
+              <div class="text-[11.5px] text-gray-500 mt-1">최다 유형: ${esc(topCat)}</div>
+            </div>
+            <div class="qo-card p-3.5">
+              <div class="text-xs font-semibold text-gray-500">2026년 누적 PPM (목표 ${cl.target_ppm})</div>
+              <div class="text-xl font-extrabold text-gray-900 mt-1">${cl.actual_ppm} ppm</div>
+              <div class="mt-1"><span class="badge-pill ${cl.actual_ppm <= cl.target_ppm ? 'badge-ok' : 'badge-err'}">${cl.actual_ppm <= cl.target_ppm ? '목표 이내' : '목표 초과'}</span></div>
+            </div>
+            <div class="qo-card p-3.5">
+              <div class="text-xs font-semibold text-gray-500">월별 PPM 추세 기울기</div>
+              <div class="text-xl font-extrabold text-gray-900 mt-1">${cl.slope >= 0 ? '+' : ''}${Number(cl.slope).toFixed(2)} ppm/월</div>
+              <div class="text-[11.5px] text-gray-500 mt-1">기록된 ${cl.recorded_months}개월 기준</div>
+            </div>
+            <div class="qo-card p-3.5">
+              <div class="text-xs font-semibold text-gray-500">회계연도 말(2월) 예상 PPM</div>
+              <div class="text-xl font-extrabold text-blue-700 mt-1">${Number(cl.feb_pred || 0).toFixed(2)} ppm</div>
+              <div class="text-[11.5px] text-gray-500 mt-1">선형 회귀 예측치</div>
+            </div>
+          </div>
+          <div class="qo-card p-4 mb-4">
+            <div class="text-sm font-bold text-gray-900 mb-2">전사 2025년 vs 2026년 월별 클레임 PPM 및 잔여월 AI 예상 추세도</div>
+            <div class="h-[320px]"><canvas id="chart-claim-all"></canvas></div>
+          </div>
+          <div class="qo-card p-4 mb-6">
+            <div class="text-sm font-bold text-gray-900 mb-2">월별 전사 클레임 상세 집계표</div>
+            ${renderDynamicRecordsTable(cl.trend_rows, ['_기록여부'])}
+          </div>
+        `;
+      } else if (curTab === 'div') {
+        const yrObj = (cl.divisions || {})[STATE.claimDivYear] || {};
+        const targetDiv = STATE.claimDivType === 'rt' ? yrObj.rt : yrObj.dairy;
+
+        tabBody = `
+          <div class="qo-card p-3.5 mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-bold text-gray-600">조회 연도 :</span>
+              ${years.map(y => `
+                <button onclick="STATE.claimDivYear='${y}'; renderCurrentView();" class="px-2.5 py-1 rounded text-xs font-bold border ${STATE.claimDivYear === y ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}">${esc(y)}</button>
+              `).join('')}
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="STATE.claimDivType='dairy'; renderCurrentView();" class="px-3 py-1 rounded text-xs font-bold border ${STATE.claimDivType === 'dairy' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}">유제품생산부문 (카톤·병)</button>
+              <button onclick="STATE.claimDivType='rt'; renderCurrentView();" class="px-3 py-1 rounded text-xs font-bold border ${STATE.claimDivType === 'rt' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}">상온제품부문 (멸균팩·프리즈마)</button>
+              <button onclick="STATE.claimDivType='cmp'; renderCurrentView();" class="px-3 py-1 rounded text-xs font-bold border ${STATE.claimDivType === 'cmp' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}">양 부문 통합 비교</button>
+            </div>
+          </div>
+          ${STATE.claimDivType !== 'cmp' && targetDiv ? `
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+              <div class="qo-card p-3.5"><div class="text-xs text-gray-500">부문 누적 건수</div><div class="text-xl font-extrabold mt-1">${fmtNum(targetDiv.total_cnt)} 건</div></div>
+              <div class="qo-card p-3.5"><div class="text-xs text-gray-500">부문 누적 생산량</div><div class="text-xl font-extrabold mt-1">${fmtNum(targetDiv.total_prod)} 개</div></div>
+              <div class="qo-card p-3.5"><div class="text-xs text-gray-500">부문 통합 PPM</div><div class="text-xl font-extrabold text-blue-700 mt-1">${targetDiv.total_ppm} ppm</div></div>
+              <div class="qo-card p-3.5"><div class="text-xs text-gray-500">2월 예상 PPM (기울기)</div><div class="text-xl font-extrabold mt-1">${Number(targetDiv.feb_pred).toFixed(2)} ppm <span class="text-xs text-gray-500">(${targetDiv.slope >= 0 ? '+' : ''}${targetDiv.slope}/월)</span></div></div>
+            </div>
+            <div class="qo-card p-4 mb-4">
+              <div class="text-sm font-bold text-gray-900 mb-2">월단위 포장유형별 건수 및 통합 PPM · 예상 추세도</div>
+              <div class="h-[320px]"><canvas id="chart-claim-div"></canvas></div>
+            </div>
+            <div class="qo-card p-4 mb-6">
+              <div class="text-sm font-bold text-gray-900 mb-2">부문 월별 상세 데이터</div>
+              ${renderDynamicRecordsTable(targetDiv.monthly, ['_기록여부'])}
+            </div>
+          ` : `
+            <div class="qo-card p-4 mb-6">
+              <div class="text-sm font-bold text-gray-900 mb-2">${esc(STATE.claimDivYear)} 유제품생산부문 vs 상온제품부문 통합 비교</div>
+              <div class="h-[340px]"><canvas id="chart-claim-cmp"></canvas></div>
+            </div>
+          `}
+        `;
+      } else {
+        const yrList = [...years, '전체'];
+        const filteredRows = STATE.claimTableYear === '전체'
+          ? (cl.category_rows || [])
+          : (cl.category_rows || []).filter(r => r['연도'] === STATE.claimTableYear);
+
+        tabBody = `
+          <div class="qo-card p-3.5 mb-4 flex items-center gap-2">
+            <span class="text-xs font-bold text-gray-600">연도 필터 :</span>
+            ${yrList.map(y => `
+              <button onclick="STATE.claimTableYear='${y}'; renderCurrentView();" class="px-3 py-1 rounded text-xs font-bold border ${STATE.claimTableYear === y ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}">${esc(y)}</button>
+            `).join('')}
+          </div>
+          <div class="qo-card p-4 mb-6">
+            ${renderDynamicRecordsTable(filteredRows)}
+          </div>
+        `;
+      }
+
+      vp.innerHTML = `
+        ${subPageHeaderHtml('클레임 발생률 분석', '전사 추이 · 부문별(유제품 vs 상온) 심층 진단 및 잔여월 예상 추세')}
+        <div class="flex border-b border-gray-200 mb-4 gap-2">
+          <button onclick="STATE.claimTab='all'; renderCurrentView();" class="subtab-btn ${curTab === 'all' ? 'active' : ''}">전사 월별 추이 (2025 vs 2026)</button>
+          <button onclick="STATE.claimTab='div'; renderCurrentView();" class="subtab-btn ${curTab === 'div' ? 'active' : ''}">부문별 월단위 분석 (유제품 vs 상온)</button>
+          <button onclick="STATE.claimTab='table'; renderCurrentView();" class="subtab-btn ${curTab === 'table' ? 'active' : ''}">전체 제품 유형별 상세 집계표</button>
+        </div>
+        ${tabBody}
+      `;
+
+      // 차트 바인딩
+      if (curTab === 'all' && cl.trend_rows && cl.trend_rows.length) {
+        const labels = cl.trend_rows.map(r => r['월']);
+        STATE.charts.claimAll = new Chart(document.getElementById('chart-claim-all'), {
+          data: {
+            labels,
+            datasets: [
+              { type: 'bar', label: '2025년 PPM', data: cl.trend_rows.map(r => r['2025년_PPM']), backgroundColor: '#CBD5E1', borderRadius: 4, order: 3 },
+              { type: 'bar', label: '2026년 PPM', data: cl.trend_rows.map(r => r['_기록여부'] ? r['2026년_PPM'] : null), backgroundColor: '#1D4ED8', borderRadius: 4, order: 3 },
+              { type: 'line', label: '목표 (1.12 ppm)', data: cl.trend_rows.map(r => r['목표_PPM']), borderColor: '#DC2626', borderWidth: 2, borderDash: [5, 5], pointRadius: 0, order: 1 },
+              { type: 'line', label: '2026 실적 추세선', data: cl.act_line, borderColor: '#7C3AED', borderWidth: 2.5, order: 1 },
+              { type: 'line', label: 'AI 잔여월 예상 추세', data: cl.fc_line, borderColor: '#0284C7', borderWidth: 2.5, borderDash: [4, 4], order: 1 }
+            ]
+          },
+          options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+        });
+      } else if (curTab === 'div') {
+        const yrObj = (cl.divisions || {})[STATE.claimDivYear] || {};
+        if (STATE.claimDivType !== 'cmp') {
+          const td = STATE.claimDivType === 'rt' ? yrObj.rt : yrObj.dairy;
+          if (td && td.monthly && td.monthly.length) {
+            const labels = td.monthly.map(r => r['월']);
+            const palette = ['#1E3A8A', '#2563EB', '#60A5FA', '#93C5FD'];
+            const ds = (td.categories || []).map((cat, idx) => ({
+              type: 'bar', label: `${cat} 건수`, data: td.monthly.map(r => r[`${cat}_건수`]),
+              backgroundColor: palette[idx % 4], stack: 'cnt', yAxisID: 'y', order: 3
+            }));
+            ds.push({
+              type: 'line', label: '부문 통합 PPM', data: td.monthly.map(r => r['_기록여부'] ? r['부문_통합_PPM'] : null),
+              borderColor: '#DC2626', borderWidth: 2.5, yAxisID: 'y1', order: 1
+            });
+            ds.push({
+              type: 'line', label: 'AI 예상 추세(PPM)', data: td.fc_line,
+              borderColor: '#0284C7', borderWidth: 2.2, borderDash: [4, 4], yAxisID: 'y1', order: 1
+            });
+            STATE.charts.claimDiv = new Chart(document.getElementById('chart-claim-div'), {
+              data: { labels, datasets: ds },
+              options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                  x: { stacked: true },
+                  y: { stacked: true, position: 'left', beginAtZero: true, title: { display: true, text: '클레임 건수(건)' } },
+                  y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'PPM' } }
+                }
+              }
+            });
+          }
+        } else if (yrObj.dairy && yrObj.rt) {
+          const labels = yrObj.dairy.monthly.map(r => r['월']);
+          STATE.charts.claimCmp = new Chart(document.getElementById('chart-claim-cmp'), {
+            data: {
+              labels,
+              datasets: [
+                { type: 'bar', label: '유제품생산 건수', data: yrObj.dairy.monthly.map(r => r['합산_건수']), backgroundColor: '#1E3A8A', yAxisID: 'y', order: 3 },
+                { type: 'bar', label: '상온제품 건수', data: yrObj.rt.monthly.map(r => r['합산_건수']), backgroundColor: '#F59E0B', yAxisID: 'y', order: 3 },
+                { type: 'line', label: '유제품 PPM', data: yrObj.dairy.monthly.map(r => r['_기록여부'] ? r['부문_통합_PPM'] : null), borderColor: '#1D4ED8', borderWidth: 2.5, yAxisID: 'y1', order: 1 },
+                { type: 'line', label: '상온 PPM', data: yrObj.rt.monthly.map(r => r['_기록여부'] ? r['부문_통합_PPM'] : null), borderColor: '#DC2626', borderWidth: 2.5, yAxisID: 'y1', order: 1 }
+              ]
+            },
+            options: {
+              responsive: true, maintainAspectRatio: false,
+              scales: {
+                y: { position: 'left', beginAtZero: true, title: { display: true, text: '건수(건)' } },
+                y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'PPM' } }
+              }
+            }
+          });
+        }
+      }
+    }
+
+    // =========================================================================
+    // [세부 3] 공정 및 배양 실시간 관제 (상온 / 유제품 / 두유배양 + 각 누적 이력 DB)
+    // =========================================================================
+    function renderProcessDetailView(vp, b) {
+      const p = b.process;
+      const tab = STATE.procTab;
+      let content = '';
+
+      if (tab === 'rt') {
+        const rtT = p.rt_today;
+        const rtY = p.rt_yest;
+        const histP = p.rt_hist_p || [];
+        const histC = p.rt_hist_c || [];
+
+        // 누적 이력 날짜 쌍 추출
+        const pairMap = new Map();
+        histP.forEach(r => {
+          const k = `${r['생산일자']}||${r['원본탭명']}`;
+          if (!pairMap.has(k)) pairMap.set(k, { dt: r['생산일자'], tab: r['원본탭명'] });
+        });
+        const datePairs = Array.from(pairMap.values()).sort((a, z) => (z.dt || '').localeCompare(a.dt || ''));
+        if (STATE.rtHistIdx >= datePairs.length) STATE.rtHistIdx = 0;
+        const selPair = datePairs[STATE.rtHistIdx] || null;
+        const subHistP = selPair ? histP.filter(r => r['생산일자'] === selPair.dt && r['원본탭명'] === selPair.tab) : [];
+        const subHistC = selPair ? histC.filter(r => r['생산일자'] === selPair.dt && r['원본탭명'] === selPair.tab) : [];
+
+        content = `
+          ${rtT ? `
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+              <div class="qo-card p-3.5 border-l-4 ${(rtT.ster_special_notes || []).length ? 'border-l-amber-500 bg-amber-50/40' : 'border-l-emerald-500'}">
+                <div class="text-xs font-bold text-gray-900 mb-1">금일 [${esc(rtT.tab_title)}] 현장 설비·공정 특이사항 (${(rtT.ster_special_notes || []).length}건)</div>
+                <div class="text-xs text-gray-700 leading-relaxed">
+                  ${(rtT.ster_special_notes || []).length ? rtT.ster_special_notes.map(n => `<div>• ${esc(n)}</div>`).join('') : '• 전 가동 호기 및 멸균기 특이사항 없이 정상 생산 중'}
+                </div>
+              </div>
+              <div class="qo-card p-3.5 border-l-4 ${rtY && (rtY.ster_special_notes || []).length ? 'border-l-amber-500 bg-amber-50/40' : 'border-l-blue-600'}">
+                <div class="text-xs font-bold text-gray-900 mb-1">전일 [${esc(rtY ? rtY.tab_title : '-')}] 마감 특이사항 기록</div>
+                <div class="text-xs text-gray-700 leading-relaxed">
+                  ${rtY && (rtY.ster_special_notes || []).length ? rtY.ster_special_notes.map(n => `<div>• ${esc(n)}</div>`).join('') : '• 전일 설비 이상 및 품질 특이사항 기록 없음'}
+                </div>
+              </div>
+            </div>
+
+            <div class="qo-card p-4 mb-4">
+              <div class="text-sm font-bold text-gray-900 mb-2.5">금일 [${esc(rtT.tab_title)}] 포장호기별 생산 제품 · 소비기한 · 확인시간 (${esc(rtT.prod_date)})</div>
+              <div class="overflow-x-auto">
+                <table class="mon-table">
+                  <thead><tr><th>포장호기</th><th>생산 제품명</th><th>소비기한</th><th>확인시간</th><th>모니터링 상태</th></tr></thead>
+                  <tbody>
+                    ${(rtT.lines_records || []).map(r => `
+                      <tr>
+                        <td class="text-center font-bold ${r._cls === 'cell-gray' ? 'cell-gray' : ''}">${esc(r['포장호기'])}</td>
+                        <td class="${r._cls === 'cell-gray' ? 'cell-gray' : 'font-semibold'}">${esc(r['생산 제품명'])}</td>
+                        <td class="text-center ${r._cls === 'cell-green' ? 'cell-green' : r._cls}">${esc(r['소비기한'])}</td>
+                        <td class="text-center ${r._cls}">${esc(r['확인시간'])}</td>
+                        <td class="text-center ${r._cls}">${esc(r['상태'])}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="qo-card p-4 mb-4">
+              <div class="text-sm font-bold text-gray-900 mb-2.5">금일 [${esc(rtT.tab_title)}] 멸균기 실시간 모니터링 [CCP-1B / CCP-2P]</div>
+              <div class="overflow-x-auto">
+                <table class="mon-table">
+                  <thead><tr><th>멸균기(포장)</th><th>매칭 제품명(용량)</th><th>확인시간</th><th>멸균온도 [실측(기준)]</th><th>균질압 [실측(기준)]</th><th>멸균시간 [실측(기준)]</th><th>처리량/냉각</th><th>여과망/서명</th><th>특이사항</th></tr></thead>
+                  <tbody>
+                    ${(rtT.ster_records || []).map(sr => `
+                      <tr>
+                        <td class="text-center font-bold">${esc(sr['멸균기_포장'])}</td>
+                        <td>${esc(sr['매칭 제품명'])}</td>
+                        <td class="text-center ${sr._c_time}">${esc(sr['확인시간'])}</td>
+                        <td class="text-center ${sr._c_temp}">${esc(sr['멸균온도'])}</td>
+                        <td class="text-center ${sr._c_press}">${esc(sr['균질압'])}</td>
+                        <td class="text-center ${sr._c_hold}">${esc(sr['멸균시간'])}</td>
+                        <td class="text-center">${esc(sr['유량_냉각'])}</td>
+                        <td class="text-center ${sr._c_flt}">${esc(sr['여과망_서명'])}</td>
+                        <td class="${sr._c_rem}">${esc(sr['특이사항'])}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="qo-card p-4 mb-4">
+              <div class="text-sm font-bold text-gray-900 mb-2.5">금일 [${esc(rtT.tab_title)}] 포장기 공정관리 [CCP-3B]</div>
+              <div class="overflow-x-auto">
+                <table class="mon-table">
+                  <thead><tr><th>점검항목</th><th>관리기준</th><th>적용설비</th><th>A호기</th><th>B호기</th><th>C호기</th><th>D호기</th><th>E호기</th><th>F호기</th></tr></thead>
+                  <tbody>
+                    ${(rtT.ccp3b_records || []).map(r3 => `
+                      <tr>
+                        <td class="text-center font-semibold">${esc(r3['항목'])}</td>
+                        <td class="text-center">${esc(r3['관리기준'])}</td>
+                        <td class="text-center">${esc(r3['적용설비'])}</td>
+                        ${['A호기','B호기','C호기','D호기','E호기','F호기'].map(h => `<td class="text-center ${(r3._cls_map && r3._cls_map[h]) || ''}">${esc(r3[h] || '-')}</td>`).join('')}
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            ${rtY ? `
+              <div class="qo-card p-4 mb-6">
+                <div class="text-sm font-bold text-gray-900 mb-2.5">전일 [${esc(rtY.tab_title)}] 마감 생산 제품 및 멸균 · 특이사항 요약 (${esc(rtY.prod_date)})</div>
+                <div class="overflow-x-auto">
+                  <table class="mon-table">
+                    <thead><tr><th>포장호기</th><th>생산 제품명</th><th>소비기한</th><th>확인시간</th><th>멸균기·CCP 요약</th><th>전일 특이사항</th></tr></thead>
+                    <tbody>
+                      ${(rtY.compact_rows || []).map(yr => `
+                        <tr>
+                          <td class="text-center font-bold">${esc(yr['포장호기'])}</td>
+                          <td>${esc(yr['생산 제품명'])}</td>
+                          <td class="text-center cell-green">${esc(yr['소비기한'])}</td>
+                          <td class="text-center ${yr._cls_status}">${esc(yr['확인시간'])}</td>
+                          <td class="text-center ${yr['멸균기·CCP 요약'] !== '-' ? 'cell-green' : ''}">${esc(yr['멸균기·CCP 요약'])}</td>
+                          <td class="${yr._cls_rem}">${esc(yr['특이사항'])}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ` : ''}
+          ` : '<div class="qo-card p-6 mb-4 text-xs text-gray-500">상온 공정일보 현재 탭 데이터를 불러오지 못했습니다. 아래 누적 이력 DB를 확인하세요.</div>'}
+
+          <!-- 상온 누적 이력 DB 조회 -->
+          <div class="qo-card p-4 mb-6 border-t-4 border-t-blue-600">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div>
+                <div class="text-sm font-extrabold text-gray-900">[누적 이력 DB] 지난 상온 공정관리 일보 날짜별 조회</div>
+                <div class="text-xs text-gray-500">원본 날짜 탭이 삭제된 이후에도 '_이력DB_상온생산/상온CCP'에서 영구 조회됩니다.</div>
+              </div>
+              ${datePairs.length > 0 ? `
+                <select onchange="STATE.rtHistIdx=Number(this.value); renderCurrentView();" class="px-3 py-1.5 text-xs font-bold border border-gray-300 rounded-lg bg-white">
+                  ${datePairs.map((dp, i) => `<option value="${i}" ${i === STATE.rtHistIdx ? 'selected' : ''}>${esc(dp.dt)} (원본탭: ${esc(dp.tab)})</option>`).join('')}
+                </select>
+              ` : ''}
+            </div>
+            ${renderDynamicRecordsTable(subHistP, ['최종백업일시', '표준소비기한_검색용'])}
+            ${subHistC.length > 0 ? `
+              <details class="mt-3">
+                <summary class="cursor-pointer text-xs font-bold text-blue-600 py-1">해당 일자 멸균기(CCP-1B/2P) · 포장기(CCP-3B) 세부 기록 펼쳐보기 (${subHistC.length}건)</summary>
+                <div class="mt-2">${renderDynamicRecordsTable(subHistC, ['최종백업일시'])}</div>
+              </details>
+            ` : ''}
+          </div>
+        `;
+      } else if (tab === 'dairy') {
+        const curPack = STATE.dairySubTab === 'ferm' ? (p.ferm_pack || []) : (p.milk_pack || []);
+        const shownPack = STATE.dairyOnlyRun ? curPack.filter(r => String(r['가동여부'] || '').includes('금일생산')) : curPack;
+
+        const dhp = p.dairy_hist_p || [];
+        const dhc = p.dairy_hist_c || [];
+        const allDates = [...new Set([...dhp.map(r => r['생산일자']), ...dhc.map(r => r['생산일자'])].filter(Boolean))].sort().reverse();
+        if (!allDates.includes(STATE.dairyHistDate) && allDates.length > 0) STATE.dairyHistDate = allDates[0];
+
+        const subDp = dhp.filter(r => r['생산일자'] === STATE.dairyHistDate && (STATE.dairyHistLine === 'ALL' || r['라인구분'] === STATE.dairyHistLine));
+        const subDc = dhc.filter(r => r['생산일자'] === STATE.dairyHistDate && (STATE.dairyHistLine === 'ALL' || r['라인구분'] === STATE.dairyHistLine));
+
+        content = `
+          <div class="qo-card p-4 mb-4">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div class="flex items-center gap-2">
+                <button onclick="STATE.dairySubTab='milk'; renderCurrentView();" class="px-3 py-1.5 rounded-lg text-xs font-bold border ${STATE.dairySubTab === 'milk' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200'}">우유 포장 (${esc(p.milk_date)})</button>
+                <button onclick="STATE.dairySubTab='ferm'; renderCurrentView();" class="px-3 py-1.5 rounded-lg text-xs font-bold border ${STATE.dairySubTab === 'ferm' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-200'}">발효유 포장 (${esc(p.ferm_date)})</button>
+              </div>
+              <label class="flex items-center gap-1.5 text-xs font-semibold text-gray-700 cursor-pointer">
+                <input type="checkbox" ${STATE.dairyOnlyRun ? 'checked' : ''} onchange="STATE.dairyOnlyRun=this.checked; renderCurrentView();" class="rounded text-blue-600" />
+                <span>금일 실제 생산 품목만 보기 (00.00 제외)</span>
+              </label>
+            </div>
+            ${curPack.length === 0
+              ? '<div class="p-5 text-xs text-blue-800 bg-blue-50 rounded-lg border border-blue-100">현재 시트에 활성화된 우유/발효유 작업 탭이 없습니다 (결재 후 삭제됨). 바로 아래 <b>[누적 이력 DB]</b>에서 당일 및 지난 날짜 기록을 모두 확인하실 수 있습니다.</div>'
+              : renderDynamicRecordsTable(shownPack)}
+          </div>
+
+          <div class="qo-card p-4 mb-6 border-t-4 border-t-blue-600">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div>
+                <div class="text-sm font-extrabold text-gray-900">[누적 이력 DB] 지난 우유 · 발효유 포장일보 날짜별 조회</div>
+                <div class="text-xs text-gray-500">사내 포털 결재 후 삭제된 탭의 확인시간 · Tank번호 · 소비기한 · 살균기 CCP가 영구 보존됩니다.</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <select onchange="STATE.dairyHistLine=this.value; renderCurrentView();" class="px-2.5 py-1.5 text-xs font-bold border border-gray-300 rounded-lg bg-white">
+                  <option value="ALL" ${STATE.dairyHistLine === 'ALL' ? 'selected' : ''}>전체 (우유+발효유)</option>
+                  <option value="우유" ${STATE.dairyHistLine === '우유' ? 'selected' : ''}>우유</option>
+                  <option value="발효유" ${STATE.dairyHistLine === '발효유' ? 'selected' : ''}>발효유</option>
+                </select>
+                ${allDates.length > 0 ? `
+                  <select onchange="STATE.dairyHistDate=this.value; renderCurrentView();" class="px-3 py-1.5 text-xs font-bold border border-gray-300 rounded-lg bg-white">
+                    ${allDates.map(d => `<option value="${esc(d)}" ${d === STATE.dairyHistDate ? 'selected' : ''}>${esc(d)}</option>`).join('')}
+                  </select>
+                ` : ''}
+              </div>
+            </div>
+            ${renderDynamicRecordsTable(subDp, ['최종백업일시', '표준소비기한_검색용'])}
+            ${subDc.length > 0 ? `
+              <div class="mt-4">
+                <div class="text-xs font-bold text-gray-800 mb-2">포장 생산시간 · 살균기/금속검출기 CCP 검증 · 특이사항 기록</div>
+                ${renderDynamicRecordsTable(subDc, ['최종백업일시'])}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      } else {
+        // 두유 배양검사 관제
+        const soyMap = p.soy_tabs_map || {};
+        const tabKeys = Object.keys(soyMap);
+        if (!tabKeys.includes(STATE.soySelTab) && tabKeys.length > 0) STATE.soySelTab = tabKeys[0];
+        const curSoy = soyMap[STATE.soySelTab] || { blocks: [], hourly: [] };
+        const soyHist = p.soy_hist || [];
+        const inspCol = (soyHist[0] && soyHist[0]['확정검사일_탭기준'] !== undefined) ? '확정검사일_탭기준' : '검사일_표기';
+        const targetCol = STATE.soyHistMode === 'prod' ? '생산일자' : inspCol;
+        const soyDates = [...new Set(soyHist.map(r => r[targetCol]).filter(Boolean))].sort().reverse();
+        if (!soyDates.includes(STATE.soyHistDate) && soyDates.length > 0) STATE.soyHistDate = soyDates[0];
+        const subSoyHist = soyHist.filter(r => r[targetCol] === STATE.soyHistDate);
+
+        content = `
+          <div class="qo-card p-4 mb-4">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div class="text-sm font-bold text-gray-900">두유 배양검사 실시간 시트 탭 조회 (탭 날짜 역산 보정 적용)</div>
+              ${tabKeys.length > 0 ? `
+                <select onchange="STATE.soySelTab=this.value; renderCurrentView();" class="px-3 py-1.5 text-xs font-bold border border-gray-300 rounded-lg bg-white">
+                  ${tabKeys.map(tk => `<option value="${esc(tk)}" ${tk === STATE.soySelTab ? 'selected' : ''}>하단 시트탭 : ${esc(tk)}</option>`).join('')}
+                </select>
+              ` : ''}
+            </div>
+            <div class="overflow-x-auto">
+              <table class="mon-table">
+                <thead><tr><th>포장기</th><th>배양구분</th><th>용량</th><th>품목명</th><th>실제 생산일</th><th>소비기한</th><th>가동시간</th><th>검사수량</th><th>작성자</th><th>검사자</th><th>진행상태</th><th>오염/판정</th></tr></thead>
+                <tbody>
+                  ${(curSoy.blocks || []).map(sr => {
+                    const done = Boolean(sr['검사완료여부']);
+                    const cls = !done ? 'cell-yellow' : (String(sr['판정']).includes('부적합') ? 'cell-red' : 'cell-green');
+                    return `
+                      <tr>
+                        <td class="text-center font-bold">${esc(sr['포장기'])}</td>
+                        <td class="text-center">${esc(sr['배양구분'])}</td>
+                        <td class="text-center">${esc(sr['용량(mL)'])}</td>
+                        <td class="font-semibold">${esc(sr['품목명'])}</td>
+                        <td class="text-center">${esc(sr['생산일'])}</td>
+                        <td class="text-center">${esc(sr['소비기한'])}</td>
+                        <td class="text-center">${esc(sr['생산 시작~종료'])}<br><span class="text-[11px] text-gray-500">(${esc(sr['실가동시간'])})</span></td>
+                        <td class="text-center">${esc(sr['총 검사수량'])}</td>
+                        <td class="text-center">${esc(sr['작성자'])}</td>
+                        <td class="text-center ${cls}">${esc(sr['검사자'])}</td>
+                        <td class="text-center ${cls}">${esc(sr['진행상태'])}</td>
+                        <td class="text-center ${cls}">${done ? `${esc(sr['오염수량'])} / ${esc(sr['판정'])}` : '검사전'}</td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+            ${(curSoy.hourly || []).length > 0 ? `
+              <details class="mt-3">
+                <summary class="cursor-pointer text-xs font-bold text-blue-600 py-1">시간대별(08시~07시) 샘플 · Strip · Paper 체크 상세 보기</summary>
+                <div class="mt-2">${renderDynamicRecordsTable(curSoy.hourly)}</div>
+              </details>
+            ` : ''}
+          </div>
+
+          <div class="qo-card p-4 mb-6 border-t-4 border-t-blue-600">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div>
+                <div class="text-sm font-extrabold text-gray-900">[누적 이력 DB] 지난 두유 배양검사 날짜별 조회</div>
+                <div class="text-xs text-gray-500">TODAY() 수식 날짜 밀림이 보정된 실제 생산일자 및 검사일 기준으로 영구 보존됩니다.</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <select onchange="STATE.soyHistMode=this.value; STATE.soyHistDate=''; renderCurrentView();" class="px-2.5 py-1.5 text-xs font-bold border border-gray-300 rounded-lg bg-white">
+                  <option value="insp" ${STATE.soyHistMode === 'insp' ? 'selected' : ''}>검사일(탭 날짜) 기준</option>
+                  <option value="prod" ${STATE.soyHistMode === 'prod' ? 'selected' : ''}>실제 생산일자 기준</option>
+                </select>
+                ${soyDates.length > 0 ? `
+                  <select onchange="STATE.soyHistDate=this.value; renderCurrentView();" class="px-3 py-1.5 text-xs font-bold border border-gray-300 rounded-lg bg-white">
+                    ${soyDates.map(d => `<option value="${esc(d)}" ${d === STATE.soyHistDate ? 'selected' : ''}>${esc(d)}</option>`).join('')}
+                  </select>
+                ` : ''}
+              </div>
+            </div>
+            ${renderDynamicRecordsTable(subSoyHist, ['최종백업일시', '표준소비기한_검색용'])}
+          </div>
+        `;
+      }
+
+      vp.innerHTML = `
+        ${subPageHeaderHtml('공정 및 배양 실시간 관제', '당일 실시간 현장 일보 모니터링 및 삭제 탭 영구 보존 이력 DB 조회')}
+        <div class="flex border-b border-gray-200 mb-4 gap-2">
+          <button onclick="STATE.procTab='rt'; renderCurrentView();" class="subtab-btn ${tab === 'rt' ? 'active' : ''}">[상온] 상온제품 공정 관리 일보</button>
+          <button onclick="STATE.procTab='dairy'; renderCurrentView();" class="subtab-btn ${tab === 'dairy' ? 'active' : ''}">[우유/발효유] 유제품 포장 공정관리 일보</button>
+          <button onclick="STATE.procTab='soy'; renderCurrentView();" class="subtab-btn ${tab === 'soy' ? 'active' : ''}">[상온] 두유 배양검사 일보</button>
+          <button onclick="navigate('lot_trace')" class="subtab-btn text-blue-600">생산이력 · LOT 역추적 바로가기 ›</button>
+        </div>
+        ${content}
+      `;
+    }
+
+    // =========================================================================
+    // [세부 4] 생산이력 · LOT 역추적 ('제품명 식품안전나라' A열 + 소비기한 원스톱 검색)
+    // =========================================================================
+    async function executeLotTraceSearch() {
+      const prodEl = document.getElementById('lot-sel-prod');
+      const expEl = document.getElementById('lot-in-exp');
+      const kwEl = document.getElementById('lot-in-kw');
+
+      if (prodEl) STATE.lotQuery.product = prodEl.value;
+      if (expEl) STATE.lotQuery.exp = expEl.value.trim();
+      if (kwEl) STATE.lotQuery.kw = kwEl.value.trim();
+
+      if (STATE.lotQuery.product === 'ALL' && !STATE.lotQuery.exp && !STATE.lotQuery.kw) {
+        showToast('제품명을 선택하거나 소비기한/키워드를 입력해 주세요.', true);
+        return;
+      }
+
+      STATE.lotQuery.loading = true;
+      renderCurrentView();
+
+      try {
+        const params = new URLSearchParams({
+          product: STATE.lotQuery.product === 'ALL' ? '' : STATE.lotQuery.product,
+          exp: STATE.lotQuery.exp,
+          kw: STATE.lotQuery.kw
+        });
+        const res = await fetch(`/api/lot-trace?${params.toString()}`);
+        STATE.lotQuery.result = await res.json();
+      } catch (e) {
+        showToast('로트 역추적 조회 중 오류가 발생했습니다.', true);
+      } finally {
+        STATE.lotQuery.loading = false;
+        renderCurrentView();
+      }
+    }
+
+    function renderLotTraceView(vp, b) {
+      const p = b.process;
+      const prods = p.master_products || [];
+      const q = STATE.lotQuery;
+      const res = q.result;
+
+      let resHtml = '';
+      if (q.loading) {
+        resHtml = '<div class="qo-card p-8 text-center text-xs font-bold text-blue-700">상온 · 배양 · 유제품 누적 이력 DB를 교차 추적 중입니다...</div>';
+      } else if (res && res.ok) {
+        const total = (res.counts.rt || 0) + (res.counts.soy || 0) + (res.counts.dairy || 0);
+        if (total === 0) {
+          resHtml = '<div class="qo-card p-6 text-center text-xs text-amber-800 bg-amber-50 border-amber-200">일치하는 생산·배양 이력이 발견되지 않았습니다. 소비기한을 월.일(예: 05.13) 형태로 줄이거나 키워드로 검색해 보세요.</div>';
+        } else {
+          resHtml = `
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+              <div class="qo-card p-3.5"><div class="text-xs text-gray-500">상온 공정일보 매칭</div><div class="text-xl font-extrabold text-blue-700 mt-1">${res.counts.rt} 건</div></div>
+              <div class="qo-card p-3.5"><div class="text-xs text-gray-500">두유 배양검사 매칭 (실가동시간)</div><div class="text-xl font-extrabold text-emerald-700 mt-1">${res.counts.soy} 건</div></div>
+              <div class="qo-card p-3.5"><div class="text-xs text-gray-500">유제품 포장일보 매칭</div><div class="text-xl font-extrabold text-indigo-700 mt-1">${res.counts.dairy} 건</div></div>
+            </div>
+
+            ${(res.matched_rt || []).length > 0 ? `
+              <div class="qo-card p-4 mb-4">
+                <div class="text-sm font-bold text-gray-900 mb-2.5">1. 상온 공정관리 일보 — 생산호기 · 멸균 CCP · 당일 특이사항</div>
+                ${renderDynamicRecordsTable(res.matched_rt, ['최종백업일시', '표준소비기한_검색용'])}
+                ${(res.matched_rt_ccp || []).length > 0 ? `
+                  <details class="mt-3">
+                    <summary class="cursor-pointer text-xs font-bold text-blue-600">해당 생산일 멸균기(CCP-1B/2P) · 포장기(CCP-3B) 세부 기록 전체 보기 (${res.matched_rt_ccp.length}건)</summary>
+                    <div class="mt-2">${renderDynamicRecordsTable(res.matched_rt_ccp, ['최종백업일시'])}</div>
+                  </details>
+                ` : ''}
+              </div>
+            ` : ''}
+
+            ${(res.matched_soy || []).length > 0 ? `
+              <div class="qo-card p-4 mb-4">
+                <div class="text-sm font-bold text-gray-900 mb-2.5">2. 두유 배양검사 일보 — 실 생산 시작~종료 시간(실가동시간) · 오염수량 · 판정</div>
+                ${renderDynamicRecordsTable(res.matched_soy, ['최종백업일시', '표준소비기한_검색용'])}
+              </div>
+            ` : ''}
+
+            ${(res.matched_dairy || []).length > 0 ? `
+              <div class="qo-card p-4 mb-6">
+                <div class="text-sm font-bold text-gray-900 mb-2.5">3. 유제품 포장 공정관리 일보 — 확인시간 · Tank · 살균기 CCP</div>
+                ${renderDynamicRecordsTable(res.matched_dairy, ['최종백업일시', '표준소비기한_검색용'])}
+              </div>
+            ` : ''}
+          `;
+        }
+      } else {
+        resHtml = '<div class="qo-card p-6 text-center text-xs text-gray-500">위에서 제품명을 선택하거나 소비기한을 입력한 뒤 <b>[이력 역추적 실행]</b>을 눌러주세요.</div>';
+      }
+
+      vp.innerHTML = `
+        ${subPageHeaderHtml('생산이력 · 클레임 LOT 원스톱 역추적', `상온공정일보 '제품명 식품안전나라' A열(${fmtNum(p.fsk_products_cnt)}종) 및 전 공정 누적 이력 DB 자동 교차 검증`)}
+        <div class="qo-card p-4 mb-4 bg-gradient-to-r from-slate-50 to-blue-50/50 border-blue-200">
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
+            <div class="lg:col-span-5">
+              <label class="block text-xs font-bold text-gray-700 mb-1">1. 제품명 선택 ('제품명 식품안전나라' A열 표준 연동)</label>
+              <select id="lot-sel-prod" class="w-full px-3 py-2 text-xs font-semibold border border-gray-300 rounded-lg bg-white">
+                <option value="ALL">전체 (제품 미선택 · 소비기한/키워드로 검색)</option>
+                ${prods.map(pr => `<option value="${esc(pr)}" ${q.product === pr ? 'selected' : ''}>${esc(pr)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="lg:col-span-3">
+              <label class="block text-xs font-bold text-gray-700 mb-1">2. 소비기한 입력</label>
+              <input id="lot-in-exp" type="text" value="${esc(q.exp)}" placeholder="예: 2027-05-13, 27.05.13, 05.13"
+                onkeydown="if(event.key==='Enter') executeLotTraceSearch();"
+                class="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg bg-white" />
+            </div>
+            <div class="lg:col-span-2">
+              <label class="block text-xs font-bold text-gray-700 mb-1">3. 부분 품목 키워드</label>
+              <input id="lot-in-kw" type="text" value="${esc(q.kw)}" placeholder="예: 검은콩, 고칼슘"
+                onkeydown="if(event.key==='Enter') executeLotTraceSearch();"
+                class="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg bg-white" />
+            </div>
+            <div class="lg:col-span-2">
+              <button onclick="executeLotTraceSearch()" class="w-full py-2 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition">
+                이력 역추적 실행
+              </button>
+            </div>
+          </div>
+        </div>
+        ${resHtml}
+      `;
+    }
+
+    // =========================================================================
+    // [세부 5~9] 표시사항 / 원자재DB / 심사관리 / 협력업체 / 수동 KPI 편집기
+    // =========================================================================
+    function renderLabelStatusView(vp, b) {
+      const lb = b.label_status;
+      const tab = STATE.labelTab;
+      let body = '';
+
+      if (tab === 'rev') {
+        body = `
+          <div class="qo-card p-4 mb-4">
+            <div class="flex items-center justify-between mb-2.5">
+              <span class="text-sm font-bold text-gray-900">현재 [식품안전팀 검토중] 전체 목록 (${lb.reviewing_cnt}건)</span>
+              <button onclick="openLabelMemoModal()" class="px-3 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold">표시사항 특이사항 메모 편집</button>
+            </div>
+            ${renderDynamicRecordsTable(lb.reviewing_list, ['분류', '등록연도', '등록월'])}
+          </div>
+          <div class="qo-card p-4 mb-6">
+            <div class="text-sm font-bold text-gray-900 mb-2.5">요청부서별 2025년 vs 2026년 의뢰 현황</div>
+            ${renderDynamicRecordsTable(lb.dept_cmp)}
+          </div>
+        `;
+      } else if (tab === 'yoy') {
+        body = `
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+            <div class="qo-card p-3.5"><div class="text-xs text-gray-500">2026년 누적 (1~${lb.max_m_26}월)</div><div class="text-xl font-extrabold mt-1">${fmtNum(lb.cnt_26_all)} 건</div><div class="text-xs text-blue-600 font-bold mt-1">동기간 전년비 ${lb.ytd_diff >= 0 ? '+' : ''}${lb.ytd_diff}건 (${lb.ytd_pct >= 0 ? '+' : ''}${lb.ytd_pct}%)</div></div>
+            <div class="qo-card p-3.5"><div class="text-xs text-gray-500">2025년 연간 실적</div><div class="text-xl font-extrabold mt-1">${fmtNum(lb.cnt_25_all)} 건</div><div class="text-xs text-gray-500 mt-1">동기간 ${fmtNum(lb.cnt_25_ytd)}건</div></div>
+            <div class="qo-card p-3.5"><div class="text-xs text-gray-500">월평균 검토 처리량</div><div class="text-xl font-extrabold mt-1">월 ${lb.m_avg_26} 건</div><div class="text-xs text-emerald-600 font-bold mt-1">전년 월 ${lb.m_avg_25}건 대비 ${lb.avg_diff >= 0 ? '+' : ''}${lb.avg_diff}건</div></div>
+            <div class="qo-card p-3.5"><div class="text-xs text-gray-500">현재 검토중 / 누적 완료</div><div class="text-xl font-extrabold mt-1">${lb.reviewing_cnt} 건 / ${fmtNum(lb.completed_cnt)} 건</div></div>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            <div class="qo-card p-4"><div class="text-sm font-bold mb-2">월별 심의 건수 비교 (2025 vs 2026)</div><div class="h-[280px]"><canvas id="chart-lbl-mo"></canvas></div></div>
+            <div class="qo-card p-4"><div class="text-sm font-bold mb-2">제품 대분류별 검토 건수 비교</div><div class="h-[280px]"><canvas id="chart-lbl-cat"></canvas></div></div>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+            <div class="qo-card p-4"><div class="text-xs font-bold mb-2">카테고리별 증감표</div>${renderDynamicRecordsTable(lb.cat_cmp)}</div>
+            <div class="qo-card p-4"><div class="text-xs font-bold mb-2">2026년 주요 생산처 TOP 10</div>${renderDynamicRecordsTable(lb.top_sites)}</div>
+            <div class="qo-card p-4"><div class="text-xs font-bold mb-2">2026년 포장재 유형</div>${renderDynamicRecordsTable(lb.top_pkgs)}</div>
+          </div>
+        `;
+      } else {
+        const kw = (STATE.labelSearchKw || '').toLowerCase();
+        const filtered = kw
+          ? (lb.all_records || []).filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(kw)))
+          : (lb.all_records || []);
+        body = `
+          <div class="qo-card p-4 mb-6">
+            <div class="flex items-center justify-between gap-3 mb-3">
+              <input type="text" value="${esc(STATE.labelSearchKw)}" placeholder="품목 제목 · 요청부서 · 생산처 검색 후 Enter..."
+                onkeydown="if(event.key==='Enter'){STATE.labelSearchKw=this.value; renderCurrentView();}"
+                class="w-full max-w-md px-3 py-1.5 text-xs border border-gray-300 rounded-lg" />
+              <span class="text-xs font-bold text-gray-500">조회 ${fmtNum(filtered.length)}건</span>
+            </div>
+            ${renderDynamicRecordsTable(filtered)}
+          </div>
+        `;
+      }
+
+      vp.innerHTML = `
+        ${subPageHeaderHtml('표시사항 진행 현황', '현재 검토중 품목 트래킹 및 전년 대비 심의 업무량 정량 분석')}
+        <div class="flex border-b border-gray-200 mb-4 gap-2">
+          <button onclick="STATE.labelTab='rev'; renderCurrentView();" class="subtab-btn ${tab === 'rev' ? 'active' : ''}">현재 검토중 목록 (${lb.reviewing_cnt}건)</button>
+          <button onclick="STATE.labelTab='yoy'; renderCurrentView();" class="subtab-btn ${tab === 'yoy' ? 'active' : ''}">전년 대비(2025 vs 2026) 업무량 증가 분석</button>
+          <button onclick="STATE.labelTab='all'; renderCurrentView();" class="subtab-btn ${tab === 'all' ? 'active' : ''}">전체 표시사항 심의 이력 검색</button>
+        </div>
+        ${body}
+      `;
+
+      if (tab === 'yoy') {
+        STATE.charts.lblMo = new Chart(document.getElementById('chart-lbl-mo'), {
+          type: 'bar',
+          data: {
+            labels: (lb.monthly_cmp || []).map(x => x['월']),
+            datasets: [
+              { label: '2025년', data: (lb.monthly_cmp || []).map(x => x['2025년']), backgroundColor: '#CBD5E1', borderRadius: 3 },
+              { label: '2026년', data: (lb.monthly_cmp || []).map(x => x['2026년']), backgroundColor: '#1D4ED8', borderRadius: 3 }
+            ]
+          },
+          options: { responsive: true, maintainAspectRatio: false }
+        });
+        STATE.charts.lblCat = new Chart(document.getElementById('chart-lbl-cat'), {
+          type: 'bar',
+          data: {
+            labels: (lb.cat_cmp || []).map(x => x['카테고리']),
+            datasets: [
+              { label: '2025년', data: (lb.cat_cmp || []).map(x => x['2025년_건수']), backgroundColor: '#94A3B8', borderRadius: 3 },
+              { label: '2026년', data: (lb.cat_cmp || []).map(x => x['2026년_건수']), backgroundColor: '#2563EB', borderRadius: 3 }
+            ]
+          },
+          options: { responsive: true, maintainAspectRatio: false }
+        });
+      }
+    }
+
+    function renderRawDbView(vp, b) {
+      const rw = b.raw_db;
+      const kw = (STATE.rawSearchKw || '').toLowerCase();
+      const rows = kw
+        ? (rw.rows || []).filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(kw)))
+        : (rw.rows || []);
+
+      vp.innerHTML = `
+        ${subPageHeaderHtml('원자재 표시사항 DB', '원재료 · 제조원 · 공급사 표시사항 검증 및 신규 알레르기 감지 현황')}
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+          <div class="qo-card p-3.5"><div class="text-xs text-gray-500">전체 원재료 마스터</div><div class="text-xl font-extrabold mt-1">${fmtNum(rw.master_cnt)} 건</div></div>
+          <div class="qo-card p-3.5"><div class="text-xs text-gray-500">표시사항 등록 건수</div><div class="text-xl font-extrabold text-blue-700 mt-1">${fmtNum(rw.sub_cnt)} 건</div></div>
+          <div class="qo-card p-3.5"><div class="text-xs text-gray-500">검증 완료 건수</div><div class="text-xl font-extrabold text-emerald-700 mt-1">${fmtNum(rw.verified_cnt)} 건</div></div>
+          <div class="qo-card p-3.5"><div class="text-xs text-gray-500">신규 알레르기 감지</div><div class="text-xl font-extrabold ${rw.allergy_cnt > 0 ? 'text-red-600' : 'text-gray-900'} mt-1">${fmtNum(rw.allergy_cnt)} 건</div></div>
+        </div>
+        <div class="qo-card p-4 mb-6">
+          <div class="flex items-center justify-between gap-3 mb-3">
+            <input type="text" value="${esc(STATE.rawSearchKw)}" placeholder="원재료명 · 제조원 · 공급사 검색 후 Enter..."
+              onkeydown="if(event.key==='Enter'){STATE.rawSearchKw=this.value; renderCurrentView();}"
+              class="w-full max-w-md px-3 py-1.5 text-xs border border-gray-300 rounded-lg" />
+            <span class="text-xs font-bold text-gray-500">조회 ${fmtNum(rows.length)}건</span>
+          </div>
+          ${renderDynamicRecordsTable(rows)}
+        </div>
+      `;
+    }
+
+    function manualKpiEditorHtml(kpiKey, b) {
+      const info = b.manual_kpis[kpiKey];
+      return `
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6">
+          <div class="lg:col-span-5 qo-card p-4">
+            <div class="text-sm font-bold text-gray-900 mb-2">${esc(info.title)} 현재 표시 정보</div>
+            <div class="p-3 rounded-lg bg-[#F9FAFB] border border-gray-200 text-xs space-y-1.5 mb-3">
+              <div>• <b>목표 :</b> ${esc(info.target_text)}</div>
+              <div>• <b>실적 :</b> ${esc(info.actual_text)}</div>
+              <div>• <b>보조 배지 :</b> ${esc(info.sub_badge)}</div>
+            </div>
+            <div class="text-xs font-bold text-gray-800 mb-1.5">${esc(info.notes_title)}</div>
+            <ul class="text-xs text-gray-600 space-y-1 pl-4 list-disc">
+              ${(info.notes || []).map(n => `<li>${esc(n)}</li>`).join('')}
+            </ul>
+          </div>
+
+          <div class="lg:col-span-7 qo-card p-4">
+            <div class="text-sm font-bold text-gray-900 mb-3">수치 및 세부 내역 수정 (구글 시트 영구 저장)</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <div><label class="block text-xs font-bold text-gray-600 mb-1">목표 표시 문구</label><input id="mk-t-txt-${kpiKey}" value="${esc(info.target_text)}" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" /></div>
+              <div><label class="block text-xs font-bold text-gray-600 mb-1">실적 표시 문구</label><input id="mk-a-txt-${kpiKey}" value="${esc(info.actual_text)}" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" /></div>
+              <div><label class="block text-xs font-bold text-gray-600 mb-1">보조 배지 문구</label><input id="mk-sub-${kpiKey}" value="${esc(info.sub_badge)}" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" /></div>
+              <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">신호등 상태</label>
+                <select id="mk-sig-${kpiKey}" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg bg-white">
+                  <option value="green" ${info.signal === 'green' ? 'selected' : ''}>양호 (초록)</option>
+                  <option value="yellow" ${info.signal === 'yellow' ? 'selected' : ''}>주의 (노랑)</option>
+                  <option value="red" ${info.signal === 'red' ? 'selected' : ''}>경고 (빨강)</option>
+                  <option value="gray" ${info.signal === 'gray' ? 'selected' : ''}>대기 (회색)</option>
+                </select>
+              </div>
+              <div><label class="block text-xs font-bold text-gray-600 mb-1">그래프 목표 숫자</label><input id="mk-t-num-${kpiKey}" type="number" step="0.01" value="${info.target_num}" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" /></div>
+              <div><label class="block text-xs font-bold text-gray-600 mb-1">그래프 실적 숫자</label><input id="mk-a-num-${kpiKey}" type="number" step="0.01" value="${info.actual_num}" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" /></div>
+            </div>
+            <div class="mb-3"><label class="block text-xs font-bold text-gray-600 mb-1">세부 메모 소제목</label><input id="mk-nt-${kpiKey}" value="${esc(info.notes_title)}" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" /></div>
+            <div class="mb-3"><label class="block text-xs font-bold text-gray-600 mb-1">세부 항목 (줄바꿈으로 구분)</label><textarea id="mk-notes-${kpiKey}" rows="4" class="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg">${esc((info.notes || []).join('\n'))}</textarea></div>
+            <button onclick="saveManualKpi('${kpiKey}')" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition">변경사항 시트 영구 저장</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSupplierView(vp, b) {
+      const sup = b.supplier;
+      const gubuns = ['전체', ...new Set((sup.master_rows || []).map(r => r['구분']).filter(Boolean))];
+      let rows = sup.master_rows || [];
+      if (STATE.supGubun !== '전체') rows = rows.filter(r => r['구분'] === STATE.supGubun);
+      if (STATE.supGrade !== '전체') rows = rows.filter(r => r['결과'] === STATE.supGrade);
+      if (STATE.supKw) {
+        const kw = STATE.supKw.toLowerCase();
+        rows = rows.filter(r => String(r['업체명'] || '').toLowerCase().includes(kw) || String(r['품목'] || '').toLowerCase().includes(kw));
+      }
+
+      vp.innerHTML = `
+        ${subPageHeaderHtml('협력업체 서류심사 관리', '2026년 원·부자재 및 OEM 협력업체 등급 집계 · 등급 외 미비사항 관리')}
+        <div class="flex border-b border-gray-200 mb-4 gap-2">
+          <button onclick="STATE.supTab='list'; renderCurrentView();" class="subtab-btn ${STATE.supTab === 'list' ? 'active' : ''}">서류심사 확정 집계 & 등급 외 미비사항</button>
+          <button onclick="STATE.supTab='kpi'; renderCurrentView();" class="subtab-btn ${STATE.supTab === 'kpi' ? 'active' : ''}">6. 협력업체 관리강화 KPI 대표 수치 설정</button>
+        </div>
+        ${STATE.supTab === 'list' ? `
+          <div class="qo-card p-4 mb-4">
+            <div class="text-sm font-bold text-gray-900 mb-2">등급별 확정 집계 요약</div>
+            ${renderDynamicRecordsTable(sup.grade_summary)}
+          </div>
+          <div class="qo-card p-4 mb-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+              <select onchange="STATE.supGubun=this.value; renderCurrentView();" class="px-3 py-1.5 text-xs font-bold border border-gray-300 rounded-lg bg-white">
+                ${gubuns.map(g => `<option value="${esc(g)}" ${STATE.supGubun === g ? 'selected' : ''}>구분: ${esc(g)}</option>`).join('')}
+              </select>
+              <select onchange="STATE.supGrade=this.value; renderCurrentView();" class="px-3 py-1.5 text-xs font-bold border border-gray-300 rounded-lg bg-white">
+                ${['전체', '승인', '지도', '등급 외'].map(gr => `<option value="${gr}" ${STATE.supGrade === gr ? 'selected' : ''}>결과: ${gr}</option>`).join('')}
+              </select>
+              <input type="text" value="${esc(STATE.supKw)}" placeholder="업체명 · 품목 검색 후 Enter..."
+                onkeydown="if(event.key==='Enter'){STATE.supKw=this.value; renderCurrentView();}"
+                class="px-3 py-1.5 text-xs border border-gray-300 rounded-lg" />
+            </div>
+            ${renderDynamicRecordsTable(rows)}
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-6">
+            <div class="lg:col-span-5 qo-card p-4"><div class="text-sm font-bold mb-2">등급 외 업체 목록</div>${renderDynamicRecordsTable(sup.under_comp_rows)}</div>
+            <div class="lg:col-span-7 qo-card p-4"><div class="text-sm font-bold mb-2">등급 외 주요 미비사항 상세</div>${renderDynamicRecordsTable(sup.under_detail_rows)}</div>
+          </div>
+        ` : manualKpiEditorHtml('kpi_11', b)}
+      `;
+    }
+
+    function renderAuditDetailView(vp, b) {
+      const au = b.audit.summary;
+      const scheds = b.audit.schedules || [];
+      if (STATE.auditSelIdx >= scheds.length) STATE.auditSelIdx = 0;
+      const selRow = scheds[STATE.auditSelIdx] || null;
+
+      vp.innerHTML = `
+        ${subPageHeaderHtml('심사점수 · 연간 심사 일정 관리', '실시간 심사 진행 단계 게이지 및 구글 시트 양방향 일정 관리')}
+        <div class="qo-card p-4 mb-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div class="text-sm font-extrabold text-gray-900">${esc(au.banner_text)}</div>
+            <span class="badge-pill badge-info">${esc(au.status)} (${au.pct}%)</span>
+          </div>
+          <div class="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden mb-2">
+            <div class="h-full rounded-full transition-all" style="width:${au.pct}%; background-color:${esc(au.color)};"></div>
+          </div>
+          <div class="flex gap-1.5">
+            ${AUDIT_STAGES.map(st => `
+              <button onclick="quickChangeAuditStatus('${st.name}')" class="flex-1 py-1.5 rounded text-xs font-bold border ${au.status === st.name ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}">${st.name} (${st.pct}%)</button>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+          <!-- 신규 일정 추가 -->
+          <div class="qo-card p-4">
+            <div class="text-sm font-bold text-gray-900 mb-3">신규 심사 일정 등록 (시트 즉시 저장)</div>
+            <div class="grid grid-cols-2 gap-3 mb-2.5">
+              <div><label class="block text-xs font-bold text-gray-600 mb-1">심사 일자</label><input id="aud-add-dt" type="date" value="${esc(b.loaded_date)}" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" /></div>
+              <div>
+                <label class="block text-xs font-bold text-gray-600 mb-1">초기 진행현황</label>
+                <select id="aud-add-st" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg bg-white">
+                  ${AUDIT_STAGES.map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div class="mb-2.5"><label class="block text-xs font-bold text-gray-600 mb-1">심사명 / 내용</label><input id="aud-add-nm" placeholder="예: 아산공장 HACCP 정기심사" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" /></div>
+            <div class="grid grid-cols-2 gap-3 mb-3">
+              <div><label class="block text-xs font-bold text-gray-600 mb-1">획득 점수 (선택)</label><input id="aud-add-sc" placeholder="예: 95.2점" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" /></div>
+              <div><label class="block text-xs font-bold text-gray-600 mb-1">비고 / 메모</label><input id="aud-add-mm" placeholder="중점 대응 사항" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" /></div>
+            </div>
+            <button onclick="submitAuditSchedule('add')" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">심사 일정 추가 저장</button>
+          </div>
+
+          <!-- 기존 일정 수정/삭제 -->
+          <div class="qo-card p-4">
+            <div class="text-sm font-bold text-gray-900 mb-3">등록된 심사 진행현황 변경 · 수정 · 삭제</div>
+            ${selRow ? `
+              <div class="mb-2.5">
+                <select onchange="STATE.auditSelIdx=Number(this.value); renderCurrentView();" class="w-full px-3 py-1.5 text-xs font-bold border border-gray-300 rounded-lg bg-white">
+                  ${scheds.map((r, i) => `<option value="${i}" ${i === STATE.auditSelIdx ? 'selected' : ''}>[${esc(r['심사일자'])}] ${esc(r['심사명'])} (${esc(r['진행현황'])})</option>`).join('')}
+                </select>
+              </div>
+              <div class="grid grid-cols-2 gap-3 mb-2.5">
+                <div><label class="block text-xs font-bold text-gray-600 mb-1">심사 일자</label><input id="aud-up-dt" type="date" value="${esc(selRow['심사일자'])}" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" /></div>
+                <div>
+                  <label class="block text-xs font-bold text-gray-600 mb-1">진행현황 선택</label>
+                  <select id="aud-up-st" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg bg-white">
+                    ${AUDIT_STAGES.map(s => `<option value="${s.name}" ${selRow['진행현황'] === s.name ? 'selected' : ''}>${s.name}</option>`).join('')}
+                  </select>
+                </div>
+              </div>
+              <div class="mb-2.5"><label class="block text-xs font-bold text-gray-600 mb-1">심사명</label><input id="aud-up-nm" value="${esc(selRow['심사명'])}" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" /></div>
+              <div class="grid grid-cols-2 gap-3 mb-3">
+                <div><label class="block text-xs font-bold text-gray-600 mb-1">획득 점수</label><input id="aud-up-sc" value="${esc(selRow['점수'] || '')}" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" /></div>
+                <div><label class="block text-xs font-bold text-gray-600 mb-1">비고</label><input id="aud-up-mm" value="${esc(selRow['비고'] || '')}" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" /></div>
+              </div>
+              <div class="flex items-center gap-2">
+                <button onclick="submitAuditSchedule('update', '${esc(selRow['고유ID'])}')" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">선택 일정 수정 반영</button>
+                <button onclick="submitAuditSchedule('delete', '${esc(selRow['고유ID'])}')" class="px-3 py-2 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold">삭제</button>
+              </div>
+            ` : '<div class="text-xs text-gray-400 py-8 text-center">등록된 심사 일정이 없습니다.</div>'}
+          </div>
+        </div>
+
+        <div class="qo-card p-4 mb-4">
+          <div class="text-sm font-bold text-gray-900 mb-2">전체 심사 일정 목록</div>
+          ${renderDynamicRecordsTable(scheds, ['고유ID'])}
+        </div>
+
+        ${manualKpiEditorHtml('kpi_5', b)}
+      `;
+    }
+
+    function renderFsHaccpRiskView(vp, b) {
+      vp.innerHTML = `
+        ${subPageHeaderHtml('식품안전 및 HACCP 강화 · 법적 RISK 관리', '식품안전팀 핵심 과제 이행 및 행정처분 Zero화 관리')}
+        <div class="flex border-b border-gray-200 mb-4 gap-2">
+          <button onclick="STATE.fsTab='kpi_8'; renderCurrentView();" class="subtab-btn ${STATE.fsTab === 'kpi_8' ? 'active' : ''}">3. 식품안전 및 HACCP 강화</button>
+          <button onclick="STATE.fsTab='kpi_12'; renderCurrentView();" class="subtab-btn ${STATE.fsTab === 'kpi_12' ? 'active' : ''}">8. 식품안전 법적 RISK 최소화</button>
+        </div>
+        ${manualKpiEditorHtml(STATE.fsTab, b)}
+      `;
+    }
+
+    function renderQcDefectSubView(vp, b) {
+      vp.innerHTML = `
+        ${subPageHeaderHtml('핵심불량 저감화 · 부자재 관리 고도화', '품질관리팀 중대 클레임 예방 및 포장 부자재 폐기 Zero 관리')}
+        <div class="flex border-b border-gray-200 mb-4 gap-2">
+          <button onclick="STATE.qcTab='kpi_9'; renderCurrentView();" class="subtab-btn ${STATE.qcTab === 'kpi_9' ? 'active' : ''}">4. 핵심불량(클레임) 발생 저감화</button>
+          <button onclick="STATE.qcTab='kpi_10'; renderCurrentView();" class="subtab-btn ${STATE.qcTab === 'kpi_10' ? 'active' : ''}">5. 부자재 관리 고도화 (폐기 Zero)</button>
+        </div>
+        ${manualKpiEditorHtml(STATE.qcTab, b)}
+      `;
+    }
+
+    // =========================================================================
+    // 양방향 저장 액션 & 모달 핸들러 (심사 / 수동 KPI / 특이사항 / AI 브리핑)
+    // =========================================================================
+    async function quickChangeAuditStatus(newStatus) {
+      if (!STATE.bundle) return;
+      try {
+        const res = await fetch('/api/audit-schedule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'quick_status', status: newStatus })
+        });
+        const rj = await res.json();
+        if (rj.ok) {
+          STATE.bundle.audit = rj.audit;
+          renderCurrentView();
+          showToast(`심사 진행 단계가 '${newStatus}'(으)로 시트에 저장되었습니다.`);
+        }
+      } catch (e) {
+        showToast('심사 상태 변경 중 오류가 발생했습니다.', true);
+      }
+    }
+
+    async function submitAuditSchedule(action, uid = '') {
+      const payload = { action, uid };
+      if (action === 'add') {
+        payload.audit_date = document.getElementById('aud-add-dt').value;
+        payload.status = document.getElementById('aud-add-st').value;
+        payload.audit_name = document.getElementById('aud-add-nm').value.trim();
+        payload.score = document.getElementById('aud-add-sc').value.trim();
+        payload.memo = document.getElementById('aud-add-mm').value.trim();
+        if (!payload.audit_name) { showToast('심사명을 입력해 주세요.', true); return; }
+      } else if (action === 'update') {
+        payload.audit_date = document.getElementById('aud-up-dt').value;
+        payload.status = document.getElementById('aud-up-st').value;
+        payload.audit_name = document.getElementById('aud-up-nm').value.trim();
+        payload.score = document.getElementById('aud-up-sc').value.trim();
+        payload.memo = document.getElementById('aud-up-mm').value.trim();
+      }
+
+      try {
+        const res = await fetch('/api/audit-schedule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const rj = await res.json();
+        if (rj.ok) {
+          await loadBundle(true);
+          showToast(rj.message || '저장 완료');
+        }
+      } catch (e) {
+        showToast('시트 저장 중 오류가 발생했습니다.', true);
+      }
+    }
+
+    async function saveManualKpi(kpiKey) {
+      const notesRaw = document.getElementById(`mk-notes-${kpiKey}`).value || '';
+      const payload = {
+        kpi_key: kpiKey,
+        target_text: document.getElementById(`mk-t-txt-${kpiKey}`).value,
+        actual_text: document.getElementById(`mk-a-txt-${kpiKey}`).value,
+        sub_badge: document.getElementById(`mk-sub-${kpiKey}`).value,
+        signal: document.getElementById(`mk-sig-${kpiKey}`).value,
+        target_num: Number(document.getElementById(`mk-t-num-${kpiKey}`).value || 0),
+        actual_num: Number(document.getElementById(`mk-a-num-${kpiKey}`).value || 0),
+        notes_title: document.getElementById(`mk-nt-${kpiKey}`).value,
+        notes: notesRaw.split('\n').map(s => s.trim()).filter(Boolean)
+      };
+
+      try {
+        const res = await fetch('/api/manual-kpi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const rj = await res.json();
+        if (rj.ok) {
+          STATE.bundle.manual_kpis = rj.manual_kpis;
+          renderCurrentView();
+          showToast('구글 시트에 KPI 설정이 저장되었습니다.');
+        }
+      } catch (e) {
+        showToast('KPI 저장 실패', true);
+      }
+    }
+
+    function openLabelMemoModal() {
+      const curMemo = (STATE.bundle && STATE.bundle.special_boards && STATE.bundle.special_boards.label_memo) || '';
+      openModal('표시사항 특이사항 메모 편집 (시트 영구 저장)', `
+        <p class="text-xs text-gray-500 mb-2">원재료 변경, 신규 알레르기 혼입 점검, 법규 개정 사항 등을 기록하면 모닝 브리핑 화면에 즉시 공유됩니다.</p>
+        <textarea id="modal-lbl-memo" rows="6" class="w-full p-3 text-xs border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500">${esc(curMemo)}</textarea>
+        <div class="flex justify-end gap-2 mt-4">
+          <button onclick="closeModal()" class="px-3.5 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600">취소</button>
+          <button onclick="saveLabelMemoFromModal()" class="px-4 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold">시트 저장</button>
+        </div>
+      `);
+    }
+
+    async function saveLabelMemoFromModal() {
+      const val = document.getElementById('modal-lbl-memo').value.trim();
+      const res = await fetch('/api/special-boards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label_memo: val })
+      });
+      const rj = await res.json();
+      if (rj.ok) {
+        STATE.bundle.special_boards = rj.special_boards;
+        closeModal();
+        renderCurrentView();
+        showToast('표시사항 특이사항 메모가 저장되었습니다.');
+      }
+    }
+
+    function openClaimIssueModal() {
+      const list = (STATE.bundle && STATE.bundle.special_boards && STATE.bundle.special_boards.claim_issues) || [];
+      openModal('클레임 · 부적합 사례 등록 및 관리', `
+        <div class="space-y-2.5 pb-4 border-b border-gray-100">
+          <div class="text-xs font-bold text-gray-800">신규 클레임 · 부적합 사례 추가</div>
+          <input id="ci-desc" placeholder="사례 내용 (예: 고칼슘 두유 상부접착 확인 요망)" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" />
+          <div class="grid grid-cols-3 gap-2">
+            <select id="ci-step" class="px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg bg-white">
+              ${CLAIM_STEPS.map(s => `<option value="${s.step}">${s.step}단계: ${s.label}</option>`).join('')}
+            </select>
+            <input id="ci-prod" placeholder="제품 키워드 (예: 고칼슘)" class="px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg" />
+            <input id="ci-exp" placeholder="소비기한 (예: 05.13)" class="px-2.5 py-1.5 text-xs border border-gray-300 rounded-lg" />
+          </div>
+          <button onclick="addClaimIssueFromModal()" class="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold">+ 사례 추가 및 시트 저장</button>
+        </div>
+        <div class="mt-3">
+          <div class="text-xs font-bold text-gray-700 mb-2">현재 등록된 목록 (${list.length}건)</div>
+          <div class="space-y-1.5">
+            ${list.map((it, idx) => `
+              <div class="flex items-center justify-between gap-2 p-2 rounded bg-gray-50 border border-gray-200 text-xs">
+                <span class="truncate font-semibold">${esc(it['특이사항'])}</span>
+                <button onclick="deleteClaimIssueItem(${idx})" class="px-2 py-0.5 rounded bg-red-50 text-red-600 font-bold shrink-0">삭제</button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `);
+    }
+
+    async function addClaimIssueFromModal() {
+      const desc = document.getElementById('ci-desc').value.trim();
+      if (!desc) { showToast('사례 내용을 입력해 주세요.', true); return; }
+      const stepNum = Number(document.getElementById('ci-step').value || 1);
+      const stObj = CLAIM_STEPS.find(x => x.step === stepNum) || CLAIM_STEPS[0];
+      const cur = [...((STATE.bundle.special_boards && STATE.bundle.special_boards.claim_issues) || [])];
+      cur.unshift({
+        '구분': '클레임/부적합',
+        '특이사항': desc,
+        '상태': stObj.label,
+        '진행단계': stepNum,
+        '제품키워드': document.getElementById('ci-prod').value.trim(),
+        '소비기한': document.getElementById('ci-exp').value.trim()
+      });
+      const res = await fetch('/api/special-boards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ claim_issues: cur.slice(0, 10) })
+      });
+      const rj = await res.json();
+      if (rj.ok) {
+        STATE.bundle.special_boards = rj.special_boards;
+        closeModal();
+        renderCurrentView();
+        showToast('클레임·부적합 사례가 시트에 저장되었습니다.');
+      }
+    }
+
+    async function updateClaimIssueStep(idx, newStep) {
+      const cur = [...((STATE.bundle.special_boards && STATE.bundle.special_boards.claim_issues) || [])];
+      if (!cur[idx]) return;
+      const stObj = CLAIM_STEPS.find(x => x.step === newStep) || CLAIM_STEPS[0];
+      cur[idx]['진행단계'] = newStep;
+      cur[idx]['상태'] = stObj.label;
+      const res = await fetch('/api/special-boards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ claim_issues: cur })
+      });
+      const rj = await res.json();
+      if (rj.ok) {
+        STATE.bundle.special_boards = rj.special_boards;
+        renderCurrentView();
+        showToast(`조치 단계가 '${stObj.label}'(${newStep}/4)로 변경되었습니다.`);
+      }
+    }
+
+    async function deleteClaimIssueItem(idx) {
+      const cur = [...((STATE.bundle.special_boards && STATE.bundle.special_boards.claim_issues) || [])];
+      cur.splice(idx, 1);
+      const res = await fetch('/api/special-boards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ claim_issues: cur })
+      });
+      const rj = await res.json();
+      if (rj.ok) {
+        STATE.bundle.special_boards = rj.special_boards;
+        openClaimIssueModal();
+        renderCurrentView();
+      }
+    }
+
+    async function openAiBriefingModal() {
+      openModal('AI 모닝 팩트 브리핑', '<div class="py-6 text-center text-xs font-semibold text-blue-700">실시간 9개 시트 지표를 요약하고 있습니다...</div>');
+      try {
+        const res = await fetch('/api/ai-briefing', { method: 'POST' });
+        const rj = await res.json();
+        document.getElementById('modal-body').innerHTML = `
+          <div class="p-4 rounded-lg bg-blue-50/70 border border-blue-200 text-[13px] text-gray-800 leading-relaxed whitespace-pre-line">${esc(rj.briefing || '')}</div>
+          <div class="mt-3 flex items-center justify-between text-[11px] text-gray-400">
+            <span>분석 엔진 : ${rj.source === 'gemini_api' ? 'Gemini 2.5 Flash (실시간 팩트 기반)' : '내장 팩트 요약 엔진'}</span>
+            <button onclick="closeModal()" class="px-3.5 py-1.5 rounded-lg bg-gray-900 text-white text-xs font-bold">확인</button>
+          </div>
+        `;
+      } catch (e) {
+        document.getElementById('modal-body').innerHTML = '<div class="text-xs text-red-600">브리핑 생성에 실패했습니다.</div>';
+      }
+    }
+
+    function openErrorsModal() {
+      const errs = (STATE.bundle && STATE.bundle.errors) || [];
+      openModal('시트 연동 상태 점검 내역', `
+        <ul class="space-y-1.5 text-xs text-red-700 list-disc pl-4">
+          ${errs.map(e => `<li>${esc(e)}</li>`).join('')}
+        </ul>
+      `);
+    }
+
+    // =========================================================================
+    // 통합 뷰 디스패처
+    // =========================================================================
+    function renderCurrentView() {
+      destroyCharts();
+      const vp = document.getElementById('app-viewport');
+      const b = STATE.bundle;
+
+      if (!b) return;
+      if (!b.ok) {
+        vp.innerHTML = `
+          <div class="qo-card p-6 max-w-xl mx-auto my-auto text-center">
+            <div class="text-base font-extrabold text-red-600 mb-2">구글 시트 인증 환경변수를 확인해 주세요</div>
+            <div class="text-xs text-gray-600 leading-relaxed mb-4">${(b.errors || []).map(esc).join('<br>')}</div>
+            <button onclick="loadBundle(true)" class="px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold">다시 시도</button>
+          </div>
+        `;
+        return;
+      }
+
+      switch (STATE.view) {
+        case 'main': renderMainMorningDashboard(vp, b); break;
+        case 'dept_kpi8': renderDeptKpi8View(vp, b); break;
+        case 'cost': renderCostDetailView(vp, b); break;
+        case 'claim': renderClaimDetailView(vp, b); break;
+        case 'process': renderProcessDetailView(vp, b); break;
+        case 'lot_trace': renderLotTraceView(vp, b); break;
+        case 'label_status': renderLabelStatusView(vp, b); break;
+        case 'label_issue': renderRawDbView(vp, b); break;
+        case 'supplier': renderSupplierView(vp, b); break;
+        case 'kpi_5': renderAuditDetailView(vp, b); break;
+        case 'fs_haccp_risk': renderFsHaccpRiskView(vp, b); break;
+        case 'qc_defect_sub': renderQcDefectSubView(vp, b); break;
+        default: renderMainMorningDashboard(vp, b);
+      }
+      lucide.createIcons();
+    }
+
+    // 앱 최초 실행
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      loadBundle(false);
+    });
+  </script>
+</body>
+</html>

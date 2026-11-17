@@ -1,5 +1,4 @@
-fastapi
-uvicorn
+fastapi>=0.128,<1
 gspread
 google-auth
 requests

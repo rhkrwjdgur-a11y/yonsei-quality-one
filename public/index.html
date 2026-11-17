@@ -88,7 +88,7 @@
     .cell-green { background-color: #ECFDF5 !important; color: #047857 !important; font-weight: 600; }
     .cell-yellow { background-color: #FFFBEB !important; color: #B45309 !important; font-weight: 600; }
     .cell-red { background-color: #FEF2F2 !important; color: #DC2626 !important; font-weight: 600; }
-    .cell-gray { background-color: #F8FAFC !important; color: #94A3B8 !important; }
+    .cell-gray { background-color: #F8FAFC !important; color: #94A3B8 !important; font-weight: 600; }
 
     .nav-btn {
       width: 100%;
@@ -141,7 +141,7 @@
 <body class="h-screen w-screen overflow-hidden flex select-none sm:select-auto">
 
   <!-- ===================================================================== -->
-  <!-- 좌측 고정 사이드바 (경영정보팀 WEB MIS #003378 컬러 & img-symbol1.png)  -->
+  <!-- 좌측 고정 사이드바 (#003378 WEB MIS 네이비 · 품질관리팀 메뉴 재편 반영) -->
   <!-- ===================================================================== -->
   <aside class="w-[238px] shrink-0 bg-[#003378] text-white flex flex-col justify-between h-full shadow-lg z-20">
     <div class="p-3.5 overflow-y-auto sidebar-scroll">
@@ -204,19 +204,19 @@
         </button>
       </div>
 
-      <!-- 3. 품질관리팀 (QC) -->
+      <!-- 3. 품질관리팀 (QC) : 미생물 검사일보 신설 + 클레임·LOT 역추적 2탭 통합 -->
       <div class="text-[10.5px] font-bold text-blue-200/60 uppercase tracking-wider px-2.5 pt-2 pb-1 border-t border-white/10">품질관리팀 (QC)</div>
       <div class="space-y-0.5">
         <button class="nav-btn" data-nav="process" onclick="navigate('process')">
           <span class="flex items-center gap-2.5"><i data-lucide="activity" class="w-4 h-4"></i><span>공정 및 배양 실시간 관제</span></span>
           <i data-lucide="chevron-right" class="w-3.5 h-3.5 opacity-60"></i>
         </button>
-        <button class="nav-btn" data-nav="lot_trace" onclick="navigate('lot_trace')">
-          <span class="flex items-center gap-2.5"><i data-lucide="search-check" class="w-4 h-4"></i><span>생산이력 · LOT 역추적</span></span>
+        <button class="nav-btn" data-nav="micro_report" onclick="navigate('micro_report')">
+          <span class="flex items-center gap-2.5"><i data-lucide="microscope" class="w-4 h-4"></i><span>미생물 검사일보</span></span>
           <i data-lucide="chevron-right" class="w-3.5 h-3.5 opacity-60"></i>
         </button>
-        <button class="nav-btn" data-nav="claim_nc_hist" onclick="navigate('claim_nc_hist')">
-          <span class="flex items-center gap-2.5"><i data-lucide="clipboard-list" class="w-4 h-4"></i><span>클레임 · 부적합 이력</span></span>
+        <button class="nav-btn" data-nav="claim_nc_hist" onclick="navigate('claim_nc_hist', {cnhMainTab:'hist'})">
+          <span class="flex items-center gap-2.5"><i data-lucide="search-check" class="w-4 h-4"></i><span>클레임 · LOT 역추적</span></span>
           <i data-lucide="chevron-right" class="w-3.5 h-3.5 opacity-60"></i>
         </button>
         <button class="nav-btn" data-nav="claim" onclick="navigate('claim')">
@@ -293,7 +293,7 @@
       <div class="h-full flex flex-col items-center justify-center text-center">
         <div class="w-10 h-10 border-4 border-[#003378] border-t-transparent rounded-full animate-spin mb-3"></div>
         <div class="text-sm font-bold text-gray-800">Q-Safety 실시간 품질안전 데이터를 불러오는 중입니다...</div>
-        <div class="text-xs text-gray-500 mt-1">연세유업 품질·공정·법규·심사 구글 시트와 동기화하고 있습니다.</div>
+        <div class="text-xs text-gray-500 mt-1">연세유업 품질·공정·미생물·법규·심사 구글 시트와 동기화하고 있습니다.</div>
       </div>
     </main>
   </div>
@@ -318,7 +318,7 @@
     // =========================================================================
     // 전역 상태 관리 · 브라우저 로컬 백업 캐시 · 공통 유틸리티
     // =========================================================================
-    const LOCAL_BACKUP_KEY = 'qsafety_last_good_bundle_v5';
+    const LOCAL_BACKUP_KEY = 'qsafety_last_good_bundle_v6';
 
     const STATE = {
       view: 'main',
@@ -338,7 +338,19 @@
       soySelTab: '',
       soyHistMode: 'insp',
       soyHistDate: '',
+      // 미생물 검사일보 전용 상태
+      microLiveTab: '일보작성',
+      microHistMode: 'judge', // 'judge'(판정일) | 'insp'(검사·생산일)
+      microHistDate: '',
+      microHistCat: 'ALL',
+      microKw: '',
+      // 클레임·부적합 이력 + LOT 역추적 2탭 통합 상태
+      cnhMainTab: 'hist', // 'hist' | 'lot'
+      cnhCatFilter: '전체',
+      cnhStatusFilter: '전체',
+      cnhKw: '',
       lotQuery: { product: 'ALL', exp: '', kw: '', result: null, loading: false },
+      // 식안팀 상태
       labelTab: 'yoy',
       labelSearchKw: '',
       rawSearchKw: '',
@@ -355,10 +367,7 @@
       lawTabFilter: '전체',
       lawOnlyQs: false,
       lawKw: '',
-      qcTab: 'kpi_9',
-      cnhCatFilter: '전체',
-      cnhStatusFilter: '전체',
-      cnhKw: ''
+      qcTab: 'kpi_9'
     };
 
     const VIEW_TITLES = {
@@ -366,9 +375,9 @@
       dept_kpi8: '2026 품질안전부문 8대 KPI',
       cost: '1. 원가 절감 상세 분석',
       claim: '클레임 발생률 분석',
-      claim_nc_hist: '클레임 · 부적합 공정 이력 분석',
+      claim_nc_hist: '클레임 · 부적합 이력 및 LOT 역추적',
       process: '공정 및 배양 실시간 관제',
-      lot_trace: '생산이력 · LOT 역추적',
+      micro_report: '미생물 검사일보 (실시간 · 이력DB)',
       label_status: '표시사항 진행 현황 (업무량 분석 · 대표 품목 선별)',
       label_issue: '원자재 표시사항 DB',
       supplier: '협력업체 관리 (방문점검 · 서류심사)',
@@ -397,6 +406,7 @@
 
     const ACTIVE_NAV_ALIAS = {
       cost: 'dept_kpi8',
+      lot_trace: 'claim_nc_hist',
       kpi_11: 'supplier',
       kpi_8: 'fs_haccp_risk',
       kpi_12: 'fs_haccp_risk',
@@ -492,10 +502,13 @@
     }
 
     // =========================================================================
-    // 네비게이션 라우터
+    // 네비게이션 라우터 (lot_trace 호출 시 자동으로 claim_nc_hist의 2번째 탭 오픈)
     // =========================================================================
     function navigate(viewName, extra = {}) {
-      if (viewName === 'kpi_8' || viewName === 'kpi_12') {
+      if (viewName === 'lot_trace') {
+        STATE.cnhMainTab = 'lot';
+        viewName = 'claim_nc_hist';
+      } else if (viewName === 'kpi_8' || viewName === 'kpi_12') {
         STATE.fsTab = viewName;
         viewName = 'fs_haccp_risk';
       } else if (viewName === 'kpi_9' || viewName === 'kpi_10') {
@@ -508,6 +521,7 @@
 
       if (extra.procTab) STATE.procTab = extra.procTab;
       if (extra.dairySubTab) STATE.dairySubTab = extra.dairySubTab;
+      if (extra.cnhMainTab) STATE.cnhMainTab = extra.cnhMainTab;
       if (extra.labelTab) STATE.labelTab = extra.labelTab;
       if (extra.fsTab) STATE.fsTab = extra.fsTab;
       if (extra.auditTab) STATE.auditTab = extra.auditTab;
@@ -541,7 +555,7 @@
       STATE.lotQuery.product = 'ALL';
       STATE.lotQuery.kw = (prodKw && prodKw !== '-') ? prodKw : '';
       STATE.lotQuery.exp = (expStr && expStr !== '-') ? expStr : '';
-      navigate('lot_trace');
+      navigate('claim_nc_hist', { cnhMainTab: 'lot' });
       if (STATE.lotQuery.kw || STATE.lotQuery.exp) {
         executeLotTraceSearch();
       }
@@ -580,6 +594,17 @@
           const col = data.process.soy_hist[0]['확정검사일_탭기준'] !== undefined ? '확정검사일_탭기준' : '검사일_표기';
           const dts = [...new Set(data.process.soy_hist.map(r => r[col]).filter(Boolean))].sort().reverse();
           if (dts.length) STATE.soyHistDate = dts[0];
+        }
+        if (data.process.micro) {
+          const mc = data.process.micro;
+          if (mc.default_live_tab && (!mc.live_tabs || !mc.live_tabs[STATE.microLiveTab])) {
+            STATE.microLiveTab = mc.default_live_tab;
+          }
+          if (!STATE.microHistDate && mc.hist_rows && mc.hist_rows.length > 0) {
+            const col = STATE.microHistMode === 'insp' ? '검사일자_생산일' : '판정일자';
+            const dts = [...new Set(mc.hist_rows.map(r => r[col]).filter(Boolean))].sort().reverse();
+            if (dts.length) STATE.microHistDate = dts[0];
+          }
         }
       }
       if (data.claim && data.claim.years && data.claim.years.length > 0) {
@@ -630,17 +655,17 @@
     }
 
     // =========================================================================
-    // [화면 1] 통합 대시보드 — 모닝 브리핑 (가시성·비율 최적화 완전체, KPI 배제)
+    // [화면 1] 통합 대시보드 — 모닝 브리핑 (빈 여백 완전 제거 · D-365 불용자재 배지 · 미생물 자동화)
     // =========================================================================
     function renderMainMorningDashboard(vp, b) {
       const ps = b.process.summary;
       const lb = b.label_status;
-      const lw = b.law || { dashboard_laws: [], active_cnt: 0, urgent_cnt: 0 };
+      const lw = b.law || { dashboard_laws: [], active_cnt: 0, prep_1yr_cnt: 0 };
       const au = b.audit.summary;
       const scheds = b.audit.schedules || [];
-      const cnh = b.claim_nc_hist || { active_items: [], counts: { active: 0, major: 0 } };
+      const cnh = b.claim_nc_hist || { active_items: [], counts: { total: 0, claim: 0, nc: 0, active: 0, major: 0 } };
       const sp = b.special_boards || { label_memo: '', micro_status: {} };
-      const mc = sp.micro_status || { status: '출고적합', note: '완제품 미생물 규격 적합' };
+      const mc = sp.micro_status || { mode: '자동연동', status: '출고적합', note: '완제품 미생물 규격 적합' };
 
       const todayMmDd = b.today_mmdd || '';
       const yestMmDd = b.yest_mmdd || '';
@@ -648,11 +673,11 @@
       const todayIso = b.loaded_date || '';
 
       // -----------------------------------------------------------------------
-      // [카드 1] 좌상: 4대 공정·출고 타일 대형화 + 하단 특이사항 슬림 바
+      // [카드 1] 좌상: 빈 여백 없이 꽉 찬 4대 공정·출고 타일 + 3~4줄 크기 특이사항 박스
       // -----------------------------------------------------------------------
       let rtBadge = '<span class="badge-pill badge-ok !text-[12px] !px-2.5 !py-1">CCP 적합</span>';
       let rtDot = 'bg-emerald-500 ring-4 ring-emerald-500/15';
-      const rtTabMismatch = (ps.rt_today_tab && todayMmDd && ps.rt_today_tab !== todayMmDd && ps.rt_today_tab !== todayMmDd.replace(/^0/, ''));
+      const rtHosTxt = (ps.rt_running_hos && ps.rt_running_hos.length) ? ps.rt_running_hos.join('·') : '대기';
       if (ps.red_rt_cnt > 0) {
         rtBadge = '<span class="badge-pill badge-err !text-[12px] !px-2.5 !py-1">기준이탈 확인</span>';
         rtDot = 'bg-red-500 ring-4 ring-red-500/15';
@@ -661,9 +686,6 @@
         rtDot = 'bg-amber-500 ring-4 ring-amber-500/15';
       }
 
-      const dySubTxt = (ps.active_milk_cnt || ps.active_ferm_cnt)
-        ? `우유 ${ps.active_milk_cnt || 0}건 · 발효유 ${ps.active_ferm_cnt || 0}건 가동`
-        : '우유 · 발효유 포장라인';
       const dyBadge = ps.active_dairy_cnt > 0
         ? `<span class="badge-pill badge-ok !text-[12px] !px-2.5 !py-1">가동·점검 ${ps.active_dairy_cnt}건</span>`
         : '<span class="badge-pill badge-neutral !text-[12px] !px-2.5 !py-1">생산대기</span>';
@@ -695,74 +717,63 @@
 
       const noteItems = [];
       (ps.yest_notes || []).forEach(n => {
-        noteItems.push(`<div class="py-0.5 text-[11.6px] leading-snug"><span class="inline-block px-1.5 py-0.2 rounded bg-slate-200 text-slate-800 font-bold text-[10.3px] mr-1.5">전일(${esc(ps.rt_yest_tab)})</span>${esc(n)}</div>`);
+        noteItems.push(`<div class="py-0.5 text-[11.8px] leading-relaxed"><span class="inline-block px-1.5 py-0.2 rounded bg-slate-200 text-slate-800 font-bold text-[10.5px] mr-1.5">전일(${esc(ps.rt_yest_tab)})</span>${esc(n)}</div>`);
       });
       (ps.today_notes || []).forEach(n => {
-        noteItems.push(`<div class="py-0.5 text-[11.6px] leading-snug"><span class="inline-block px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 font-bold text-[10.3px] mr-1.5">금일(${esc(ps.rt_today_tab)})</span>${esc(n)}</div>`);
+        noteItems.push(`<div class="py-0.5 text-[11.8px] leading-relaxed"><span class="inline-block px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 font-bold text-[10.5px] mr-1.5">금일(${esc(ps.rt_today_tab)})</span>${esc(n)}</div>`);
       });
-      const notesHtml = noteItems.length > 0
-        ? noteItems.join('')
-        : `<div class="text-[11.8px] font-semibold text-emerald-700">✓ 전일(${esc(ps.rt_yest_tab)}) 마감 및 금일(${esc(ps.rt_today_tab)}) 현재 설비·공정·출고 특이사항 없이 정상 가동 중입니다.</div>`;
+      if (noteItems.length === 0) {
+        noteItems.push(`<div class="py-0.5 text-[11.8px] font-semibold text-emerald-700">✓ [전일 마감(${esc(ps.rt_yest_tab)})] 상온·유제품·배양 전 호기 기준이탈 및 설비 이상 없음</div>`);
+        noteItems.push(`<div class="py-0.5 text-[11.8px] font-semibold text-gray-700">✓ [금일 실시간(${esc(ps.rt_today_tab)})] 현재 상온 ${ps.active_rt_cnt}건 · 유제품 ${ps.active_dairy_cnt}건 정상 가동 및 CCP 모니터링 중</div>`);
+      }
 
       // -----------------------------------------------------------------------
-      // [카드 2] 우상: 좌(부서별 심의 건수 브리핑 + 대표 표시사항) + 우(법규 [고시]/[예고] + 조치요약) + 하단 슬림 메모
+      // [카드 2] 우상: 좌(핵심 2개 숫자 어필 + 큼직한 대표 품목) + 우(D-365 불용방지 배지 & 핵심내용)
       // -----------------------------------------------------------------------
-      const deptChips = (lb.rev_dept_breakdown || []).slice(0, 4).map(d =>
-        `<span class="inline-flex items-center px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-[#003378] text-[10.8px] font-extrabold">${esc(d.dept)} ${d.cnt}건</span>`
-      ).join('');
-      const extraDeptCnt = (lb.rev_dept_breakdown || []).slice(4).reduce((acc, x) => acc + x.cnt, 0);
-      const deptMoreChip = extraDeptCnt > 0
-        ? `<span class="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 text-[10.5px] font-bold">외 ${extraDeptCnt}건</span>`
-        : '';
-
       const featList = lb.featured_reviewing || [];
       const revHtml = featList.length > 0
         ? featList.map(r => `
-            <div onclick="navigate('label_status', {labelTab:'rev'})" class="py-1.5 px-2 mb-1 last:mb-0 rounded-md border border-gray-200/80 bg-white hover:border-[#003378] cursor-pointer flex items-center justify-between gap-2 transition">
-              <div class="min-w-0 flex items-center gap-1.5">
-                <span class="px-1.5 py-0.2 rounded bg-[#EFF6FF] text-[#003378] text-[10.5px] font-extrabold shrink-0">${esc(r['요청부서'] || '미기입')}</span>
-                <span class="text-[11.8px] font-semibold text-gray-900 truncate">${esc(r['_clean_title'] || r['제목'] || '(제목 없음)')}</span>
+            <div onclick="navigate('label_status', {labelTab:'rev'})" class="py-2 px-2.5 mb-1.5 last:mb-0 rounded-lg border border-gray-200/90 bg-white hover:border-[#003378] cursor-pointer flex items-center justify-between gap-2 shadow-2xs transition">
+              <div class="min-w-0 flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded bg-[#EFF6FF] text-[#003378] text-[11px] font-extrabold shrink-0">${esc(r['요청부서'] || '미기입')}</span>
+                <span class="text-[12.4px] font-bold text-gray-900 truncate">${esc(r['_clean_title'] || r['제목'] || '(제목 없음)')}</span>
               </div>
-              <span class="text-[10.5px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded shrink-0">검토중</span>
+              <span class="text-[10.8px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded shrink-0">검토중</span>
             </div>
           `).join('')
-        : '<div class="text-xs text-gray-400 py-4 text-center">현재 검토 대기 품목이 없습니다.</div>';
+        : '<div class="h-full flex items-center justify-center text-xs text-gray-400 text-center">현재 검토 대기 품목이 없습니다.</div>';
 
       const dashLaws = lw.dashboard_laws || [];
       const lawHtml = dashLaws.length > 0
         ? dashLaws.map(item => {
             const isNotice = item['법규단계'] === '예고';
             const stageBadge = isNotice
-              ? '<span class="badge-pill badge-purple !px-1.5 !py-0.2 !text-[10.3px]">예고</span>'
-              : '<span class="badge-pill badge-info !px-1.5 !py-0.2 !text-[10.3px]">고시</span>';
-            const prepCls = item.prep_status === '반영완료'
-              ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-              : (item.prep_status === '부자재변경중' ? 'text-amber-800 bg-amber-50 border-amber-200' : 'text-gray-600 bg-gray-100 border-gray-200');
+              ? '<span class="badge-pill badge-purple !px-1.5 !py-0.2 !text-[10.4px]">예고</span>'
+              : '<span class="badge-pill badge-info !px-1.5 !py-0.2 !text-[10.4px]">고시</span>';
             return `
-              <div onclick="openLawDetailModal('${esc(item.law_id)}')" title="클릭하여 실무 조치 요약 수정 및 원문 열람"
-                class="py-1.5 px-2 mb-1 last:mb-0 rounded-md border border-blue-200/70 bg-white hover:border-[#003378] cursor-pointer transition">
+              <div onclick="openLawDetailModal('${esc(item.law_id)}')" title="클릭하여 핵심요약 수정 · 원문 확인 · 대시보드 노출 변경"
+                class="py-2 px-2.5 mb-1.5 last:mb-0 rounded-lg border border-blue-200/75 bg-white hover:border-[#003378] cursor-pointer shadow-2xs transition">
                 <div class="flex items-center justify-between gap-1.5">
                   <div class="flex items-center gap-1 min-w-0">
                     ${stageBadge}
-                    <span class="badge-pill ${esc(item.d_day_cls)} !px-1.5 !py-0.2 !text-[10.3px]">${esc(item.d_day_label)}</span>
-                    <span class="text-[11.6px] font-bold text-gray-900 truncate">${esc(item['법규명'])}</span>
+                    <span class="badge-pill ${esc(item.d_day_cls)} !px-1.5 !py-0.2 !text-[10.4px]">${esc(item.d_day_label)}</span>
+                    <span class="text-[12px] font-extrabold text-gray-900 truncate">${esc(item['법규명'])}</span>
                   </div>
-                  <span class="px-1.5 py-0.2 rounded border text-[10px] font-bold shrink-0 ${prepCls}">${esc(item.prep_status)}</span>
+                  <span class="badge-pill ${esc(item.prep_timing_cls)} !px-1.5 !py-0.2 !text-[10.2px] shrink-0">${esc(item.prep_timing_tag)}</span>
                 </div>
-                <div class="flex items-center justify-between gap-2 mt-1 text-[11px]">
-                  <span class="text-[#003378] font-semibold truncate">▸ ${esc(item['실무조치요약'])}</span>
-                  <span class="shrink-0 text-[10.3px] text-gray-500">시행 ${esc(item['시행일'])}</span>
+                <div class="flex items-center justify-between gap-2 mt-1 text-[11.4px]">
+                  <span class="text-gray-800 font-semibold truncate">• ${esc(item['실무조치요약'])}</span>
+                  <span class="shrink-0 text-[10.5px] text-gray-500 font-medium">${esc(item['시행일'])}</span>
                 </div>
               </div>
             `;
           }).join('')
-        : '<div class="text-xs text-gray-400 py-4 text-center">노출 설정된 법규 D-Day 항목이 없습니다.</div>';
+        : '<div class="h-full flex items-center justify-center text-xs text-gray-400 text-center px-3">법규정보 시트의 [대시보드] 탭에 선택된 항목이 없습니다. 우측 상단 [+ 넣기/빼기]에서 체크해 추가하세요.</div>';
 
-      // 특이사항 메모 상단 빈 줄 완전 제거(.trim() 및 한 줄 인라인 렌더링)
       const cleanMemoTxt = String(sp.label_memo || '등록된 표시사항 특이사항 메모가 없습니다.').trim();
 
       // -----------------------------------------------------------------------
-      // [카드 3] 좌하: 대형 온도계 게이지 & 큼직한 5단계 스텝 버튼 + 하단 컴팩트 좌/우 일정
+      // [카드 3] 좌하: 대형 온도계 게이지 & 5단계 스텝 버튼 + 컴팩트 일정 목록
       // -----------------------------------------------------------------------
       const stageBtnsHtml = AUDIT_STAGES.map(st => {
         const reached = au.has_visit_gauge && au.pct >= st.pct;
@@ -783,7 +794,7 @@
 
       const renderSchedList = (targetType, emptyMsg) => {
         const filtered = scheds.filter(s => (s['구분'] || '방문심사') === targetType);
-        if (!filtered.length) return `<div class="text-[11.2px] text-gray-400 py-2 text-center">${emptyMsg}</div>`;
+        if (!filtered.length) return `<div class="text-[11.2px] text-gray-400 py-2.5 text-center">${emptyMsg}</div>`;
         return filtered.map(sr => {
           const dt = sr['심사일자'] || '';
           const shortDt = dt.length >= 10 ? dt.slice(5) : dt;
@@ -804,7 +815,7 @@
       };
 
       // -----------------------------------------------------------------------
-      // [카드 4] 우하: 클레임 · 부적합 5단계 직관적 텍스트 게이지
+      // [카드 4] 우하: 클레임 · 부적합 진행 현황 (0건일 때도 빈 여백 없는 안정 상태 보드)
       // -----------------------------------------------------------------------
       const activeCnh = cnh.active_items || [];
       const cnhHtml = activeCnh.length > 0
@@ -853,7 +864,42 @@
               </div>
             `;
           }).join('')
-        : '<div class="h-full flex items-center justify-center text-xs text-gray-400 text-center">현재 추적 중인 클레임 · 부적합 건이 없습니다. 우측 상단 <b class="mx-1 text-gray-600">[+ 신규 등록]</b>으로 기록하면 시트에 자동 누적됩니다.</div>';
+        : `
+          <div class="h-full flex flex-col justify-between p-4 rounded-xl bg-gradient-to-br from-emerald-50/60 via-white to-blue-50/40 border border-emerald-200/80">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2.5">
+                <span class="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-extrabold text-sm">✓</span>
+                <div>
+                  <div class="text-[13.5px] font-extrabold text-gray-900">현재 출고보류 · 추가검사 진행 중인 클레임/부적합 건이 없습니다</div>
+                  <div class="text-[11.5px] text-gray-500 mt-0.5">전 공정(상온 · 유제품 · 배양 · 미생물) 정상 출고 기준 유지 중</div>
+                </div>
+              </div>
+              <span class="badge-pill badge-ok !text-xs !px-2.5 !py-1">이상 없음</span>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2.5 my-2">
+              <div class="p-2.5 rounded-lg bg-white border border-gray-200/90 text-center">
+                <div class="text-[11px] font-semibold text-gray-500">시트 누적 전체 이력</div>
+                <div class="text-[15px] font-extrabold text-gray-900 mt-0.5">${fmtNum(cnh.counts.total || 0)}건</div>
+              </div>
+              <div class="p-2.5 rounded-lg bg-white border border-gray-200/90 text-center">
+                <div class="text-[11px] font-semibold text-gray-500">주요 클레임 기록</div>
+                <div class="text-[15px] font-extrabold text-[#003378] mt-0.5">${fmtNum(cnh.counts.claim || 0)}건</div>
+              </div>
+              <div class="p-2.5 rounded-lg bg-white border border-gray-200/90 text-center">
+                <div class="text-[11px] font-semibold text-gray-500">공정 부적합 기록</div>
+                <div class="text-[15px] font-extrabold text-amber-700 mt-0.5">${fmtNum(cnh.counts.nc || 0)}건</div>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-2 pt-2 border-t border-emerald-200/60">
+              <span class="text-[11.3px] text-gray-600 font-medium">제품 소비기한으로 포장시간 · 살균기 CCP · 미생물 균수를 즉시 역추적할 수 있습니다.</span>
+              <button onclick="navigate('claim_nc_hist', {cnhMainTab:'lot'})" class="px-3 py-1.5 rounded-lg bg-[#003378] hover:bg-[#00265C] text-white text-xs font-bold shrink-0 transition">
+                생산이력 · LOT 역추적 ›
+              </button>
+            </div>
+          </div>
+        `;
 
       const errBanner = (b.errors && b.errors.length > 0)
         ? `<span onclick="openErrorsModal()" class="cursor-pointer badge-pill badge-warn ml-2">연동 점검 ${b.errors.length}건 ›</span>`
@@ -878,7 +924,7 @@
         <!-- 2x2 스크롤 없는 고정 그리드 -->
         <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 grid-rows-2 gap-3">
 
-          <!-- [1] 좌상: 4대 공정·출고 타일 대형화 (72%) + 하단 특이사항 슬림 바 (28%) -->
+          <!-- [1] 좌상: 빈 여백 없이 꽉 찬 4대 공정·출고 타일 + 3~4줄 분량 특이사항 보드 -->
           <div class="qo-card p-3 flex flex-col justify-between min-h-0">
             <div class="flex items-center justify-between pb-1.5 border-b border-gray-100 shrink-0">
               <div class="flex items-center gap-1.5 min-w-0">
@@ -887,59 +933,62 @@
                   어제 마감(${esc(yestMmDd)}) & 오늘 실시간(${esc(todayMmDd)}) 공정 · 출고 판정
                 </span>
               </div>
-              <button onclick="navigate('process')" class="text-xs font-bold text-[#003378] hover:underline shrink-0">공정 관제 상세 ›</button>
+              <div class="flex items-center gap-2.5 shrink-0">
+                <button onclick="navigate('micro_report')" class="text-[11.5px] font-bold text-gray-600 hover:text-[#003378]">미생물 일보 ›</button>
+                <button onclick="navigate('process')" class="text-xs font-bold text-[#003378] hover:underline">공정 관제 상세 ›</button>
+              </div>
             </div>
 
-            <!-- 대형 2x2 계기판 타일 영역 -->
+            <!-- 4대 계기판 타일 (flex-1로 위아래 여백 없이 꽉 채움) -->
             <div class="flex-1 min-h-0 grid grid-cols-2 gap-2.5 my-2">
-              <div class="p-2.5 rounded-xl bg-[#F8FAFC] border border-slate-200/90 flex flex-col justify-between">
-                <div class="flex items-center justify-between text-[11.3px] font-extrabold text-[#003378] px-0.5">
+              <div class="p-2.5 rounded-xl bg-[#F8FAFC] border border-slate-200/90 flex flex-col min-h-0">
+                <div class="flex items-center justify-between text-[11.4px] font-extrabold text-[#003378] px-0.5 mb-1.5 shrink-0">
                   <span>① 금일 공정 · 포장 가동</span>
-                  <span class="text-[10.5px] text-gray-400 font-semibold">생산 이상유무</span>
+                  <span class="text-[10.5px] text-gray-400 font-semibold">생산 · CCP 이상유무</span>
                 </div>
-                <div class="flex-1 flex flex-col justify-center gap-2 mt-1.5">
-                  <div onclick="navigate('process', {procTab:'rt'})" class="p-3 rounded-lg bg-white border border-gray-200/90 hover:border-[#003378] cursor-pointer flex items-center justify-between gap-2 shadow-2xs transition">
+                <div class="flex-1 min-h-0 flex flex-col gap-2">
+                  <div onclick="navigate('process', {procTab:'rt'})" class="flex-1 px-3.5 py-2.5 rounded-lg bg-white border border-gray-200/90 hover:border-[#003378] cursor-pointer flex items-center justify-between gap-2 shadow-2xs transition">
                     <div class="min-w-0">
-                      <div class="flex items-center gap-2 text-[13.5px] font-extrabold text-gray-900">
+                      <div class="flex items-center gap-2 text-[14px] font-extrabold text-gray-900">
                         <span class="w-2.5 h-2.5 rounded-full ${rtDot}"></span><span>상온 멸균 · 포장</span>
                       </div>
-                      <div class="text-[11.5px] text-gray-500 mt-0.5 truncate">시트탭 ${esc(ps.rt_today_tab)}${rtTabMismatch ? '(전일탭)' : ''} · 가동 <b>${ps.active_rt_cnt}건</b></div>
+                      <div class="text-[11.8px] text-gray-600 mt-1 truncate">탭 <b>${esc(ps.rt_today_tab)}</b> · 가동 <b>${ps.active_rt_cnt}건</b> (${esc(rtHosTxt)})</div>
                     </div>
                     ${rtBadge}
                   </div>
-                  <div onclick="navigate('process', {procTab:'dairy'})" class="p-3 rounded-lg bg-white border border-gray-200/90 hover:border-[#003378] cursor-pointer flex items-center justify-between gap-2 shadow-2xs transition">
+                  <div onclick="navigate('process', {procTab:'dairy'})" class="flex-1 px-3.5 py-2.5 rounded-lg bg-white border border-gray-200/90 hover:border-[#003378] cursor-pointer flex items-center justify-between gap-2 shadow-2xs transition">
                     <div class="min-w-0">
-                      <div class="flex items-center gap-2 text-[13.5px] font-extrabold text-gray-900">
+                      <div class="flex items-center gap-2 text-[14px] font-extrabold text-gray-900">
                         <span class="w-2.5 h-2.5 rounded-full ${dyDot}"></span><span>유제품 포장</span>
                       </div>
-                      <div class="text-[11.5px] text-gray-500 mt-0.5 truncate">${esc(dySubTxt)}</div>
+                      <div class="text-[11.8px] text-gray-600 mt-1 truncate">우유 <b>${ps.active_milk_cnt || 0}건</b> · 발효유 <b>${ps.active_ferm_cnt || 0}건</b> 생산 점검</div>
                     </div>
                     ${dyBadge}
                   </div>
                 </div>
               </div>
 
-              <div class="p-2.5 rounded-xl bg-[#F8FAFC] border border-slate-200/90 flex flex-col justify-between">
-                <div class="flex items-center justify-between text-[11.3px] font-extrabold text-[#003378] px-0.5">
+              <div class="p-2.5 rounded-xl bg-[#F8FAFC] border border-slate-200/90 flex flex-col min-h-0">
+                <div class="flex items-center justify-between text-[11.4px] font-extrabold text-[#003378] px-0.5 mb-1.5 shrink-0">
                   <span>② 배양 · 미생물 출고 판정</span>
-                  <button onclick="openMicroStatusModal()" class="text-[10.8px] font-bold text-blue-700 hover:underline">미생물 판정 입력 ›</button>
+                  <button onclick="openMicroStatusModal()" class="text-[10.8px] font-bold text-blue-700 hover:underline">${mc.mode === '자동연동' ? '시트 자동연동 중 ›' : '수동지정 중 ›'}</button>
                 </div>
-                <div class="flex-1 flex flex-col justify-center gap-2 mt-1.5">
-                  <div onclick="navigate('process', {procTab:'soy'})" class="p-3 rounded-lg bg-white border border-gray-200/90 hover:border-[#003378] cursor-pointer flex items-center justify-between gap-2 shadow-2xs transition">
+                <div class="flex-1 min-h-0 flex flex-col gap-2">
+                  <div onclick="navigate('process', {procTab:'soy'})" class="flex-1 px-3.5 py-2.5 rounded-lg bg-white border border-gray-200/90 hover:border-[#003378] cursor-pointer flex items-center justify-between gap-2 shadow-2xs transition">
                     <div class="min-w-0">
-                      <div class="flex items-center gap-2 text-[13.5px] font-extrabold text-gray-900">
+                      <div class="flex items-center gap-2 text-[14px] font-extrabold text-gray-900">
                         <span class="w-2.5 h-2.5 rounded-full ${soyDot}"></span><span>두유 배양검사</span>
                       </div>
-                      <div class="text-[11.5px] text-gray-500 mt-0.5 truncate">${esc(ps.soy_default_tab)}탭 · 검사수량 <b>${fmtNum(ps.soy_total_samples)}개</b></div>
+                      <div class="text-[11.8px] text-gray-600 mt-1 truncate">탭 <b>${esc(ps.soy_default_tab)}</b> · 완료 ${ps.soy_done_cnt || 0} / 대기 ${ps.soy_uninspected_cnt} (${fmtNum(ps.soy_total_samples)}개)</div>
                     </div>
                     ${soyBadge}
                   </div>
-                  <div onclick="openMicroStatusModal()" class="p-3 rounded-lg bg-white border border-gray-200/90 hover:border-[#003378] cursor-pointer flex items-center justify-between gap-2 shadow-2xs transition">
+                  <div onclick="navigate('micro_report')" class="flex-1 px-3.5 py-2.5 rounded-lg bg-white border border-gray-200/90 hover:border-[#003378] cursor-pointer flex items-center justify-between gap-2 shadow-2xs transition">
                     <div class="min-w-0">
-                      <div class="flex items-center gap-2 text-[13.5px] font-extrabold text-gray-900">
+                      <div class="flex items-center gap-2 text-[14px] font-extrabold text-gray-900">
                         <span class="w-2.5 h-2.5 rounded-full ${mcDot}"></span><span>미생물 결과</span>
                       </div>
-                      <div class="text-[11.5px] text-gray-500 mt-0.5 truncate">${esc(mc.note || '출고 이상 없음')}</div>
+                      <div class="text-[11.8px] text-gray-600 mt-1 truncate">${esc(mc.note || '완제품 미생물 규격 적합')}</div>
                     </div>
                     ${mcBadge}
                   </div>
@@ -947,22 +996,26 @@
               </div>
             </div>
 
-            <!-- 하단 컴팩트 특이사항 바 (과도한 여백 제거) -->
+            <!-- 하단 현장 특이사항 박스 확대 (3~4줄 분량 82px 확보) -->
             <div class="shrink-0 pt-1 border-t border-gray-100">
-              <div class="max-h-[46px] overflow-y-auto px-2.5 py-1.5 rounded-lg bg-[#F9FAFB] border border-gray-200/80">
-                ${notesHtml}
+              <div class="flex items-center justify-between text-[10.8px] font-bold text-gray-600 mb-0.5">
+                <span>전일 마감 · 금일 실시간 공정 특이사항 요약</span>
+                <span class="text-[10.3px] text-gray-400">상온 · 유제품 · 배양 자동 집계</span>
+              </div>
+              <div class="h-[74px] overflow-y-auto px-3 py-1.5 rounded-lg bg-[#F9FAFB] border border-gray-200/90">
+                ${noteItems.join('')}
               </div>
             </div>
           </div>
 
-          <!-- [2] 우상: 표시사항(부서별 건수 + 대표 품목) & 법규([고시]/[예고] + 조치요약) + 하단 여백없는 슬림 메모 -->
+          <!-- [2] 우상: 표시사항(2대 핵심숫자 집중 어필) & 법규(D-365 불용자재 배지 + 알맹이 요약) -->
           <div class="qo-card p-3 flex flex-col justify-between min-h-0">
             <div class="flex items-center justify-between pb-1.5 border-b border-gray-100 shrink-0">
               <div class="flex items-center gap-1.5 min-w-0">
                 <span class="w-2 h-2 rounded-full bg-[#003378] shrink-0"></span>
                 <span class="text-[14px] font-extrabold text-gray-900 truncate">표시사항 심의 · 법규 개정 D-Day 현황</span>
-                <span class="badge-pill badge-info">검토중 총 ${lb.reviewing_cnt}건</span>
-                <span class="badge-pill ${lw.urgent_cnt > 0 ? 'badge-warn' : 'badge-neutral'}">법규 D-Day ${lw.active_cnt}건</span>
+                <span class="badge-pill badge-info">심의중 ${lb.reviewing_cnt}건</span>
+                <span class="badge-pill ${lw.prep_1yr_cnt > 0 ? 'badge-warn' : 'badge-neutral'}">1년내 준비 ${lw.prep_1yr_cnt}건</span>
               </div>
               <div class="flex items-center gap-2 shrink-0">
                 <button onclick="navigate('fs_haccp_risk', {fsTab:'law_dday'})" class="text-[11.3px] font-bold text-gray-600 hover:text-[#003378]">법규 선별 ›</button>
@@ -971,31 +1024,29 @@
             </div>
 
             <div class="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-12 gap-2.5 my-1.5">
-              <!-- 좌측: 실시간 부서별 건수 브리핑 + 대표 표시사항 목록 -->
+              <!-- 좌측: 군더더기 없는 2대 핵심 숫자 배너 + 큼직한 대표 품목 -->
               <div class="md:col-span-6 flex flex-col min-h-0">
                 <div class="flex items-center justify-between text-[11px] font-bold text-gray-700 mb-1 shrink-0">
-                  <span>① 실시간 심의 현황 (${lb.has_manual_pins ? '선택 대표 품목' : '주요 검토 품목'})</span>
+                  <span>① 실시간 표시사항 심의 (${lb.has_manual_pins ? '선택 대표 품목' : '주요 검토 품목'})</span>
                   <button onclick="navigate('label_status', {labelTab:'rev'})" class="text-[10.5px] font-bold text-blue-700 hover:underline">+ 대표품목 체크 ›</button>
                 </div>
-                <!-- 부서별 건수 요약 바 -->
-                <div class="p-1.5 mb-1.5 rounded-lg bg-[#F8FAFC] border border-blue-200/70 shrink-0">
-                  <div class="flex flex-wrap items-center justify-between gap-1">
-                    <div class="flex flex-wrap items-center gap-1">
-                      ${deptChips || '<span class="text-[11px] text-gray-400">검토 대기 0건</span>'}
-                      ${deptMoreChip}
-                    </div>
-                    <span class="text-[10.8px] font-extrabold text-[#003378]">총 ${lb.reviewing_cnt}건 검토중 · 누적 ${fmtNum(lb.cnt_26_all)}건</span>
+                <!-- 핵심 2개 숫자 임팩트 바 -->
+                <div class="px-2.5 py-1.5 mb-1.5 rounded-lg bg-[#F8FAFC] border border-blue-200/80 flex items-center justify-between gap-2 shrink-0">
+                  <div class="min-w-0 truncate text-[11.3px]">
+                    <span class="font-extrabold text-[#003378]">현재 ${lb.reviewing_cnt}건 심의중</span>
+                    <span class="text-gray-500 font-semibold ml-1">(${esc(lb.rev_summary_line)})</span>
                   </div>
+                  <span class="px-2 py-0.5 rounded bg-[#003378] text-white text-[10.8px] font-extrabold shrink-0">26년 누적 ${fmtNum(lb.cnt_26_all)}건</span>
                 </div>
                 <div class="flex-1 min-h-0 overflow-y-auto pr-0.5">
                   ${revHtml}
                 </div>
               </div>
 
-              <!-- 우측: 법규 시행 D-Day ([고시]/[예고] + 실무 필요 조치 1줄 요약) -->
+              <!-- 우측: 법규 시행 D-Day (1년 불용자재 준비 기준 + 핵심 내용만 표시) -->
               <div class="md:col-span-6 flex flex-col min-h-0">
                 <div class="flex items-center justify-between text-[11px] font-bold text-[#003378] mb-1 shrink-0">
-                  <span>② 법규 시행 D-Day ([고시]/[예고] · 필요 조치)</span>
+                  <span>② 법규 D-Day (1년전 불용방지 기준 · 시트 [대시보드] 연동)</span>
                   <button onclick="navigate('fs_haccp_risk', {fsTab:'law_dday'})" class="text-[10.5px] font-bold text-blue-700 hover:underline">+ 넣기/빼기</button>
                 </div>
                 <div class="flex-1 min-h-0 overflow-y-auto px-1.5 py-1 rounded-lg border border-blue-200/70 bg-[#F8FAFC]">
@@ -1004,7 +1055,7 @@
               </div>
             </div>
 
-            <!-- 하단 전체 폭: 표시사항 특이사항 메모 (상단 빈 여백 완전 제거) -->
+            <!-- 하단 표시사항 특이사항 메모 (상단 빈 여백 완전 제거) -->
             <div class="shrink-0 pt-1 border-t border-gray-100">
               <div class="flex items-center justify-between text-[10.8px] font-bold text-amber-800 mb-0.5">
                 <span>표시사항 특이사항 메모 (부자재 발주 전 중점 체크)</span>
@@ -1014,7 +1065,7 @@
             </div>
           </div>
 
-          <!-- [3] 좌하: 대형 온도계 게이지 & 스텝 버튼 (KPI 숫자 제외) + 하단 컴팩트 일정 -->
+          <!-- [3] 좌하: 대형 온도계 게이지 & 5단계 버튼 + 좌·우 일정 목록 -->
           <div class="qo-card p-3 flex flex-col justify-between min-h-0">
             <div class="flex items-center justify-between pb-1.5 border-b border-gray-100 shrink-0">
               <div class="flex items-center gap-2 min-w-0">
@@ -1024,7 +1075,6 @@
               <button onclick="navigate('kpi_5', {auditTab:'sched'})" class="text-xs font-bold text-[#003378] hover:underline shrink-0">일정 등록 · 관리 ›</button>
             </div>
 
-            <!-- 큼직한 차기 도래 일정 배너 + 두툼한 온도계 게이지 -->
             <div class="my-2 p-3 rounded-xl bg-[#F8FAFC] border border-slate-200/90 shrink-0">
               <div class="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-gray-200/80">
                 <div class="flex items-center gap-2 min-w-0">
@@ -1038,7 +1088,6 @@
                 <span class="text-[12.5px] font-extrabold shrink-0" style="color:${esc(au.color)}">${au.has_visit_gauge ? `${esc(au.status)} · ${au.pct}%` : '방문심사 대기'}</span>
               </div>
 
-              <!-- 대형 온도계 게이지 바 (18px 캡슐형) -->
               <div class="w-full h-[18px] bg-gray-200/90 rounded-full overflow-hidden p-0.5 mb-2 shadow-inner">
                 <div class="h-full rounded-full transition-all duration-300 flex items-center justify-end pr-2 text-[10px] font-extrabold text-white"
                   style="width:${Math.max(au.pct, au.has_visit_gauge ? 8 : 0)}%; background-color:${esc(au.color)};">
@@ -1051,7 +1100,6 @@
               </div>
             </div>
 
-            <!-- 하단 컴팩트 좌·우 일정 목록 (높이 축소) -->
             <div class="flex-1 min-h-0 grid grid-cols-2 gap-2.5">
               <div class="flex flex-col min-h-0">
                 <div class="text-[11px] font-extrabold text-[#003378] mb-1 shrink-0">① 방문심사 (당사 수검)</div>
@@ -1068,18 +1116,18 @@
             </div>
           </div>
 
-          <!-- [4] 우하: 클레임 · 부적합 진행 현황 (5단계 버튼형 게이지) -->
+          <!-- [4] 우하: 클레임 · 부적합 진행 현황 및 LOT 추적 (0건일 때도 꽉 찬 안정 보드) -->
           <div class="qo-card p-3 flex flex-col min-h-0">
             <div class="flex items-center justify-between pb-1.5 border-b border-gray-100 shrink-0">
               <div class="flex items-center gap-2">
                 <span class="w-2 h-2 rounded-full bg-rose-600"></span>
-                <span class="text-[14px] font-extrabold text-gray-900">클레임 · 부적합 진행 현황 및 LOT 추적</span>
+                <span class="text-[14px] font-extrabold text-gray-900">클레임 · 부적합 진행 현황 및 LOT 역추적</span>
                 <span class="badge-pill badge-neutral">진행 ${cnh.counts.active || 0}건</span>
                 ${cnh.counts.major > 0 ? `<span class="badge-pill badge-err">중점 ${cnh.counts.major}건</span>` : ''}
               </div>
               <div class="flex items-center gap-2">
                 <button onclick="openClaimNcAddModal()" class="px-2.5 py-1 rounded bg-[#003378] hover:bg-[#00265C] text-white text-[11px] font-bold transition">+ 신규 등록</button>
-                <button onclick="navigate('claim_nc_hist')" class="text-xs font-bold text-[#003378] hover:underline">전체 이력·통계 ›</button>
+                <button onclick="navigate('claim_nc_hist', {cnhMainTab:'hist'})" class="text-xs font-bold text-[#003378] hover:underline">이력 · LOT추적 ›</button>
               </div>
             </div>
 
@@ -1093,7 +1141,7 @@
     }
 
     // =========================================================================
-    // [화면 2] 2026 부문 8대 KPI 현황판 (7번 카드는 '심사점수'만 대표 노출)
+    // [화면 2] 2026 부문 8대 KPI 현황판
     // =========================================================================
     function renderDeptKpi8View(vp, b) {
       const cs = b.cost.dept;
@@ -1218,7 +1266,7 @@
         </div>
       `;
     }
-    // =========================================================================
+// =========================================================================
     // [공통] 세부 페이지 상단 서브 네비게이션 헤더 & 유틸리티 컴포넌트
     // =========================================================================
     function subPageHeaderHtml(titleTxt, subtitleTxt = '') {
@@ -1261,7 +1309,6 @@
       `;
     }
 
-    // 2026 식품안전팀 5단계 KPI 등급 기준표 렌더링 컴포넌트
     function renderKpiCriteriaBox(critObj, currentLevelStr) {
       if (!critObj || !critObj.levels) return '';
       return `
@@ -1292,7 +1339,6 @@
       `;
     }
 
-    // 우유·발효유 포장기별 생산 시작~종료 시간 최상단 카드 그리드 컴포넌트
     function renderDairyRunTimesBanner(runTimes, titleLabel) {
       if (!runTimes || runTimes.length === 0) {
         return `
@@ -1329,7 +1375,7 @@
     }
 
     // =========================================================================
-    // [세부 1] 원가 절감 (부문 통합 + 좌 식안팀 / 우 품관팀 비교 + 월별 테이블)
+    // [세부 1] 원가 절감 상세 분석
     // =========================================================================
     function renderCostDetailView(vp, b) {
       const c = b.cost;
@@ -1425,7 +1471,7 @@
     }
 
     // =========================================================================
-    // [세부 2] 클레임 발생률 분석 & [세부 2-2] 클레임 · 부적합 공정 이력 분석
+    // [세부 2] 클레임 발생률 분석
     // =========================================================================
     function renderClaimDetailView(vp, b) {
       const cl = b.claim;
@@ -1609,10 +1655,143 @@
       }
     }
 
+    // =========================================================================
+    // [세부 3] 클레임 · LOT 역추적 2탭 통합 뷰
+    // - 탭 1: 클레임 · 부적합 이력 관리 및 공정 통계
+    // - 탭 2: 생산이력 · LOT 4단 원스톱 역추적 (포장시간 + 살균기 CCP + 미생물 균수 통합)
+    // =========================================================================
+    async function executeLotTraceSearch() {
+      const prodEl = document.getElementById('lot-sel-prod');
+      const expEl = document.getElementById('lot-in-exp');
+      const kwEl = document.getElementById('lot-in-kw');
+
+      if (prodEl) STATE.lotQuery.product = prodEl.value;
+      if (expEl) STATE.lotQuery.exp = expEl.value.trim();
+      if (kwEl) STATE.lotQuery.kw = kwEl.value.trim();
+
+      if (STATE.lotQuery.product === 'ALL' && !STATE.lotQuery.exp && !STATE.lotQuery.kw) {
+        showToast('제품명을 선택하거나 소비기한/키워드를 입력해 주세요.', true);
+        return;
+      }
+
+      STATE.lotQuery.loading = true;
+      renderCurrentView();
+
+      try {
+        const params = new URLSearchParams({
+          product: STATE.lotQuery.product === 'ALL' ? '' : STATE.lotQuery.product,
+          exp: STATE.lotQuery.exp,
+          kw: STATE.lotQuery.kw
+        });
+        const res = await fetch(`/api/lot-trace?${params.toString()}`);
+        STATE.lotQuery.result = await res.json();
+      } catch (e) {
+        showToast('로트 역추적 조회 중 오류가 발생했습니다.', true);
+      } finally {
+        STATE.lotQuery.loading = false;
+        renderCurrentView();
+      }
+    }
+
+    function renderLotTraceSectionHtml(b) {
+      const p = b.process;
+      const prods = p.master_products || [];
+      const q = STATE.lotQuery;
+      const res = q.result;
+
+      let resHtml = '';
+      if (q.loading) {
+        resHtml = '<div class="qo-card p-8 text-center text-xs font-bold text-[#003378]">상온 · 배양 · 유제품 포장 · 미생물 이력 DB를 교차 추적 중입니다...</div>';
+      } else if (res && res.ok) {
+        const total = (res.counts.rt || 0) + (res.counts.soy || 0) + (res.counts.dairy || 0) + (res.counts.micro || 0);
+        if (total === 0) {
+          resHtml = '<div class="qo-card p-6 text-center text-xs text-amber-800 bg-amber-50 border-amber-200">일치하는 생산·배양·미생물 이력이 발견되지 않았습니다. 소비기한을 월.일(예: 05.13) 형태로 줄이거나 키워드로 검색해 보세요.</div>';
+        } else {
+          resHtml = `
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div class="qo-card p-3.5"><div class="text-xs text-gray-500">상온 공정일보 매칭</div><div class="text-xl font-extrabold text-[#003378] mt-1">${res.counts.rt || 0} 건</div></div>
+              <div class="qo-card p-3.5"><div class="text-xs text-gray-500">두유 배양검사 매칭</div><div class="text-xl font-extrabold text-emerald-700 mt-1">${res.counts.soy || 0} 건</div></div>
+              <div class="qo-card p-3.5"><div class="text-xs text-gray-500">유제품 포장 · 살균 CCP</div><div class="text-xl font-extrabold text-indigo-700 mt-1">${res.counts.dairy || 0} 건</div></div>
+              <div class="qo-card p-3.5"><div class="text-xs text-gray-500">해당 생산분 미생물 검사</div><div class="text-xl font-extrabold text-teal-700 mt-1">${res.counts.micro || 0} 건</div></div>
+            </div>
+
+            ${(res.matched_dairy || []).length > 0 ? `
+              <div class="qo-card p-4 mb-4 border-l-4 border-l-[#003378]">
+                <div class="text-sm font-bold text-gray-900 mb-2.5">① 유제품 포장 공정관리 — 포장 이상유무 · 전체 가동시간(시작~종료) · 살균기 온도/균질압 CCP</div>
+                ${renderDynamicRecordsTable(res.matched_dairy, ['최종백업일시', '표준소비기한_검색용'])}
+              </div>
+            ` : ''}
+
+            ${(res.matched_micro || []).length > 0 ? `
+              <div class="qo-card p-4 mb-4 border-l-4 border-l-emerald-600">
+                <div class="text-sm font-bold text-gray-900 mb-2.5">② 미생물 검사일보 — 해당 생산일 Storage Tank · 호기/라인별 대장균군 · 세균수 · 유산균 결과</div>
+                ${renderDynamicRecordsTable(res.matched_micro, ['고유키', '저장일시', '연관품목_주석포함'])}
+              </div>
+            ` : ''}
+
+            ${(res.matched_rt || []).length > 0 ? `
+              <div class="qo-card p-4 mb-4 border-l-4 border-l-[#003378]">
+                <div class="text-sm font-bold text-gray-900 mb-2.5">③ 상온 공정관리 일보 — 생산호기 · 멸균 CCP · 당일 특이사항</div>
+                ${renderDynamicRecordsTable(res.matched_rt, ['최종백업일시', '표준소비기한_검색용'])}
+                ${(res.matched_rt_ccp || []).length > 0 ? `
+                  <details class="mt-3">
+                    <summary class="cursor-pointer text-xs font-bold text-[#003378]">해당 생산일 멸균기(CCP-1B/2P) · 포장기(CCP-3B) 세부 기록 전체 보기 (${res.matched_rt_ccp.length}건)</summary>
+                    <div class="mt-2">${renderDynamicRecordsTable(res.matched_rt_ccp, ['최종백업일시'])}</div>
+                  </details>
+                ` : ''}
+              </div>
+            ` : ''}
+
+            ${(res.matched_soy || []).length > 0 ? `
+              <div class="qo-card p-4 mb-6 border-l-4 border-l-emerald-600">
+                <div class="text-sm font-bold text-gray-900 mb-2.5">④ 두유 배양검사 일보 — 실 생산 시작~종료 시간(실가동시간) · 오염수량 · 판정</div>
+                ${renderDynamicRecordsTable(res.matched_soy, ['최종백업일시', '표준소비기한_검색용'])}
+              </div>
+            ` : ''}
+          `;
+        }
+      } else {
+        resHtml = '<div class="qo-card p-6 text-center text-xs text-gray-500 mb-6">위에서 제품명을 선택하거나 소비기한을 입력한 뒤 <b>[이력 역추적 실행]</b>을 누르면 포장 상태 · 가동시간 · 살균/멸균 CCP · 미생물 판정 결과가 한 번에 조회됩니다.</div>';
+      }
+
+      return `
+        <div class="qo-card p-4 mb-4 bg-gradient-to-r from-slate-50 to-blue-50/50 border-blue-200">
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
+            <div class="lg:col-span-5">
+              <label class="block text-xs font-bold text-gray-700 mb-1">1. 제품명 선택 (상온 · 유제품 · 미생물 전 품목 총 ${fmtNum(prods.length)}종 자동 수집)</label>
+              <select id="lot-sel-prod" class="w-full px-3 py-2 text-xs font-semibold border border-gray-300 rounded-lg bg-white">
+                <option value="ALL">전체 (제품 미선택 · 소비기한/키워드로 검색)</option>
+                ${prods.map(pr => `<option value="${esc(pr)}" ${q.product === pr ? 'selected' : ''}>${esc(pr)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="lg:col-span-3">
+              <label class="block text-xs font-bold text-gray-700 mb-1">2. 소비기한 입력</label>
+              <input id="lot-in-exp" type="text" value="${esc(q.exp)}" placeholder="예: 2027-05-13, 27.05.13, 05.13"
+                onkeydown="if(event.key==='Enter') executeLotTraceSearch();"
+                class="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg bg-white" />
+            </div>
+            <div class="lg:col-span-2">
+              <label class="block text-xs font-bold text-gray-700 mb-1">3. 부분 품목 키워드</label>
+              <input id="lot-in-kw" type="text" value="${esc(q.kw)}" placeholder="예: 더클래식, 고칼슘"
+                onkeydown="if(event.key==='Enter') executeLotTraceSearch();"
+                class="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg bg-white" />
+            </div>
+            <div class="lg:col-span-2">
+              <button onclick="executeLotTraceSearch()" class="w-full py-2 px-4 rounded-lg btn-yonsei text-xs font-bold shadow-xs">
+                이력 역추적 실행
+              </button>
+            </div>
+          </div>
+        </div>
+        ${resHtml}
+      `;
+    }
+
     function renderClaimNcHistoryView(vp, b) {
       const cnh = b.claim_nc_hist || { all_items: [], by_cause: [], by_status: [], counts: { total: 0, claim: 0, nc: 0, active: 0, major: 0 } };
-      let list = cnh.all_items || [];
+      const isLotTab = STATE.cnhMainTab === 'lot';
 
+      let list = cnh.all_items || [];
       if (STATE.cnhCatFilter !== '전체') list = list.filter(x => x['구분'] === STATE.cnhCatFilter);
       if (STATE.cnhStatusFilter !== '전체') list = list.filter(x => x['진행상태'] === STATE.cnhStatusFilter);
       if (STATE.cnhKw) {
@@ -1621,122 +1800,238 @@
       }
 
       vp.innerHTML = `
-        ${subPageHeaderHtml('클레임 · 부적합 공정 이력 및 통계 분석', "'클레임, 부적합 이력' 구글 시트(클레임 탭 · 부적합 탭) 실시간 양방향 누적 관리")}
-        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
-          <div class="qo-card p-3.5"><div class="text-xs text-gray-500">전체 누적 이력</div><div class="text-xl font-extrabold text-gray-900 mt-1">${fmtNum(cnh.counts.total)} 건</div></div>
-          <div class="qo-card p-3.5"><div class="text-xs text-gray-500">주요·대형 클레임 기록</div><div class="text-xl font-extrabold text-[#003378] mt-1">${fmtNum(cnh.counts.claim)} 건</div></div>
-          <div class="qo-card p-3.5"><div class="text-xs text-gray-500">공정·출고 부적합/검사</div><div class="text-xl font-extrabold text-amber-700 mt-1">${fmtNum(cnh.counts.nc)} 건</div></div>
-          <div class="qo-card p-3.5"><div class="text-xs text-gray-500">중점관리 지정 건수</div><div class="text-xl font-extrabold text-red-600 mt-1">${fmtNum(cnh.counts.major)} 건</div></div>
-          <div class="qo-card p-3.5 flex flex-col justify-between">
-            <div class="text-xs text-gray-500">신규 클레임 · 부적합 등록</div>
-            <button onclick="openClaimNcAddModal()" class="mt-2 py-1.5 px-3 rounded-lg btn-yonsei text-xs font-bold">+ 시트에 신규 이력 등록</button>
-          </div>
+        ${subPageHeaderHtml('클레임 · 부적합 이력 및 생산 LOT 역추적', '클레임·부적합 공정 기록 관리와 포장·살균CCP·미생물 4단 LOT 역추적을 한 화면에서 통합 운영합니다.')}
+        <div class="flex border-b border-gray-200 mb-4 gap-2">
+          <button onclick="STATE.cnhMainTab='hist'; renderCurrentView();" class="subtab-btn ${!isLotTab ? 'active' : ''}">1. 클레임 · 부적합 이력 관리 및 공정 통계 (${fmtNum(cnh.counts.total)}건)</button>
+          <button onclick="STATE.cnhMainTab='lot'; renderCurrentView();" class="subtab-btn ${isLotTab ? 'active' : ''}">2. 생산이력 · LOT 원스톱 역추적 (포장시간 · 살균/멸균 CCP · 미생물)</button>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-4">
-          <div class="lg:col-span-7 qo-card p-4">
-            <div class="text-sm font-bold text-gray-900 mb-2">주요 공정 · 원인 유형별 발생 분포 (반복 취약점 진단)</div>
-            <div class="h-[240px]"><canvas id="chart-cnh-cause"></canvas></div>
-          </div>
-          <div class="lg:col-span-5 qo-card p-4">
-            <div class="text-sm font-bold text-gray-900 mb-2">진행 · 판정 단계별 현황 분포</div>
-            <div class="h-[240px]"><canvas id="chart-cnh-status"></canvas></div>
-          </div>
-        </div>
-
-        <div class="qo-card p-4 mb-6">
-          <div class="flex flex-wrap items-center justify-between gap-2.5 mb-3">
-            <div class="flex flex-wrap items-center gap-2">
-              ${['전체', '클레임', '부적합'].map(cat => `
-                <button onclick="STATE.cnhCatFilter='${cat}'; renderCurrentView();" class="px-3 py-1 rounded-lg text-xs font-bold border ${STATE.cnhCatFilter === cat ? 'bg-[#003378] text-white border-[#003378]' : 'bg-white text-gray-600 border-gray-200'}">${cat}</button>
-              `).join('')}
-              <select onchange="STATE.cnhStatusFilter=this.value; renderCurrentView();" class="px-2.5 py-1 text-xs font-bold border border-gray-300 rounded-lg bg-white">
-                <option value="전체" ${STATE.cnhStatusFilter === '전체' ? 'selected' : ''}>진행상태: 전체</option>
-                ${CNH_STAGES.map(s => `<option value="${s.name}" ${STATE.cnhStatusFilter === s.name ? 'selected' : ''}>${s.name}</option>`).join('')}
-              </select>
-            </div>
-            <div class="flex items-center gap-2">
-              <input type="text" value="${esc(STATE.cnhKw)}" placeholder="제품명 · 소비기한 · 사유 · 추가검사 검색 후 Enter..."
-                onkeydown="if(event.key==='Enter'){STATE.cnhKw=this.value; renderCurrentView();}"
-                class="w-64 sm:w-80 px-3 py-1.5 text-xs border border-gray-300 rounded-lg" />
-              <span class="text-xs font-bold text-gray-500">조회 ${fmtNum(list.length)}건</span>
+        ${isLotTab ? renderLotTraceSectionHtml(b) : `
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+            <div class="qo-card p-3.5"><div class="text-xs text-gray-500">전체 누적 이력</div><div class="text-xl font-extrabold text-gray-900 mt-1">${fmtNum(cnh.counts.total)} 건</div></div>
+            <div class="qo-card p-3.5"><div class="text-xs text-gray-500">주요·대형 클레임 기록</div><div class="text-xl font-extrabold text-[#003378] mt-1">${fmtNum(cnh.counts.claim)} 건</div></div>
+            <div class="qo-card p-3.5"><div class="text-xs text-gray-500">공정·출고 부적합/검사</div><div class="text-xl font-extrabold text-amber-700 mt-1">${fmtNum(cnh.counts.nc)} 건</div></div>
+            <div class="qo-card p-3.5"><div class="text-xs text-gray-500">중점관리 지정 건수</div><div class="text-xl font-extrabold text-red-600 mt-1">${fmtNum(cnh.counts.major)} 건</div></div>
+            <div class="qo-card p-3.5 flex flex-col justify-between">
+              <div class="text-xs text-gray-500">신규 클레임 · 부적합 등록</div>
+              <button onclick="openClaimNcAddModal()" class="mt-2 py-1.5 px-3 rounded-lg btn-yonsei text-xs font-bold">+ 시트에 신규 이력 등록</button>
             </div>
           </div>
 
-          <div class="overflow-x-auto rounded-lg border border-gray-200">
-            <table class="mon-table border-0">
-              <thead>
-                <tr>
-                  <th>등록일</th><th>구분</th><th>중요도</th><th>제품명 / 소비기한</th><th>공정·원인유형</th>
-                  <th>상세 발생사유</th><th>추가검사 · 조치내역</th><th>진행상태 변경</th><th>대시보드</th><th>관리</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${list.length > 0 ? list.map(it => {
-                  const isMaj = it['중요도'] === '중점관리';
-                  const stCls = it['진행상태'] === '적합(종결)' ? 'cell-green' : (it['진행상태'] === '부적합' ? 'cell-red' : 'cell-yellow');
-                  return `
-                    <tr>
-                      <td class="text-center whitespace-nowrap">${esc(it['등록일'])}</td>
-                      <td class="text-center"><span class="badge-pill ${it['구분'] === '부적합' ? 'badge-err' : 'badge-info'}">${esc(it['구분'])}</span></td>
-                      <td class="text-center">${isMaj ? '<span class="badge-pill badge-err">중점관리</span>' : '<span class="text-xs text-gray-500">일반</span>'}</td>
-                      <td class="font-bold text-gray-900">
-                        <div>${esc(it['제품명'])}</div>
-                        <div class="text-[11px] text-gray-500 font-normal">소비기한: ${esc(it['소비기한'])}</div>
-                      </td>
-                      <td class="text-center font-semibold text-[#003378]">${esc(it['발생공정_원인유형'])}</td>
-                      <td class="max-w-[220px] whitespace-pre-line">${esc(it['상세사유'])}</td>
-                      <td class="max-w-[220px] whitespace-pre-line">${esc(it['추가검사_조치내역'])}</td>
-                      <td class="text-center ${stCls}">
-                        <select onchange="quickUpdateClaimNcStatus('${esc(it['고유ID'])}', '${esc(it['구분'])}', this.value)" class="px-2 py-1 text-xs font-bold rounded border border-gray-300 bg-white text-gray-800">
-                          ${CNH_STAGES.map(s => `<option value="${s.name}" ${it['진행상태'] === s.name ? 'selected' : ''}>${s.name}</option>`).join('')}
-                        </select>
-                      </td>
-                      <td class="text-center">
-                        <button onclick="toggleClaimNcDash('${esc(it['고유ID'])}', '${esc(it['구분'])}')" class="px-2 py-0.5 rounded text-[11px] font-bold border ${it['대시보드노출'] === 'Y' ? 'bg-blue-50 text-[#003378] border-blue-200' : 'bg-gray-100 text-gray-400 border-gray-200'}">
-                          ${it['대시보드노출'] === 'Y' ? '노출중' : '숨김'}
-                        </button>
-                      </td>
-                      <td class="text-center whitespace-nowrap space-x-1">
-                        <button onclick="jumpToLotTrace('${esc(it['제품명'])}', '${esc(it['소비기한'])}')" class="px-2 py-0.5 rounded bg-[#003378] text-white text-[11px] font-bold">LOT추적</button>
-                        <button onclick="deleteClaimNcItem('${esc(it['고유ID'])}', '${esc(it['구분'])}')" class="px-2 py-0.5 rounded bg-red-50 text-red-600 text-[11px] font-bold">삭제</button>
-                      </td>
-                    </tr>
-                  `;
-                }).join('') : '<tr><td colspan="10" class="text-center py-8 text-xs text-gray-400">등록된 클레임 · 부적합 이력이 없습니다. 우측 상단 [+ 시트에 신규 이력 등록] 버튼으로 첫 기록을 추가해 보세요.</td></tr>'}
-              </tbody>
-            </table>
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-4">
+            <div class="lg:col-span-7 qo-card p-4">
+              <div class="text-sm font-bold text-gray-900 mb-2">주요 공정 · 원인 유형별 발생 분포 (반복 취약점 진단)</div>
+              <div class="h-[240px]"><canvas id="chart-cnh-cause"></canvas></div>
+            </div>
+            <div class="lg:col-span-5 qo-card p-4">
+              <div class="text-sm font-bold text-gray-900 mb-2">진행 · 판정 단계별 현황 분포</div>
+              <div class="h-[240px]"><canvas id="chart-cnh-status"></canvas></div>
+            </div>
           </div>
-        </div>
+
+          <div class="qo-card p-4 mb-6">
+            <div class="flex flex-wrap items-center justify-between gap-2.5 mb-3">
+              <div class="flex flex-wrap items-center gap-2">
+                ${['전체', '클레임', '부적합'].map(cat => `
+                  <button onclick="STATE.cnhCatFilter='${cat}'; renderCurrentView();" class="px-3 py-1 rounded-lg text-xs font-bold border ${STATE.cnhCatFilter === cat ? 'bg-[#003378] text-white border-[#003378]' : 'bg-white text-gray-600 border-gray-200'}">${cat}</button>
+                `).join('')}
+                <select onchange="STATE.cnhStatusFilter=this.value; renderCurrentView();" class="px-2.5 py-1 text-xs font-bold border border-gray-300 rounded-lg bg-white">
+                  <option value="전체" ${STATE.cnhStatusFilter === '전체' ? 'selected' : ''}>진행상태: 전체</option>
+                  ${CNH_STAGES.map(s => `<option value="${s.name}" ${STATE.cnhStatusFilter === s.name ? 'selected' : ''}>${s.name}</option>`).join('')}
+                </select>
+              </div>
+              <div class="flex items-center gap-2">
+                <input type="text" value="${esc(STATE.cnhKw)}" placeholder="제품명 · 소비기한 · 사유 · 추가검사 검색 후 Enter..."
+                  onkeydown="if(event.key==='Enter'){STATE.cnhKw=this.value; renderCurrentView();}"
+                  class="w-64 sm:w-80 px-3 py-1.5 text-xs border border-gray-300 rounded-lg" />
+                <span class="text-xs font-bold text-gray-500">조회 ${fmtNum(list.length)}건</span>
+              </div>
+            </div>
+
+            <div class="overflow-x-auto rounded-lg border border-gray-200">
+              <table class="mon-table border-0">
+                <thead>
+                  <tr>
+                    <th>등록일</th><th>구분</th><th>중요도</th><th>제품명 / 소비기한</th><th>공정·원인유형</th>
+                    <th>상세 발생사유</th><th>추가검사 · 조치내역</th><th>진행상태 변경</th><th>대시보드</th><th>관리</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${list.length > 0 ? list.map(it => {
+                    const isMaj = it['중요도'] === '중점관리';
+                    const stCls = it['진행상태'] === '적합(종결)' ? 'cell-green' : (it['진행상태'] === '부적합' ? 'cell-red' : 'cell-yellow');
+                    return `
+                      <tr>
+                        <td class="text-center whitespace-nowrap">${esc(it['등록일'])}</td>
+                        <td class="text-center"><span class="badge-pill ${it['구분'] === '부적합' ? 'badge-err' : 'badge-info'}">${esc(it['구분'])}</span></td>
+                        <td class="text-center">${isMaj ? '<span class="badge-pill badge-err">중점관리</span>' : '<span class="text-xs text-gray-500">일반</span>'}</td>
+                        <td class="font-bold text-gray-900">
+                          <div>${esc(it['제품명'])}</div>
+                          <div class="text-[11px] text-gray-500 font-normal">소비기한: ${esc(it['소비기한'])}</div>
+                        </td>
+                        <td class="text-center font-semibold text-[#003378]">${esc(it['발생공정_원인유형'])}</td>
+                        <td class="max-w-[220px] whitespace-pre-line">${esc(it['상세사유'])}</td>
+                        <td class="max-w-[220px] whitespace-pre-line">${esc(it['추가검사_조치내역'])}</td>
+                        <td class="text-center ${stCls}">
+                          <select onchange="quickUpdateClaimNcStatus('${esc(it['고유ID'])}', '${esc(it['구분'])}', this.value)" class="px-2 py-1 text-xs font-bold rounded border border-gray-300 bg-white text-gray-800">
+                            ${CNH_STAGES.map(s => `<option value="${s.name}" ${it['진행상태'] === s.name ? 'selected' : ''}>${s.name}</option>`).join('')}
+                          </select>
+                        </td>
+                        <td class="text-center">
+                          <button onclick="toggleClaimNcDash('${esc(it['고유ID'])}', '${esc(it['구분'])}')" class="px-2 py-0.5 rounded text-[11px] font-bold border ${it['대시보드노출'] === 'Y' ? 'bg-blue-50 text-[#003378] border-blue-200' : 'bg-gray-100 text-gray-400 border-gray-200'}">
+                            ${it['대시보드노출'] === 'Y' ? '노출중' : '숨김'}
+                          </button>
+                        </td>
+                        <td class="text-center whitespace-nowrap space-x-1">
+                          <button onclick="jumpToLotTrace('${esc(it['제품명'])}', '${esc(it['소비기한'])}')" class="px-2 py-0.5 rounded bg-[#003378] text-white text-[11px] font-bold">LOT추적 ›</button>
+                          <button onclick="deleteClaimNcItem('${esc(it['고유ID'])}', '${esc(it['구분'])}')" class="px-2 py-0.5 rounded bg-red-50 text-red-600 text-[11px] font-bold">삭제</button>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('') : '<tr><td colspan="10" class="text-center py-8 text-xs text-gray-400">등록된 클레임 · 부적합 이력이 없습니다. 우측 상단 [+ 시트에 신규 이력 등록] 버튼으로 첫 기록을 추가해 보세요.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `}
       `;
 
-      const byCause = cnh.by_cause && cnh.by_cause.length ? cnh.by_cause : [{ '원인유형': '데이터 없음', '건수': 0 }];
-      STATE.charts.cnhCause = new Chart(document.getElementById('chart-cnh-cause'), {
-        type: 'bar',
-        data: {
-          labels: byCause.map(x => x['원인유형']),
-          datasets: [{ label: '발생 건수(건)', data: byCause.map(x => x['건수']), backgroundColor: '#003378', borderRadius: 4 }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
-      });
+      if (!isLotTab) {
+        const byCause = cnh.by_cause && cnh.by_cause.length ? cnh.by_cause : [{ '원인유형': '데이터 없음', '건수': 0 }];
+        STATE.charts.cnhCause = new Chart(document.getElementById('chart-cnh-cause'), {
+          type: 'bar',
+          data: {
+            labels: byCause.map(x => x['원인유형']),
+            datasets: [{ label: '발생 건수(건)', data: byCause.map(x => x['건수']), backgroundColor: '#003378', borderRadius: 4 }]
+          },
+          options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        });
 
-      const bySt = cnh.by_status || [];
-      STATE.charts.cnhStatus = new Chart(document.getElementById('chart-cnh-status'), {
-        type: 'doughnut',
-        data: {
-          labels: bySt.map(x => x['상태']),
-          datasets: [{
-            data: bySt.map(x => x['건수']),
-            backgroundColor: ['#475569', '#0284C7', '#D97706', '#10B981', '#DC2626'],
-            borderWidth: 1
-          }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, cutout: '58%', plugins: { legend: { position: 'right' } } }
-      });
+        const bySt = cnh.by_status || [];
+        STATE.charts.cnhStatus = new Chart(document.getElementById('chart-cnh-status'), {
+          type: 'doughnut',
+          data: {
+            labels: bySt.map(x => x['상태']),
+            datasets: [{
+              data: bySt.map(x => x['건수']),
+              backgroundColor: ['#475569', '#0284C7', '#D97706', '#10B981', '#DC2626'],
+              borderWidth: 1
+            }]
+          },
+          options: { responsive: true, maintainAspectRatio: false, cutout: '58%', plugins: { legend: { position: 'right' } } }
+        });
+      }
     }
 
     // =========================================================================
-    // [세부 3] 공정 및 배양 실시간 관제 (우유·발효유 생산 시작~종료 시간 최상단 도출 반영)
+    // [세부 4] 미생물 검사일보 전용 관제 뷰 (실시간 작업탭 + _이력DB_미생물 영구 조회)
+    // =========================================================================
+    function renderMicroReportView(vp, b) {
+      const mc = (b.process && b.process.micro) || { has_sheet: false, live_tabs: {}, hist_rows: [], total_db_cnt: 0 };
+      const liveTabs = mc.live_tabs || {};
+      const liveKeys = Object.keys(liveTabs);
+      if (liveKeys.length > 0 && !liveTabs[STATE.microLiveTab]) {
+        STATE.microLiveTab = liveKeys[0];
+      }
+      const curLive = liveTabs[STATE.microLiveTab] || null;
+
+      const histAll = mc.hist_rows || [];
+      const dtCol = STATE.microHistMode === 'insp' ? '검사일자_생산일' : '판정일자';
+      const allDates = [...new Set(histAll.map(r => r[dtCol]).filter(Boolean))].sort().reverse();
+      if (!allDates.includes(STATE.microHistDate) && allDates.length > 0) {
+        STATE.microHistDate = allDates[0];
+      }
+
+      let subHist = STATE.microKw
+        ? histAll.filter(r => Object.values(r).some(v => String(v).toLowerCase().includes(STATE.microKw.toLowerCase())))
+        : histAll.filter(r => r[dtCol] === STATE.microHistDate);
+
+      if (STATE.microHistCat !== 'ALL') {
+        subHist = subHist.filter(r => String(r['대분류'] || '').includes(STATE.microHistCat));
+      }
+
+      vp.innerHTML = `
+        ${subPageHeaderHtml('미생물 검사일보 실시간 관제 및 이력 DB', "'미생물 일보' 시트(일보작성 · 일요일_일보작성) 실시간 파싱 및 5분 자동저장 이력(_이력DB_미생물) 통합 조회")}
+
+        ${!mc.has_sheet ? `
+          <div class="qo-card p-6 mb-4 text-center text-xs text-amber-800 bg-amber-50 border-amber-200">
+            '미생물 일보' 구글 시트 연결을 확인 중입니다. 시트 제목이 <b>미생물 일보</b>인지, 또는 환경변수 <code>SHEET_URLS_JSON</code>에 <code>"process_micro"</code> 키가 등록되어 있는지 확인해 주세요.
+          </div>
+        ` : ''}
+
+        ${curLive ? `
+          <div class="qo-card p-4 mb-4 border-l-4 ${curLive.has_fail ? 'border-l-red-600' : (curLive.has_actual_input ? 'border-l-emerald-600' : 'border-l-amber-500')}">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div class="flex items-center gap-2">
+                ${liveKeys.map(tk => `
+                  <button onclick="STATE.microLiveTab='${esc(tk)}'; renderCurrentView();" class="px-3.5 py-1.5 rounded-lg text-xs font-bold border ${STATE.microLiveTab === tk ? 'bg-[#003378] text-white border-[#003378]' : 'bg-white text-gray-700 border-gray-200'}">
+                    ${tk === '일요일_일보작성' ? '📅 일요일 판정분 (일요일_일보작성)' : `🧪 당일 작업탭 (${esc(tk)})`}
+                  </button>
+                `).join('')}
+                <span class="badge-pill ${curLive.has_actual_input ? (curLive.has_fail ? 'badge-err' : 'badge-ok') : 'badge-warn'}">
+                  ${curLive.has_actual_input ? (curLive.has_fail ? '부적합 확인 필요' : '실측치 입력 · 적합') : '작업자 입력 대기중'}
+                </span>
+              </div>
+              <div class="flex flex-wrap items-center gap-2 text-xs font-bold text-gray-700">
+                <span class="px-2.5 py-1 rounded bg-slate-100">판정일: <b class="text-[#003378]">${esc(curLive.judge_date)} (${esc(curLive.day_kr)})</b></span>
+                <span class="px-2.5 py-1 rounded bg-blue-50 text-[#003378]">우유 생산·검사일: <b>${esc(curLive.milk_insp_date)}</b></span>
+                <span class="px-2.5 py-1 rounded bg-indigo-50 text-indigo-800">발효유 생산·검사일: <b>${esc(curLive.ferm_insp_date)}</b></span>
+                <span class="px-2.5 py-1 rounded bg-slate-100">판정자: ${esc(curLive.judge_person)}</span>
+              </div>
+            </div>
+
+            <div class="text-xs font-extrabold text-[#003378] mb-2">1. 카톤우유 Storage Tank 및 호기·라인 검사 요약</div>
+            <div class="mb-4">${renderDynamicRecordsTable(curLive.carton_summary)}</div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
+                <div class="text-xs font-extrabold text-[#003378] mb-2">2-좌. 병우유 · 유크림 · 두유액 실측 현황</div>
+                ${renderDynamicRecordsTable(curLive.bottle_rows)}
+              </div>
+              <div>
+                <div class="text-xs font-extrabold text-[#003378] mb-2">2-우. OEM 제품 · 발효유 · 호상요구르트 실측 현황</div>
+                ${renderDynamicRecordsTable(curLive.oem_ferm_rows)}
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- 누적 이력 DB 조회 섹션 -->
+        <div class="qo-card p-4 mb-6 border-t-4 border-t-[#003378]">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div>
+              <div class="text-sm font-extrabold text-gray-900">[누적 이력 DB] 미생물 검사일보 날짜별 · 품목별 조회 (총 ${fmtNum(mc.total_db_cnt)}건)</div>
+              <div class="text-xs text-gray-500">5분마다 자동 백업된 [_이력DB_미생물] 기록을 판정일 또는 실제 생산·검사일 기준으로 영구 조회합니다.</div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <select onchange="STATE.microHistMode=this.value; STATE.microHistDate=''; renderCurrentView();" class="px-2.5 py-1.5 text-xs font-bold border border-gray-300 rounded-lg bg-white">
+                <option value="judge" ${STATE.microHistMode === 'judge' ? 'selected' : ''}>판정일자 기준</option>
+                <option value="insp" ${STATE.microHistMode === 'insp' ? 'selected' : ''}>생산·검사일 기준</option>
+              </select>
+              ${allDates.length > 0 ? `
+                <select onchange="STATE.microHistDate=this.value; STATE.microKw=''; renderCurrentView();" class="px-3 py-1.5 text-xs font-bold border border-gray-300 rounded-lg bg-white">
+                  ${allDates.map(d => `<option value="${esc(d)}" ${d === STATE.microHistDate ? 'selected' : ''}>${esc(d)}</option>`).join('')}
+                </select>
+              ` : ''}
+              <select onchange="STATE.microHistCat=this.value; renderCurrentView();" class="px-2.5 py-1.5 text-xs font-bold border border-gray-300 rounded-lg bg-white">
+                <option value="ALL" ${STATE.microHistCat === 'ALL' ? 'selected' : ''}>분류: 전체</option>
+                <option value="카톤우유" ${STATE.microHistCat === '카톤우유' ? 'selected' : ''}>1. 카톤우유</option>
+                <option value="병우유" ${STATE.microHistCat === '병우유' ? 'selected' : ''}>2. 병우유·원액</option>
+                <option value="OEM" ${STATE.microHistCat === 'OEM' ? 'selected' : ''}>2. OEM·기타</option>
+                <option value="발효유" ${STATE.microHistCat === '발효유' ? 'selected' : ''}>3. 발효유·호상</option>
+              </select>
+              <input type="text" value="${esc(STATE.microKw)}" placeholder="전체 날짜 품목·Tank 검색(Enter)..."
+                onkeydown="if(event.key==='Enter'){STATE.microKw=this.value.trim(); renderCurrentView();}"
+                class="w-52 px-3 py-1.5 text-xs border border-gray-300 rounded-lg" />
+            </div>
+          </div>
+          ${renderDynamicRecordsTable(subHist, ['고유키', '저장일시'])}
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // [세부 5] 공정 및 배양 실시간 관제
     // =========================================================================
     function renderProcessDetailView(vp, b) {
       const p = b.process;
@@ -1898,7 +2193,6 @@
         if (!allDates.includes(STATE.dairyHistDate) && allDates.length > 0) STATE.dairyHistDate = allDates[0];
 
         const subDp = dhp.filter(r => r['생산일자'] === STATE.dairyHistDate && (STATE.dairyHistLine === 'ALL' || String(r['라인구분'] || '').includes(STATE.dairyHistLine)));
-        // 누적 이력에서 생산시간은 최상단 배너로 분리하고, 아래 테이블에는 CCP·특이사항만 깔끔하게 표시
         const subDc = dhc.filter(r =>
           r['생산일자'] === STATE.dairyHistDate &&
           (STATE.dairyHistLine === 'ALL' || String(r['라인구분'] || '').includes(STATE.dairyHistLine)) &&
@@ -1922,7 +2216,6 @@
               </label>
             </div>
 
-            <!-- [요청 반영] 금일 포장기별 생산 시작 ~ 종료 시간 최상단 도출 -->
             ${renderDairyRunTimesBanner(curRunTimes, `금일 [${isFerm ? '발효유' : '우유'}] 라인 가동 현황 (${curDateLabel})`)}
 
             ${curPack.length === 0
@@ -1950,7 +2243,6 @@
               </div>
             </div>
 
-            <!-- [요청 반영] 지난 이력에서도 포장기별 생산 시작 ~ 종료 시간 최상단 도출 -->
             ${renderDairyRunTimesBanner(shownHistTimes, `[${STATE.dairyHistDate || '-'}] 지난 작업일 포장기별 가동 시간`)}
 
             <div class="text-xs font-bold text-gray-800 mb-2">생산 품목 · 확인시간 · 표기 소비기한 내역</div>
@@ -2046,141 +2338,19 @@
 
       vp.innerHTML = `
         ${subPageHeaderHtml('공정 및 배양 실시간 관제', '당일 실시간 현장 일보 모니터링(생산 시작~종료 시간 최상단 도출) 및 영구 보존 이력 DB 조회')}
-        <div class="flex border-b border-gray-200 mb-4 gap-2">
+        <div class="flex flex-wrap border-b border-gray-200 mb-4 gap-2">
           <button onclick="STATE.procTab='rt'; renderCurrentView();" class="subtab-btn ${tab === 'rt' ? 'active' : ''}">[상온] 상온제품 공정 관리 일보</button>
           <button onclick="STATE.procTab='dairy'; renderCurrentView();" class="subtab-btn ${tab === 'dairy' ? 'active' : ''}">[우유/발효유] 유제품 포장 공정관리 일보</button>
           <button onclick="STATE.procTab='soy'; renderCurrentView();" class="subtab-btn ${tab === 'soy' ? 'active' : ''}">[상온] 두유 배양검사 일보</button>
-          <button onclick="navigate('lot_trace')" class="subtab-btn text-[#003378]">생산이력 · LOT 역추적 바로가기 ›</button>
+          <button onclick="navigate('micro_report')" class="subtab-btn text-emerald-700">🧪 미생물 검사일보 바로가기 ›</button>
+          <button onclick="navigate('claim_nc_hist', {cnhMainTab:'lot'})" class="subtab-btn text-[#003378]">🔍 LOT 역추적 바로가기 ›</button>
         </div>
         ${content}
       `;
     }
 
     // =========================================================================
-    // [세부 4] 생산이력 · LOT 역추적
-    // =========================================================================
-    async function executeLotTraceSearch() {
-      const prodEl = document.getElementById('lot-sel-prod');
-      const expEl = document.getElementById('lot-in-exp');
-      const kwEl = document.getElementById('lot-in-kw');
-
-      if (prodEl) STATE.lotQuery.product = prodEl.value;
-      if (expEl) STATE.lotQuery.exp = expEl.value.trim();
-      if (kwEl) STATE.lotQuery.kw = kwEl.value.trim();
-
-      if (STATE.lotQuery.product === 'ALL' && !STATE.lotQuery.exp && !STATE.lotQuery.kw) {
-        showToast('제품명을 선택하거나 소비기한/키워드를 입력해 주세요.', true);
-        return;
-      }
-
-      STATE.lotQuery.loading = true;
-      renderCurrentView();
-
-      try {
-        const params = new URLSearchParams({
-          product: STATE.lotQuery.product === 'ALL' ? '' : STATE.lotQuery.product,
-          exp: STATE.lotQuery.exp,
-          kw: STATE.lotQuery.kw
-        });
-        const res = await fetch(`/api/lot-trace?${params.toString()}`);
-        STATE.lotQuery.result = await res.json();
-      } catch (e) {
-        showToast('로트 역추적 조회 중 오류가 발생했습니다.', true);
-      } finally {
-        STATE.lotQuery.loading = false;
-        renderCurrentView();
-      }
-    }
-
-    function renderLotTraceView(vp, b) {
-      const p = b.process;
-      const prods = p.master_products || [];
-      const q = STATE.lotQuery;
-      const res = q.result;
-
-      let resHtml = '';
-      if (q.loading) {
-        resHtml = '<div class="qo-card p-8 text-center text-xs font-bold text-[#003378]">상온 · 배양 · 유제품 누적 이력 DB를 교차 추적 중입니다...</div>';
-      } else if (res && res.ok) {
-        const total = (res.counts.rt || 0) + (res.counts.soy || 0) + (res.counts.dairy || 0);
-        if (total === 0) {
-          resHtml = '<div class="qo-card p-6 text-center text-xs text-amber-800 bg-amber-50 border-amber-200">일치하는 생산·배양 이력이 발견되지 않았습니다. 소비기한을 월.일(예: 05.13) 형태로 줄이거나 키워드로 검색해 보세요.</div>';
-        } else {
-          resHtml = `
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-              <div class="qo-card p-3.5"><div class="text-xs text-gray-500">상온 공정일보 매칭</div><div class="text-xl font-extrabold text-[#003378] mt-1">${res.counts.rt} 건</div></div>
-              <div class="qo-card p-3.5"><div class="text-xs text-gray-500">두유 배양검사 매칭 (실가동시간)</div><div class="text-xl font-extrabold text-emerald-700 mt-1">${res.counts.soy} 건</div></div>
-              <div class="qo-card p-3.5"><div class="text-xs text-gray-500">유제품 포장일보 매칭</div><div class="text-xl font-extrabold text-indigo-700 mt-1">${res.counts.dairy} 건</div></div>
-            </div>
-
-            ${(res.matched_rt || []).length > 0 ? `
-              <div class="qo-card p-4 mb-4">
-                <div class="text-sm font-bold text-gray-900 mb-2.5">1. 상온 공정관리 일보 — 생산호기 · 멸균 CCP · 당일 특이사항</div>
-                ${renderDynamicRecordsTable(res.matched_rt, ['최종백업일시', '표준소비기한_검색용'])}
-                ${(res.matched_rt_ccp || []).length > 0 ? `
-                  <details class="mt-3">
-                    <summary class="cursor-pointer text-xs font-bold text-[#003378]">해당 생산일 멸균기(CCP-1B/2P) · 포장기(CCP-3B) 세부 기록 전체 보기 (${res.matched_rt_ccp.length}건)</summary>
-                    <div class="mt-2">${renderDynamicRecordsTable(res.matched_rt_ccp, ['최종백업일시'])}</div>
-                  </details>
-                ` : ''}
-              </div>
-            ` : ''}
-
-            ${(res.matched_soy || []).length > 0 ? `
-              <div class="qo-card p-4 mb-4">
-                <div class="text-sm font-bold text-gray-900 mb-2.5">2. 두유 배양검사 일보 — 실 생산 시작~종료 시간(실가동시간) · 오염수량 · 판정</div>
-                ${renderDynamicRecordsTable(res.matched_soy, ['최종백업일시', '표준소비기한_검색용'])}
-              </div>
-            ` : ''}
-
-            ${(res.matched_dairy || []).length > 0 ? `
-              <div class="qo-card p-4 mb-6">
-                <div class="text-sm font-bold text-gray-900 mb-2.5">3. 유제품 포장 공정관리 일보 — 포장생산시간 · 확인시간 · Tank · 살균기 CCP</div>
-                ${renderDynamicRecordsTable(res.matched_dairy, ['최종백업일시', '표준소비기한_검색용'])}
-              </div>
-            ` : ''}
-          `;
-        }
-      } else {
-        resHtml = '<div class="qo-card p-6 text-center text-xs text-gray-500">위에서 제품명을 선택하거나 소비기한을 입력한 뒤 <b>[이력 역추적 실행]</b>을 눌러주세요.</div>';
-      }
-
-      vp.innerHTML = `
-        ${subPageHeaderHtml('생산이력 · 클레임 LOT 원스톱 역추적', `상온공정일보 '제품명 식품안전나라' A열(${fmtNum(p.fsk_products_cnt)}종) 및 전 공정 누적 이력 DB 자동 교차 검증`)}
-        <div class="qo-card p-4 mb-4 bg-gradient-to-r from-slate-50 to-blue-50/50 border-blue-200">
-          <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
-            <div class="lg:col-span-5">
-              <label class="block text-xs font-bold text-gray-700 mb-1">1. 제품명 선택 ('제품명 식품안전나라' A열 표준 연동)</label>
-              <select id="lot-sel-prod" class="w-full px-3 py-2 text-xs font-semibold border border-gray-300 rounded-lg bg-white">
-                <option value="ALL">전체 (제품 미선택 · 소비기한/키워드로 검색)</option>
-                ${prods.map(pr => `<option value="${esc(pr)}" ${q.product === pr ? 'selected' : ''}>${esc(pr)}</option>`).join('')}
-              </select>
-            </div>
-            <div class="lg:col-span-3">
-              <label class="block text-xs font-bold text-gray-700 mb-1">2. 소비기한 입력</label>
-              <input id="lot-in-exp" type="text" value="${esc(q.exp)}" placeholder="예: 2027-05-13, 27.05.13, 05.13"
-                onkeydown="if(event.key==='Enter') executeLotTraceSearch();"
-                class="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg bg-white" />
-            </div>
-            <div class="lg:col-span-2">
-              <label class="block text-xs font-bold text-gray-700 mb-1">3. 부분 품목 키워드</label>
-              <input id="lot-in-kw" type="text" value="${esc(q.kw)}" placeholder="예: 검은콩, 고칼슘"
-                onkeydown="if(event.key==='Enter') executeLotTraceSearch();"
-                class="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg bg-white" />
-            </div>
-            <div class="lg:col-span-2">
-              <button onclick="executeLotTraceSearch()" class="w-full py-2 px-4 rounded-lg btn-yonsei text-xs font-bold shadow-xs">
-                이력 역추적 실행
-              </button>
-            </div>
-          </div>
-        </div>
-        ${resHtml}
-      `;
-    }
-
-    // =========================================================================
-    // [세부 5] 표시사항 진행 현황 (전년 대비 업무량 분석 + 대표 표시사항 체크 기능)
+    // [세부 6] 표시사항 진행 현황 & 원자재 DB
     // =========================================================================
     function renderLabelStatusView(vp, b) {
       const lb = b.label_status;
@@ -2220,8 +2390,8 @@
         body = `
           <div class="qo-card p-3.5 mb-4 bg-blue-50/40 border-blue-200 flex flex-wrap items-center justify-between gap-3">
             <div class="text-xs text-gray-700">
-              • 좌측 <b>[대표 노출]</b>에 체크한 품목만 메인 통합 대시보드 심의 현황 칸에 집중 표시됩니다. (아무것도 체크하지 않으면 상위 5건이 자동 표시됩니다.)<br>
-              • 현재 부서별 검토 현황 : <b class="text-[#003378]">${esc(lb.rev_summary_line)}</b>
+              • 좌측 <b>[대표 노출]</b>에 체크한 품목만 메인 통합 대시보드 심의 현황 칸에 집중 표시됩니다. (구글 시트에 자동 저장되어 다음 날에도 유지됩니다.)<br>
+              • 현재 부서별 검토 현황 : <b class="text-[#003378]">총 ${lb.reviewing_cnt}건 (${esc(lb.rev_summary_line)})</b>
             </div>
             <button onclick="openLabelMemoModal()" class="px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold">표시사항 특이사항 메모 편집</button>
           </div>
@@ -2232,8 +2402,8 @@
               <table class="mon-table border-0">
                 <thead>
                   <tr>
-                    <th>대표 노출</th><th>문서번호</th><th>요청부서</th><th>품목 제목 (중복 부서명 정리됨)</th>
-                    <th>카테고리</th><th>생산처</th><th>포장재 유형</th><th>등록일자</th>
+                    <th>대표 노출</th><th>문서번호</th><th>요청부서</th><th>품목 제목</th>
+                    <th>카테고리</th><th>포장재 유형</th><th>등록일자</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2248,11 +2418,10 @@
                       <td class="text-center"><span class="badge-pill badge-info">${esc(r['요청부서'] || '미기입')}</span></td>
                       <td class="font-bold text-gray-900">${esc(r['_clean_title'] || r['제목'])}</td>
                       <td class="text-center">${esc(r['대분류(마케팅 카테고리)'] || '-')}</td>
-                      <td class="text-center">${esc(r['생산처'] || '-')}</td>
                       <td class="text-center">${esc(r['검토 포장재 유형'] || '-')}</td>
                       <td class="text-center whitespace-nowrap">${esc(r['등록일자'] || '-')}</td>
                     </tr>
-                  `).join('') : '<tr><td colspan="8" class="text-center py-6 text-xs text-gray-400">현재 검토중인 표시사항 품목이 없습니다.</td></tr>'}
+                  `).join('') : '<tr><td colspan="7" class="text-center py-6 text-xs text-gray-400">현재 검토중인 표시사항 품목이 없습니다.</td></tr>'}
                 </tbody>
               </table>
             </div>
@@ -2271,7 +2440,7 @@
         body = `
           <div class="qo-card p-4 mb-6">
             <div class="flex items-center justify-between gap-3 mb-3">
-              <input type="text" value="${esc(STATE.labelSearchKw)}" placeholder="품목 제목 · 요청부서 · 생산처 검색 후 Enter..."
+              <input type="text" value="${esc(STATE.labelSearchKw)}" placeholder="품목 제목 · 요청부서 · 포장재 검색 후 Enter..."
                 onkeydown="if(event.key==='Enter'){STATE.labelSearchKw=this.value; renderCurrentView();}"
                 class="w-full max-w-md px-3 py-1.5 text-xs border border-gray-300 rounded-lg" />
               <span class="text-xs font-bold text-gray-500">조회 ${fmtNum(filtered.length)}건</span>
@@ -2339,9 +2508,6 @@
       }
     }
 
-    // =========================================================================
-    // [세부 6] 원자재 표시사항 DB
-    // =========================================================================
     function renderRawDbView(vp, b) {
       const rw = b.raw_db;
       const kw = (STATE.rawSearchKw || '').toLowerCase();
@@ -2370,7 +2536,7 @@
     }
 
     // =========================================================================
-    // [세부 7] 협력업체 관리 (Lev.1~5 기준표 + 연세유업·연세생건·이롬 3블록 전수 표시)
+    // [세부 7] 협력업체 관리 & [세부 8] 심사점수 · 일정 관리
     // =========================================================================
     function renderSupplierView(vp, b) {
       const sup = b.supplier;
@@ -2405,31 +2571,13 @@
 
         ${STATE.supTab === 'kpi' ? `
           <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
-            <div class="qo-card p-3.5">
-              <div class="text-xs font-semibold text-gray-500">목표 수준 (Lev.1 기준)</div>
-              <div class="text-xl font-extrabold text-gray-900 mt-1">${sup.target_exec}% 이상</div>
-              <div class="text-[11px] text-gray-400 mt-1">배점 15점 과제</div>
-            </div>
-            <div class="qo-card p-3.5">
-              <div class="text-xs font-semibold text-gray-500">현재 종합 평가 점수</div>
-              <div class="text-xl font-extrabold text-[#003378] mt-1">${Number(sup.exec_rate).toFixed(2)}%</div>
-              <div class="mt-1"><span class="badge-pill ${sup.exec_rate >= sup.target_exec ? 'badge-ok' : 'badge-warn'}">현재 등급 : ${esc(sup.level_str)}</span></div>
-            </div>
-            <div class="qo-card p-3.5">
-              <div class="text-xs font-semibold text-gray-500">현장 방문점검 누적</div>
-              <div class="text-xl font-extrabold text-emerald-700 mt-1">${fmtNum(visitAll.length)} 개사</div>
-              <div class="text-[11px] text-gray-500 mt-1">유업 ${vc['연세유업'] || 0} · 생건 ${vc['연세생건'] || 0} · 이롬 ${vc['이롬'] || 0}</div>
-            </div>
-            <div class="qo-card p-3.5">
-              <div class="text-xs font-semibold text-gray-500">서류심사 실행률</div>
-              <div class="text-xl font-extrabold text-gray-900 mt-1">${sup.doc_exec_rate}%</div>
-              <div class="text-[11px] text-gray-500 mt-1">제출 ${sup.sub_cnt} / 대상 ${sup.total_cnt}개사</div>
-            </div>
+            <div class="qo-card p-3.5"><div class="text-xs font-semibold text-gray-500">목표 수준 (Lev.1 기준)</div><div class="text-xl font-extrabold text-gray-900 mt-1">${sup.target_exec}% 이상</div><div class="text-[11px] text-gray-400 mt-1">배점 15점 과제</div></div>
+            <div class="qo-card p-3.5"><div class="text-xs font-semibold text-gray-500">현재 종합 평가 점수</div><div class="text-xl font-extrabold text-[#003378] mt-1">${Number(sup.exec_rate).toFixed(2)}%</div><div class="mt-1"><span class="badge-pill ${sup.exec_rate >= sup.target_exec ? 'badge-ok' : 'badge-warn'}">현재 등급 : ${esc(sup.level_str)}</span></div></div>
+            <div class="qo-card p-3.5"><div class="text-xs font-semibold text-gray-500">현장 방문점검 누적</div><div class="text-xl font-extrabold text-emerald-700 mt-1">${fmtNum(visitAll.length)} 개사</div><div class="text-[11px] text-gray-500 mt-1">유업 ${vc['연세유업'] || 0} · 생건 ${vc['연세생건'] || 0} · 이롬 ${vc['이롬'] || 0}</div></div>
+            <div class="qo-card p-3.5"><div class="text-xs font-semibold text-gray-500">서류심사 실행률</div><div class="text-xl font-extrabold text-gray-900 mt-1">${sup.doc_exec_rate}%</div><div class="text-[11px] text-gray-500 mt-1">제출 ${sup.sub_cnt} / 대상 ${sup.total_cnt}개사</div></div>
           </div>
 
-          <div class="mb-4">
-            ${renderKpiCriteriaBox(ks.criteria, sup.level_str)}
-          </div>
+          <div class="mb-4">${renderKpiCriteriaBox(ks.criteria, sup.level_str)}</div>
 
           ${(ks.weight_rows || []).length > 0 ? `
             <div class="qo-card p-4 mb-4">
@@ -2476,9 +2624,6 @@
       `;
     }
 
-    // =========================================================================
-    // [세부 8] 심사점수 · 일정 관리 (심사점수 + 심사개선율 동시 표출 & '일정' 탭 통합)
-    // =========================================================================
     function renderAuditDetailView(vp, b) {
       const au = b.audit.summary;
       const scheds = b.audit.schedules || [];
@@ -2511,7 +2656,6 @@
         </div>
 
         ${STATE.auditTab === 'score' ? `
-          <!-- 상단 2대 핵심 지표 요약 카드: 심사점수 + 심사개선율 -->
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
             <div class="qo-card p-4 border-l-4 ${ak.score_actual >= ak.score_target ? 'border-l-emerald-600' : 'border-l-red-600'}">
               <div class="flex items-center justify-between">
@@ -2521,9 +2665,7 @@
                 </div>
                 <span class="badge-pill ${ak.score_actual >= ak.score_target ? 'badge-ok' : 'badge-err'} !text-sm !px-3 !py-1">${esc(ak.score_level || 'Lev.5')}</span>
               </div>
-              <div class="mt-3">
-                ${renderKpiCriteriaBox(ak.score_criteria, ak.score_level)}
-              </div>
+              <div class="mt-3">${renderKpiCriteriaBox(ak.score_criteria, ak.score_level)}</div>
             </div>
 
             <div class="qo-card p-4 border-l-4 ${ak.imp_actual >= ak.imp_target ? 'border-l-[#003378]' : 'border-l-amber-500'}">
@@ -2534,9 +2676,7 @@
                 </div>
                 <span class="badge-pill ${ak.imp_actual >= ak.imp_target ? 'badge-ok' : 'badge-warn'} !text-sm !px-3 !py-1">${esc(ak.imp_level || 'Lev.1')}</span>
               </div>
-              <div class="mt-3">
-                ${renderKpiCriteriaBox(ak.imp_criteria, ak.imp_level)}
-              </div>
+              <div class="mt-3">${renderKpiCriteriaBox(ak.imp_criteria, ak.imp_level)}</div>
             </div>
           </div>
 
@@ -2687,7 +2827,7 @@
     }
 
     // =========================================================================
-    // [세부 9] HACCP · 법적 RISK · 법규 D-Day ([고시]/[예고] + 실무 조치 요약 관리)
+    // [세부 9] HACCP · 법적 RISK · 법규 D-Day ('법규정보' ▸ [대시보드] 탭 양방향 연동)
     // =========================================================================
     function manualKpiEditorHtml(kpiKey, b) {
       const info = b.manual_kpis[kpiKey];
@@ -2733,7 +2873,7 @@
     }
 
     function renderFsHaccpRiskView(vp, b) {
-      const lw = b.law || { all_laws: [], active_cnt: 0, urgent_cnt: 0 };
+      const lw = b.law || { all_laws: [], active_cnt: 0, prep_1yr_cnt: 0 };
       const allLaws = lw.all_laws || [];
       const tabNames = ['전체', ...new Set(allLaws.map(x => x['탭구분']).filter(Boolean))];
 
@@ -2751,9 +2891,9 @@
       }
 
       vp.innerHTML = `
-        ${subPageHeaderHtml('HACCP 강화 · 법적 RISK · 식품 법규 D-Day 관리', "'법규정보' 시트 연동 — [고시]/[예고] 구분, 실무 필요조치 요약 편집 및 대시보드 노출 선별")}
+        ${subPageHeaderHtml('HACCP 강화 · 법적 RISK · 식품 법규 D-Day 관리', "'법규정보' 시트의 [대시보드] 탭과 1:1 양방향 저장 — 체크 시 추가되고 체크 해제 시 즉시 삭제됩니다.")}
         <div class="flex border-b border-gray-200 mb-4 gap-2">
-          <button onclick="STATE.fsTab='law_dday'; renderCurrentView();" class="subtab-btn ${STATE.fsTab === 'law_dday' ? 'active' : ''}">식품 법규 개정 · D-Day 선별 관리 (노출 ${lw.active_cnt}건)</button>
+          <button onclick="STATE.fsTab='law_dday'; renderCurrentView();" class="subtab-btn ${STATE.fsTab === 'law_dday' ? 'active' : ''}">식품 법규 개정 · D-Day 선별 관리 ([대시보드] 탭 ${lw.active_cnt}건)</button>
           <button onclick="STATE.fsTab='kpi_8'; renderCurrentView();" class="subtab-btn ${STATE.fsTab === 'kpi_8' ? 'active' : ''}">3. 식품안전 및 HACCP 강화</button>
           <button onclick="STATE.fsTab='kpi_12'; renderCurrentView();" class="subtab-btn ${STATE.fsTab === 'kpi_12' ? 'active' : ''}">8. 식품안전 법적 RISK 최소화</button>
         </div>
@@ -2761,12 +2901,12 @@
         ${STATE.fsTab === 'law_dday' ? `
           <div class="qo-card p-3.5 mb-4 bg-blue-50/40 border-blue-200 flex flex-wrap items-center justify-between gap-3">
             <div class="text-xs text-gray-700">
-              • 좌측 <b>[대시보드 노출]</b>을 체크/해제하여 메인 화면 D-Day 목록에 넣거나 뺄 수 있습니다.<br>
-              • 법규명을 클릭하면 <b>AI 자동 실무 조치 요약 문구</b>를 당사 상황에 맞게 직접 수정해 저장할 수 있습니다.
+              • 좌측 <b>[대시보드 노출]</b>을 체크하면 <b>법규정보 시트의 [대시보드] 탭</b>에 즉시 저장되고, 체크를 해제하면 탭에서 즉시 삭제되어 다음 날 켜도 그대로 유지됩니다.<br>
+              • 불용자재 방지를 위해 <b>시행 1년 전(D-365 이내)</b> 법규에는 <span class="font-bold text-amber-800">[불용방지 준비구간(1년내)]</span> 배지가 자동 표시됩니다.
             </div>
             <div class="flex items-center gap-2">
-              <span class="badge-pill badge-info">현재 메인 노출 ${lw.active_cnt}건</span>
-              <span class="badge-pill ${lw.urgent_cnt > 0 ? 'badge-warn' : 'badge-ok'}">60일 이내 미반영 ${lw.urgent_cnt}건</span>
+              <span class="badge-pill badge-info">[대시보드] 탭 저장 ${lw.active_cnt}건</span>
+              <span class="badge-pill ${lw.prep_1yr_cnt > 0 ? 'badge-warn' : 'badge-ok'}">1년내 준비대상 ${lw.prep_1yr_cnt}건</span>
             </div>
           </div>
 
@@ -2782,7 +2922,7 @@
                 </label>
               </div>
               <div class="flex items-center gap-2">
-                <input type="text" value="${esc(STATE.lawKw)}" placeholder="법규명 · 조치내용 · 관련부서 검색 후 Enter..."
+                <input type="text" value="${esc(STATE.lawKw)}" placeholder="법규명 · 핵심내용 · 관련부서 검색 후 Enter..."
                   onkeydown="if(event.key==='Enter'){STATE.lawKw=this.value; renderCurrentView();}"
                   class="w-64 sm:w-80 px-3 py-1.5 text-xs border border-gray-300 rounded-lg" />
                 <span class="text-xs font-bold text-gray-500">총 ${fmtNum(filteredLaws.length)}건</span>
@@ -2793,13 +2933,13 @@
               <table class="mon-table border-0">
                 <thead>
                   <tr>
-                    <th>대시보드 노출</th><th>부자재 준비상태</th><th>구분</th><th>D-Day</th><th>시행일</th>
-                    <th>법규명</th><th>당사 필요 조치 요약 (클릭 시 원문·문구 수정)</th><th>당사관련부서</th>
+                    <th>대시보드 노출</th><th>부자재 준비상태</th><th>구분</th><th>D-Day</th><th>불용방지 시점(1년기준)</th><th>시행일</th>
+                    <th>법규명</th><th>개정 핵심 내용 요약 (클릭 시 원문·문구 수정)</th><th>관련부서</th>
                   </tr>
                 </thead>
                 <tbody>
                   ${filteredLaws.map(item => `
-                    <tr class="${item.show_on_dashboard ? 'bg-blue-50/25' : ''}">
+                    <tr class="${item.show_on_dashboard ? 'bg-blue-50/30' : ''}">
                       <td class="text-center">
                         <input type="checkbox" ${item.show_on_dashboard ? 'checked' : ''}
                           onchange="toggleLawDashboardShow('${esc(item.law_id)}', this.checked)"
@@ -2811,10 +2951,9 @@
                           ${['검토전', '부자재변경중', '반영완료'].map(p => `<option value="${p}" ${item.prep_status === p ? 'selected' : ''}>${p}</option>`).join('')}
                         </select>
                       </td>
-                      <td class="text-center">
-                        <span class="badge-pill ${item['법규단계'] === '예고' ? 'badge-purple' : 'badge-info'}">${esc(item['법규단계'])}</span>
-                      </td>
+                      <td class="text-center"><span class="badge-pill ${item['법규단계'] === '예고' ? 'badge-purple' : 'badge-info'}">${esc(item['법규단계'])}</span></td>
                       <td class="text-center"><span class="badge-pill ${esc(item.d_day_cls)}">${esc(item.d_day_label)}</span></td>
+                      <td class="text-center"><span class="badge-pill ${esc(item.prep_timing_cls)}">${esc(item.prep_timing_tag)}</span></td>
                       <td class="text-center whitespace-nowrap font-semibold">${esc(item.시행일)}</td>
                       <td onclick="openLawDetailModal('${esc(item.law_id)}')" class="font-bold text-[#003378] hover:underline cursor-pointer max-w-[220px]">${esc(item.법규명)}</td>
                       <td onclick="openLawDetailModal('${esc(item.law_id)}')" class="cursor-pointer max-w-[320px] text-gray-800 font-medium">${esc(item['실무조치요약'])}</td>
@@ -2841,7 +2980,7 @@
     }
 
     // =========================================================================
-    // 0.05초 낙관적 화면 선반영(Optimistic UI) & 초고속 단독 시트 직통 저장 액션
+    // 낙관적 화면 선반영(Optimistic UI) & 구글 시트 직통 저장 액션
     // =========================================================================
     function computeOptimisticAuditSummary(schedList, todayStr) {
       if (!schedList || !schedList.length) {
@@ -2983,7 +3122,6 @@
       }
     }
 
-    // 대표 표시사항 체크/해제 액션
     async function toggleLabelPin(itemKey, isPinned) {
       const lb = STATE.bundle.label_status;
       (lb.reviewing_list || []).forEach(r => {
@@ -2991,9 +3129,9 @@
       });
       const pinnedOnly = (lb.reviewing_list || []).filter(x => x._pinned);
       lb.has_manual_pins = pinnedOnly.length > 0;
-      lb.featured_reviewing = pinnedOnly.length > 0 ? pinnedOnly : (lb.reviewing_list || []).slice(0, 5);
+      lb.featured_reviewing = pinnedOnly.length > 0 ? pinnedOnly : (lb.reviewing_list || []).slice(0, 6);
       renderCurrentView();
-      showToast(isPinned ? '대표 표시사항으로 대시보드에 노출됩니다.' : '대표 표시사항 체크가 해제되었습니다.');
+      showToast(isPinned ? '대표 표시사항으로 대시보드에 저장되었습니다.' : '대표 표시사항 체크가 해제되었습니다.');
 
       try {
         const res = await fetch('/api/label-pin', {
@@ -3012,7 +3150,7 @@
       }
     }
 
-    // 법규 D-Day 노출 · 준비상태 · 실무 필요조치 1줄 요약 편집 모달
+    // 법규 상세 모달 ('법규정보' 시트의 [대시보드] 탭 연동)
     function openLawDetailModal(lawId) {
       const all = (STATE.bundle && STATE.bundle.law && STATE.bundle.law.all_laws) || [];
       const item = all.find(x => x.law_id === lawId);
@@ -3020,30 +3158,30 @@
 
       const stageCls = item['법규단계'] === '예고' ? 'badge-purple' : 'badge-info';
       openModal(`[${item['법규단계']} · ${item.탭구분}] ${item.법규명}`, `
-        <div class="flex flex-wrap items-center gap-2 mb-3">
+        <div class="flex flex-wrap items-center gap-1.5 mb-3">
           <span class="badge-pill ${stageCls}">${esc(item['법규단계'])}</span>
           <span class="badge-pill ${esc(item.d_day_cls)}">${esc(item.d_day_label)}</span>
-          <span class="badge-pill badge-neutral">고시/예고일: ${esc(item.고시_예고일)}</span>
+          <span class="badge-pill ${esc(item.prep_timing_cls)}">${esc(item.prep_timing_tag)}</span>
           <span class="badge-pill badge-info">시행일: ${esc(item.시행일)}</span>
           <span class="badge-pill badge-neutral">관련부서: ${esc(item.당사관련부서)}</span>
         </div>
 
         <div class="mb-3 p-3 rounded-lg bg-blue-50/60 border border-blue-200">
           <div class="flex items-center justify-between mb-1">
-            <label class="text-xs font-extrabold text-[#003378]">대시보드 표출용 '당사 필요 조치' 1줄 요약 (직접 수정 가능)</label>
-            <button onclick="document.getElementById('mdl-law-sum').value='${esc(item.자동조치요약)}'" class="text-[11px] font-bold text-gray-500 hover:text-[#003378]">AI 기본문구로 초기화</button>
+            <label class="text-xs font-extrabold text-[#003378]">대시보드 표출용 '개정 핵심 내용' 1줄 요약 (직접 수정 시 시트 [대시보드] 탭에 저장)</label>
+            <button onclick="document.getElementById('mdl-law-sum').value='${esc(item.자동조치요약)}'" class="text-[11px] font-bold text-gray-500 hover:text-[#003378]">기본 요약으로 복원</button>
           </div>
           <input id="mdl-law-sum" type="text" value="${esc(item['실무조치요약'] || '')}"
-            placeholder="예: 개정고시 반영 — 대두 함유 품목 GMO 표시기준 확인 필요"
+            placeholder="예: 알레르기 유발물질 표시대상에 캐슈넛·피스타치오·참깨 신규 확대"
             class="w-full px-3 py-1.5 text-xs font-semibold border border-blue-300 rounded bg-white focus:outline-none focus:border-[#003378]" />
         </div>
 
         <div class="grid grid-cols-2 gap-3 p-3 rounded-lg bg-gray-50 border border-gray-200 mb-3">
           <div>
-            <label class="block text-[11px] font-bold text-gray-700 mb-1">메인 대시보드 D-Day 노출</label>
+            <label class="block text-[11px] font-bold text-gray-700 mb-1">'법규정보' 시트 [대시보드] 탭 저장 여부</label>
             <select id="mdl-law-show" class="w-full px-2.5 py-1.5 text-xs font-bold border border-gray-300 rounded bg-white">
-              <option value="Pin" ${item.show_on_dashboard ? 'selected' : ''}>대시보드에 노출 (ON)</option>
-              <option value="Hide" ${!item.show_on_dashboard ? 'selected' : ''}>대시보드에서 제외 (OFF)</option>
+              <option value="Pin" ${item.show_on_dashboard ? 'selected' : ''}>대시보드 노출 ([대시보드] 탭 저장)</option>
+              <option value="Hide" ${!item.show_on_dashboard ? 'selected' : ''}>대시보드 제외 ([대시보드] 탭에서 삭제)</option>
             </select>
           </div>
           <div>
@@ -3059,7 +3197,7 @@
 
         <div class="flex justify-end gap-2">
           <button onclick="closeModal()" class="px-3.5 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600">닫기</button>
-          <button onclick="saveLawPrefFromModal('${esc(item.law_id)}', this)" class="px-4 py-1.5 rounded-lg btn-yonsei text-xs font-bold">설정 및 요약 저장</button>
+          <button onclick="saveLawPrefFromModal('${esc(item.law_id)}', this)" class="px-4 py-1.5 rounded-lg btn-yonsei text-xs font-bold">시트 [대시보드] 탭에 저장</button>
         </div>
       `);
     }
@@ -3068,7 +3206,7 @@
       const modeVal = document.getElementById('mdl-law-show').value;
       const prepVal = document.getElementById('mdl-law-prep').value;
       const sumVal = document.getElementById('mdl-law-sum').value.trim();
-      const restoreBtn = setButtonBusy(btnEl, '저장 중...');
+      const restoreBtn = setButtonBusy(btnEl, '시트 반영 중...');
       await updateLawPrefCore(lawId, modeVal, prepVal, sumVal);
       restoreBtn();
       closeModal();
@@ -3095,9 +3233,9 @@
       });
       lw.dashboard_laws = (lw.all_laws || []).filter(x => x.show_on_dashboard).sort((a, z) => (a._sort_k || 0) - (z._sort_k || 0));
       lw.active_cnt = lw.dashboard_laws.length;
-      lw.urgent_cnt = lw.dashboard_laws.filter(x => x.d_day !== null && x.d_day >= 0 && x.d_day <= 60 && x.prep_status !== '반영완료').length;
+      lw.prep_1yr_cnt = lw.dashboard_laws.filter(x => x.d_day !== null && x.d_day >= 0 && x.d_day <= 365 && x.prep_status !== '반영완료').length;
       renderCurrentView();
-      showToast('법규 D-Day 설정이 반영되었습니다.');
+      showToast(modeVal === 'Hide' ? "법규정보 [대시보드] 탭에서 제거되었습니다." : "법규정보 [대시보드] 탭에 저장되었습니다.");
 
       try {
         const payload = { law_id: lawId };
@@ -3117,7 +3255,7 @@
           renderCurrentView();
         }
       } catch (e) {
-        showToast('법규 설정 저장 실패', true);
+        showToast('법규 시트 저장 실패', true);
       }
     }
 
@@ -3152,9 +3290,9 @@
           <div class="grid grid-cols-3 gap-2.5">
             <div class="col-span-2">
               <label class="block text-xs font-bold text-gray-700 mb-1">제품명 (직접 입력 또는 검색어)</label>
-              <input id="cnh-prod" list="cnh-prod-list" placeholder="예: 연세 고칼슘 두유" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" />
+              <input id="cnh-prod" list="cnh-prod-list" placeholder="예: 더클래식우유, 연세 고칼슘 두유" class="w-full px-3 py-1.5 text-xs border border-gray-300 rounded-lg" />
               <datalist id="cnh-prod-list">
-                ${prods.slice(0, 120).map(p => `<option value="${esc(p)}"></option>`).join('')}
+                ${prods.slice(0, 150).map(p => `<option value="${esc(p)}"></option>`).join('')}
               </datalist>
             </div>
             <div>
@@ -3375,59 +3513,64 @@
       }
     }
 
-    // 미생물 출고 판정 & 표시사항 메모 모달
+    // 미생물 출고 판정 설정 모달 (시트 실시간 자동연동 vs 관리자 수동 지정)
     function openMicroStatusModal() {
-      const mc = (STATE.bundle && STATE.bundle.special_boards && STATE.bundle.special_boards.micro_status) || { status: '출고적합', note: '' };
-      openModal('금일 미생물 검사 결과 및 출고 적합성 판정', `
-        <p class="text-xs text-gray-500 mb-3">당일 완제품(우유 · 발효유 · 두유) 미생물 검사 진행 상태 및 출고 가능 여부를 기록하면 모닝 브리핑 우측 판정 카드에 즉시 반영됩니다.</p>
+      const mc = (STATE.bundle && STATE.bundle.special_boards && STATE.bundle.special_boards.micro_status) || { mode: '자동연동', status: '출고적합', note: '' };
+      const curChoice = mc.mode === '자동연동' ? '자동연동' : (mc.status || '출고적합');
+      openModal('미생물 결과 대시보드 표출 방식 설정', `
+        <p class="text-xs text-gray-500 mb-3">기본값인 <b>[시트 자동연동]</b>으로 두시면 '미생물 일보' 시트의 금일 입력 여부에 따라 <code>검사중</code> / <code>출고적합</code> / <code>재검·출고보류</code>가 자동 전환됩니다.</p>
         <div class="mb-3">
-          <label class="block text-xs font-bold text-gray-700 mb-1.5">출고 판정 상태 선택</label>
-          <div class="grid grid-cols-3 gap-2">
-            ${['출고적합', '검사중', '재검·출고보류'].map(st => `
+          <label class="block text-xs font-bold text-gray-700 mb-1.5">표출 모드 선택</label>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            ${['자동연동', '출고적합', '검사중', '재검·출고보류'].map(st => `
               <label class="cursor-pointer">
-                <input type="radio" name="micro-st-radio" value="${st}" ${mc.status === st ? 'checked' : ''} class="peer hidden" />
+                <input type="radio" name="micro-st-radio" value="${st}" ${curChoice === st ? 'checked' : ''} class="peer hidden" />
                 <div class="py-2 px-2 text-center rounded-lg border text-xs font-bold peer-checked:bg-[#003378] peer-checked:text-white peer-checked:border-[#003378] bg-gray-50 text-gray-700 border-gray-200 transition">
-                  ${st}
+                  ${st === '자동연동' ? '시트 자동연동' : st}
                 </div>
               </label>
             `).join('')}
           </div>
         </div>
         <div class="mb-4">
-          <label class="block text-xs font-bold text-gray-700 mb-1">세부 검사 메모 (품목 / 균수 / 특이사항)</label>
-          <input id="modal-micro-note" type="text" value="${esc(mc.note || '')}" placeholder="예: 전 품목 일반세균·대장균군 음성 (정상 출고)"
+          <label class="block text-xs font-bold text-gray-700 mb-1">수동 지정 시 표시할 메모 (시트 자동연동 선택 시에는 자동 요약문 표시)</label>
+          <input id="modal-micro-note" type="text" value="${esc(mc.mode === '수동지정' ? (mc.note || '') : '')}" placeholder="예: 전 품목 일반세균·대장균군 음성 (정상 출고)"
             class="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:border-[#003378]" />
         </div>
-        ${mc.updated_at ? `<div class="text-[11px] text-gray-400 mb-3">최근 저장 일시 : ${esc(mc.updated_at)}</div>` : ''}
-        <div class="flex justify-end gap-2">
-          <button onclick="closeModal()" class="px-3.5 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600">취소</button>
-          <button onclick="saveMicroStatusFromModal(this)" class="px-4 py-1.5 rounded-lg btn-yonsei text-xs font-bold">판정 즉시 저장</button>
+        <div class="flex justify-between items-center pt-1">
+          <button onclick="closeModal(); navigate('micro_report');" class="text-xs font-bold text-[#003378] hover:underline">미생물 검사일보 상세 화면 이동 ›</button>
+          <div class="flex gap-2">
+            <button onclick="closeModal()" class="px-3.5 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600">취소</button>
+            <button onclick="saveMicroStatusFromModal(this)" class="px-4 py-1.5 rounded-lg btn-yonsei text-xs font-bold">설정 저장</button>
+          </div>
         </div>
       `);
     }
 
     async function saveMicroStatusFromModal(btnEl) {
       const checked = document.querySelector('input[name="micro-st-radio"]:checked');
-      const statusVal = checked ? checked.value : '출고적합';
-      const noteVal = document.getElementById('modal-micro-note').value.trim() || '완제품 미생물 규격 적합 (출고 이상 없음)';
+      const picked = checked ? checked.value : '자동연동';
+      const noteVal = document.getElementById('modal-micro-note').value.trim();
       const restoreBtn = setButtonBusy(btnEl, '저장 중...');
 
-      STATE.bundle.special_boards.micro_status = { status: statusVal, note: noteVal, updated_at: '방금 전' };
+      const payloadObj = picked === '자동연동'
+        ? { mode: '자동연동', status: '출고적합', note: '' }
+        : { mode: '수동지정', status: picked, note: noteVal || '관리자 수동 판정 적용' };
+
       closeModal();
-      renderCurrentView();
 
       try {
         const res = await fetch('/api/special-boards', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ micro_status: { status: statusVal, note: noteVal } })
+          body: JSON.stringify({ micro_status: payloadObj })
         });
         const rj = await res.json();
         if (rj.ok) {
           STATE.bundle.special_boards = rj.special_boards;
           saveLocalBundleBackup(STATE.bundle);
           renderCurrentView();
-          showToast(`미생물 출고 판정이 '${statusVal}'(으)로 저장되었습니다.`);
+          showToast(picked === '자동연동' ? "'미생물 일보' 시트 실시간 자동연동으로 전환되었습니다." : `수동 판정('${picked}')이 저장되었습니다.`);
         }
       } catch (e) {
         showToast('저장 중 통신 오류가 발생했습니다.', true);
@@ -3530,7 +3673,7 @@
         case 'claim': renderClaimDetailView(vp, b); break;
         case 'claim_nc_hist': renderClaimNcHistoryView(vp, b); break;
         case 'process': renderProcessDetailView(vp, b); break;
-        case 'lot_trace': renderLotTraceView(vp, b); break;
+        case 'micro_report': renderMicroReportView(vp, b); break;
         case 'label_status': renderLabelStatusView(vp, b); break;
         case 'label_issue': renderRawDbView(vp, b); break;
         case 'supplier': renderSupplierView(vp, b); break;

@@ -1,6 +1,6 @@
 # ==============================================================================
 # [api/index.py - PART 1 / 2]
-# Q-Safety 백엔드 통합 API 엔진 (12개 구글 시트 실시간 동기화 + 직전 정상 데이터 보존)
+# Q-Safety 백엔드 통합 API 엔진 (시트 정밀 파싱 · 일정 통합 · 발효유 B열 & 가동시간 도출)
 # ==============================================================================
 import hashlib
 import json
@@ -26,7 +26,7 @@ from pydantic import BaseModel
 # ==============================================================================
 # 0. Vercel FastAPI 최상단 진입점(Entrypoint) 및 CORS 설정
 # ==============================================================================
-app = FastAPI(title="Q-Safety API", version="4.0.0")
+app = FastAPI(title="Q-Safety API", version="5.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -99,6 +99,7 @@ HIST_TABS = {
     "soy_inc": "_이력DB_두유배양"
 }
 
+AUDIT_SCHED_TAB = "일정"
 AUDIT_COLS = ["고유ID", "구분", "심사일자", "심사명", "진행현황", "점수", "비고", "수정일시"]
 MANUAL_KPI_TAB = "수동KPI_설정"
 MANUAL_KPI_COLS = [
@@ -106,6 +107,58 @@ MANUAL_KPI_COLS = [
     "target_num", "actual_num", "signal", "notes_title", "notes_joined", "updated_at"
 ]
 SPECIAL_BOARD_TAB = "대시보드_특이사항_보드"
+
+# 2026 식품안전팀 공식 KPI 5단계 등급 기준표
+KPI_LEVEL_CRITERIA = {
+    "supplier_exec": {
+        "kpi_name": "협력업체 AUDIT 실행",
+        "weight_pts": 15,
+        "formula": "연세유업 방문(40%) + 연세유업 서류(20%) + 연세생건 방문(20%) + 이롬 방문(20%)",
+        "prev_year": "86.3% (서류 81.34% · 방문 105.3% · 생건 68.8%)",
+        "levels": [
+            {"lv": "Lev.1", "std": "88.3% ↑", "min": 88.3},
+            {"lv": "Lev.2", "std": "87.3% ↑", "min": 87.3},
+            {"lv": "Lev.3", "std": "86.3% ↑", "min": 86.3},
+            {"lv": "Lev.4", "std": "85.3% ↑", "min": 85.3},
+            {"lv": "Lev.5", "std": "85.3% 미만", "min": -999.0}
+        ]
+    },
+    "audit_imp": {
+        "kpi_name": "심사 개선율",
+        "weight_pts": 10,
+        "formula": "개선건수 / 지적건수 × 100 (예산편성 미실행 과제는 지적 건수에서 제외)",
+        "prev_year": "93.5% (262건 / 280건)",
+        "levels": [
+            {"lv": "Lev.1", "std": "94.5% ↑", "min": 94.5},
+            {"lv": "Lev.2", "std": "94.0% ↑", "min": 94.0},
+            {"lv": "Lev.3", "std": "93.5% ↑", "min": 93.5},
+            {"lv": "Lev.4", "std": "93.0% ↑", "min": 93.0},
+            {"lv": "Lev.5", "std": "93.0% 미만", "min": -999.0}
+        ]
+    },
+    "audit_score": {
+        "kpi_name": "심사 점수 (통과시 90점)",
+        "weight_pts": 10,
+        "formula": "평균점수(70%) + 통과율(30%) / 5개 등급 환산: 1(95)·2(90)·3(85)·4(80)·5(70)",
+        "prev_year": "93.28점 (점수평균 63.28점 + 통과율 30점)",
+        "levels": [
+            {"lv": "Lev.1", "std": "94.28점 ↑", "min": 94.28},
+            {"lv": "Lev.2", "std": "93.78점 ↑", "min": 93.78},
+            {"lv": "Lev.3", "std": "93.28점 ↑", "min": 93.28},
+            {"lv": "Lev.4", "std": "92.78점 ↑", "min": 92.78},
+            {"lv": "Lev.5", "std": "92.78점 미만", "min": -999.0}
+        ]
+    }
+}
+
+
+def eval_kpi_level(val: float, crit_key: str) -> str:
+    lv_list = KPI_LEVEL_CRITERIA.get(crit_key, {}).get("levels", [])
+    for item in lv_list:
+        if val >= item["min"]:
+            return item["lv"]
+    return "Lev.5"
+
 
 DEFAULT_MANUAL_KPIS = {
     "kpi_8": {
@@ -172,10 +225,10 @@ DEFAULT_MANUAL_KPIS = {
         "no": "6",
         "title": "6. 협력업체 관리강화",
         "short_title": "6. 협력업체 관리",
-        "target_text": "실행률 88.3% 이상",
-        "actual_text": "92.10%",
+        "target_text": "88.3% 이상 (Lev.1)",
+        "actual_text": "92.10% (Lev.1)",
         "compact_val": "92.10%",
-        "sub_badge": "목표 88.3% 대비 Lev.1 달성",
+        "sub_badge": "목표 88.3%↑ 대비 Lev.1 달성",
         "target_num": 88.3,
         "actual_num": 92.1,
         "suffix": "%",
@@ -192,20 +245,20 @@ DEFAULT_MANUAL_KPIS = {
         "no": "7",
         "title": "7. 심사점수",
         "short_title": "7. 심사점수",
-        "target_text": "94.28점 이상",
-        "actual_text": "91.95점",
+        "target_text": "94.28점 이상 (Lev.1)",
+        "actual_text": "91.95점 (Lev.5)",
         "compact_val": "91.95점",
-        "sub_badge": "심사개선율 94.85% (목표 94.5%↑)",
+        "sub_badge": "클릭 시 심사개선율 · 수검이력 상세 조회",
         "target_num": 94.28,
         "actual_num": 91.95,
         "suffix": "",
         "unit_label": "(단위 : 점)",
         "signal": "red",
         "has_chart": True,
-        "notes_title": "외부심사 점수 및 개선율 관리 내역",
+        "notes_title": "외부심사 점수 관리 내역",
         "notes": [
-            "외부 고객사·인증기관 수검 점수(70%) 및 통과율(30%) 실시간 자동 반영",
-            "지적사항 개선 이행률(심사개선율) 상시 추적 관리"
+            "외부 고객사·인증기관 수검 점수평균(70%) 및 통과율(30%) 실시간 반영",
+            "상세 페이지에서 심사개선율 및 업체별 미개선 항목 통합 관리"
         ]
     },
     "kpi_12": {
@@ -244,7 +297,7 @@ DEFAULT_MICRO_STATUS = {
 
 
 # ==============================================================================
-# 2. 스레드 안전(Thread-Safe) Google 인증 · 일괄 조회(values_batch_get) 유틸리티
+# 2. 스레드 안전 Google 인증 · 일괄 조회(values_batch_get) 유틸리티
 # ==============================================================================
 _TOKEN_CACHE_LOCK = threading.Lock()
 _TOKEN_CACHE = {"access_token": "", "exp_ts": 0.0}
@@ -509,7 +562,7 @@ def clean_product_for_match(name: str) -> str:
         return ""
     s = str(name).strip()
     s = re.sub(r"\(\s*\d+(?:\.\d+)?\s*(?:mL|ml|ML|㎖|L|g|kg)\s*\)", "", s)
-    s = re.sub(r"(?<!\d)\d{2,4}\s*(?:mL|ml|ML|㎖)(?!\w)", "", s)
+    s = re.sub(r"(?<!\d)\d{2,4}\s*(?:mL|ml|ML|㎖|g)(?!\w)", "", s)
     s = re.sub(r"\s+1[0127]\d{3}\b", "", s)
     s = re.sub(r"[\s\(\)\[\]\{\}\-_·,/&\+!]+", "", s).lower()
     return s
@@ -839,7 +892,7 @@ def build_division_claim_summary(cat_list: list, year_str: str, division_categor
 
 
 # ==============================================================================
-# 4. [3] 3대 공정일보(상온 · 유제품 · 두유배양) 일괄 조회(values_batch_get) 파서
+# 4. [3] 3대 공정일보(상온 · 유제품 B열/생산시간 포함 · 두유배양) 정밀 파서
 # ==============================================================================
 def select_date_tab_titles(ws_titles: List[str]):
     today = now_kst()
@@ -848,7 +901,7 @@ def select_date_tab_titles(ws_titles: List[str]):
     date_tabs = []
     for raw_t in ws_titles:
         t = raw_t.strip()
-        if t.startswith("_이력DB_") or any(ex in t for ex in ["양식", "복사", "백업", "사본", "대기", "식품안전나라"]):
+        if t.startswith("_이력DB_") or any(ex in t for ex in ["양식", "복사", "백업", "사본", "대기", "예비", "샘플", "식품안전나라"]):
             continue
         m = re.match(r"^(\d{1,2})[/\.\-](\d{1,2})$", t)
         if m:
@@ -877,7 +930,7 @@ def select_date_tab_titles(ws_titles: List[str]):
         t_yest = ordered_titles[idx_t + 1] if idx_t + 1 < len(ordered_titles) else ordered_titles[0]
 
     if t_today is None and ws_titles:
-        non_db = [t for t in ws_titles if not t.strip().startswith("_이력DB_")]
+        non_db = [t for t in ws_titles if not t.strip().startswith("_이력DB_") and not any(ex in t for ex in ["복사", "양식", "사본", "백업"])]
         t_today = non_db[0] if non_db else ws_titles[0]
 
     return t_today, t_yest, ordered_titles
@@ -1270,11 +1323,39 @@ def parse_rt_process_rows(tab_title_raw: str, rows: list):
     }
 
 
+def calc_time_span_text(time_str: str) -> Tuple[str, str, str]:
+    """문자열 내 HH:MM 쌍을 추출하여 (시작시간, 종료시간, 실가동시간) 반환"""
+    times = re.findall(r"(\d{1,2}:\d{2})", str(time_str or ""))
+    if len(times) >= 2:
+        t_s, t_e = times[0], times[-1]
+        if t_s in ["00:00", "0:00"] and t_e in ["00:00", "0:00"]:
+            return "-", "-", "비가동"
+        m1 = re.match(r"(\d{1,2}):(\d{2})", t_s)
+        m2 = re.match(r"(\d{1,2}):(\d{2})", t_e)
+        if m1 and m2:
+            s_min = int(m1.group(1)) * 60 + int(m1.group(2))
+            e_min = int(m2.group(1)) * 60 + int(m2.group(2))
+            if e_min < s_min:
+                e_min += 24 * 60
+            diff = e_min - s_min
+            dur = f"{diff // 60}시간 {diff % 60:02d}분" if diff > 0 else "-"
+            return t_s, t_e, dur
+    elif len(times) == 1:
+        if times[0] not in ["00:00", "0:00"]:
+            return times[0], "진행중", "가동중"
+    return "-", "-", "비가동"
+
+
 def parse_dairy_pack_rows(tab_title_raw: str, rows: list, line_label: str):
+    """
+    우유(A열 시작) 및 발효유(A열 카테고리 + B열 품목 시작) 겸용 정밀 파서
+    + 포장기별 생산 시작 ~ 종료 시간 최상단 도출용 별도 추출
+    """
     if not rows:
-        return [], "-"
+        return [], [], "-"
+
     w_date = (tab_title_raw or "-").strip()
-    for r in rows[:5]:
+    for r in rows[:6]:
         joined = " ".join([str(c).strip() for c in r if str(c).strip()])
         m_dt = re.search(r"202\d[\.\-\s]+\d{1,2}[\.\-\s]+\d{1,2}", joined)
         if m_dt:
@@ -1282,69 +1363,168 @@ def parse_dairy_pack_rows(tab_title_raw: str, rows: list, line_label: str):
             break
 
     parsed_products = []
-    for r_idx, r in enumerate(rows):
-        first_cell = re.sub(r"\s+", "", str(r[0])) if len(r) > 0 else ""
-        if first_cell in ["제품명", "품목"]:
-            next_block_r = len(rows)
-            for nr in range(r_idx + 1, min(r_idx + 20, len(rows))):
-                nc = re.sub(r"\s+", "", str(rows[nr][0])) if len(rows[nr]) > 0 else ""
-                if nc in ["제품명", "품목", "생산시간", "CCP검증모니터링"]:
-                    next_block_r = nr
-                    break
+    run_times = []
+    current_cat = line_label
+    prod_time_sec_idx = -1
 
-            for col_i in range(1, len(r)):
-                p_name = re.sub(r"\s+", " ", str(r[col_i])).strip()
-                if not p_name or p_name in ["제 품 명", "제품명", "품 목", "품목"] or "특이사항" in p_name:
+    for r_idx, r in enumerate(rows):
+        c0_raw = str(r[0]).strip() if len(r) > 0 else ""
+        c1_raw = str(r[1]).strip() if len(r) > 1 else ""
+        c0 = re.sub(r"\s+", "", c0_raw)
+        c1 = re.sub(r"\s+", "", c1_raw)
+
+        if any(k in c0 for k in ["생산시간", "포장생산시간", "포장시간"]) or any(k in c1 for k in ["생산시간", "포장생산시간", "포장시간"]):
+            if prod_time_sec_idx < 0:
+                prod_time_sec_idx = r_idx
+
+        if c0 and c0 not in ["제품명", "품목", "생산시간", "CCP검증모니터링", "특이사항"] and ("발효유" in c0 or "우유" in c0 or "카톤" in c0 or "호상" in c0 or "병" in c0):
+            current_cat = re.sub(r"\s+", " ", c0_raw).strip()
+
+        lbl_col = -1
+        if c0 in ["제품명", "품목"]:
+            lbl_col = 0
+        elif c1 in ["제품명", "품목"]:
+            lbl_col = 1
+
+        if lbl_col < 0:
+            continue
+
+        next_block_r = len(rows)
+        for nr in range(r_idx + 1, min(r_idx + 24, len(rows))):
+            nc0 = re.sub(r"\s+", "", str(rows[nr][0])) if len(rows[nr]) > 0 else ""
+            nc1 = re.sub(r"\s+", "", str(rows[nr][1])) if len(rows[nr]) > 1 else ""
+            if nc0 in ["제품명", "품목", "생산시간", "포장시간", "CCP검증모니터링"] or nc1 in ["제품명", "품목", "생산시간", "포장시간", "CCP검증모니터링"]:
+                next_block_r = nr
+                break
+
+        for col_i in range(lbl_col + 1, len(r)):
+            p_name = re.sub(r"\s+", " ", str(r[col_i])).strip()
+            if not p_name or re.sub(r"\s+", "", p_name) in ["제품명", "품목"] or "특이사항" in p_name:
+                continue
+
+            vol_str, chk_time = "", "-"
+            exp_list = []
+            label_ok, top_ok, bot_ok, vol_ok, sens_ok = "-", "-", "-", "-", "-"
+
+            carry_lbl = ""
+            for sub_i, sub_r in enumerate(rows[r_idx + 1 : next_block_r]):
+                raw_lbl_c0 = re.sub(r"\s+", "", str(sub_r[0])) if len(sub_r) > 0 else ""
+                raw_lbl_c = re.sub(r"\s+", "", str(sub_r[lbl_col])) if len(sub_r) > lbl_col else ""
+                eff_lbl = raw_lbl_c or (raw_lbl_c0 if lbl_col == 0 else "")
+                if eff_lbl:
+                    carry_lbl = eff_lbl
+                row_lbl = eff_lbl or carry_lbl
+
+                val = str(sub_r[col_i]).strip() if col_i < len(sub_r) else ""
+                if not val:
                     continue
 
-                vol_str, chk_time = "", "-"
-                exp_list = []
-                label_ok, top_ok, bot_ok, vol_ok, sens_ok = "-", "-", "-", "-", "-"
-
-                for sub_r in rows[r_idx + 1 : next_block_r]:
-                    row_lbl = re.sub(r"\s+", "", str(sub_r[0])) if len(sub_r) > 0 else ""
-                    val = str(sub_r[col_i]).strip() if col_i < len(sub_r) else ""
-                    if not val:
-                        continue
-                    if "㎖" in val or "mL" in val:
-                        vol_str = val
-                    elif "확인시간" in row_lbl:
-                        chk_time = val
-                    elif any(k in row_lbl for k in ["소비기한", "Tank"]) or re.match(r"^\d{2}\.\d{2}[A-Z]?$", row_lbl):
-                        if val not in ["00.00", "-", "소비기한"] and "제조일로부터" not in val:
+                if sub_i == 0 and re.search(r"\d+\s*(?:㎖|mL|ml|L|g|kg)", val) and not re.search(r"\d{1,2}\.\d{1,2}", val):
+                    vol_str = val
+                elif "확인시간" in row_lbl:
+                    chk_time = val if chk_time == "-" else f"{chk_time} / {val}"
+                elif any(k in row_lbl for k in ["소비기한", "Tank", "유통기한"]) or re.match(r"^\d{2}\.\d{2}[A-Z]?$", row_lbl):
+                    if val not in ["00.00", "0.0", "-", "소비기한"] and "제조일로부터" not in val:
+                        if val not in exp_list:
                             exp_list.append(val)
-                    elif "표시사항" in row_lbl or "표기사항" in row_lbl:
-                        label_ok = val
-                    elif "상부접착" in row_lbl or "상/하부접착" in row_lbl:
-                        top_ok = val
-                        if "상/하부" in row_lbl:
-                            bot_ok = val
-                    elif "하부접착" in row_lbl:
+                elif "표시사항" in row_lbl or "표기사항" in row_lbl:
+                    label_ok = val
+                elif any(k in row_lbl for k in ["상부접착", "상/하부접착", "실링상태", "실링"]):
+                    top_ok = val
+                    if "상/하부" in row_lbl:
                         bot_ok = val
-                    elif "제품용량" in row_lbl:
-                        vol_ok = val
-                    elif "관능" in row_lbl:
-                        sens_ok = val
+                elif any(k in row_lbl for k in ["하부접착", "4본입", "수축라벨", "외포장"]):
+                    bot_ok = val if bot_ok == "-" else f"{bot_ok} / {val}"
+                elif "제품용량" in row_lbl or "내용량" in row_lbl:
+                    vol_ok = val
+                elif "관능" in row_lbl:
+                    sens_ok = val
 
-                exp_joined = ", ".join(dict.fromkeys(exp_list)) if exp_list else "-"
-                is_running = (exp_joined != "-") or (chk_time not in ["-", ""])
-                full_p_name = f"{p_name} ({vol_str})" if vol_str else p_name
+            exp_joined = ", ".join(exp_list) if exp_list else "-"
+            is_running = (exp_joined != "-") or (chk_time not in ["-", "", "00:00"])
+            full_p_name = f"{p_name} ({vol_str})" if vol_str else p_name
 
-                parsed_products.append({
-                    "라인구분": line_label,
-                    "작성일": w_date,
-                    "가동여부": "금일생산" if is_running else "미생산(00.00)",
-                    "제품명": full_p_name,
-                    "확인시간": chk_time,
-                    "표기 소비기한": exp_joined,
-                    "표시사항": label_ok,
-                    "상부접착": top_ok,
-                    "하부접착": bot_ok,
-                    "제품용량": vol_ok,
-                    "관능(5점법)": sens_ok
-                })
+            parsed_products.append({
+                "라인구분": current_cat,
+                "작성일": w_date,
+                "가동여부": "금일생산" if is_running else "미생산(00.00)",
+                "제품명": full_p_name,
+                "확인시간": chk_time,
+                "표기 소비기한": exp_joined,
+                "표시사항": label_ok,
+                "상부/실링": top_ok,
+                "하부/라벨": bot_ok,
+                "제품용량": vol_ok,
+                "관능(5점법)": sens_ok
+            })
 
-    return parsed_products, w_date
+    # 포장기별 생산시간 섹션 정밀 추출
+    if prod_time_sec_idx >= 0:
+        end_pt_idx = len(rows)
+        for nr in range(prod_time_sec_idx + 1, min(prod_time_sec_idx + 14, len(rows))):
+            nc = re.sub(r"\s+", "", "".join(str(x) for x in rows[nr][:3]))
+            if any(stop_k in nc for stop_k in ["CCP", "살균", "금속검출", "특이사항"]):
+                end_pt_idx = nr
+                break
+
+        pt_block = rows[prod_time_sec_idx : end_pt_idx]
+        seen_machines = set()
+
+        # 패턴 1: 가로 열 헤더에 호기명이 있고 바로 아래 행들에 시작/종료 시간이 있는 형태
+        for bi, br in enumerate(pt_block):
+            for ci, cell in enumerate(br):
+                cs = re.sub(r"\s+", " ", str(cell)).strip()
+                if not cs or re.sub(r"\s+", "", cs) in ["생산시간", "포장시간", "구분", "호기", "시작", "종료"]:
+                    continue
+                if any(mk in cs for mk in ["호기", "카톤", "병", "호상", "연팩", "로타리", "라인", "팩", "컵"]) and not re.search(r"\d{1,2}:\d{2}", cs):
+                    # 같은 행 우측 셀 또는 아래 1~2행 같은 열에서 시간 탐색
+                    below_vals = []
+                    for sub_b in pt_block[bi + 1 : min(bi + 4, len(pt_block))]:
+                        if ci < len(sub_b) and re.search(r"\d{1,2}:\d{2}", str(sub_b[ci])):
+                            below_vals.append(str(sub_b[ci]).strip())
+                    right_val = str(br[ci + 1]).strip() if (ci + 1 < len(br) and re.search(r"\d{1,2}:\d{2}", str(br[ci + 1]))) else ""
+
+                    raw_t_join = " ~ ".join(below_vals) if below_vals else right_val
+                    if raw_t_join or below_vals is not None:
+                        t_s, t_e, dur = calc_time_span_text(raw_t_join)
+                        if cs not in seen_machines and (t_s != "-" or right_val or below_vals):
+                            seen_machines.add(cs)
+                            run_times.append({
+                                "라인구분": line_label,
+                                "포장호기": cs,
+                                "생산 시작": t_s,
+                                "생산 종료": t_e,
+                                "시작~종료": f"{t_s} ~ {t_e}" if t_s != "-" else (raw_t_join or "비가동"),
+                                "실가동시간": dur,
+                                "가동상태": "가동" if t_s != "-" else "비가동"
+                            })
+
+    return parsed_products, run_times, w_date
+
+
+def extract_hist_dairy_run_times(dairy_hist_c: list, target_date: str, line_filter: str = "ALL") -> list:
+    """누적 이력 DB(_이력DB_유제품공정CCP)에서 포장기별 시작~종료 시간만 분리 추출"""
+    out = []
+    for r in dairy_hist_c:
+        if r.get("생산일자") != target_date:
+            continue
+        ln = r.get("라인구분", "")
+        if line_filter != "ALL" and ln != line_filter:
+            continue
+        if "생산시간" in str(r.get("기록분류", "")):
+            ho_nm = str(r.get("세부항목", "-")).strip()
+            raw_v = str(r.get("기록내용_수치", "-")).strip()
+            t_s, t_e, dur = calc_time_span_text(raw_v)
+            out.append({
+                "라인구분": ln,
+                "포장호기": ho_nm,
+                "생산 시작": t_s,
+                "생산 종료": t_e,
+                "시작~종료": f"{t_s} ~ {t_e}" if t_s != "-" else raw_v,
+                "실가동시간": dur,
+                "가동상태": "가동" if t_s != "-" else "비가동"
+            })
+    return out
 
 
 SOY_STOP_LABELS = {
@@ -1605,48 +1785,60 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
 
 
 def fetch_process_milk_sheet(sheet_urls_map: dict):
+    """
+    1순위: 탭 이름이 정확히 '우유' / '발효유'
+    2순위(복사용·양식·사본·백업·_이력DB_ 100% 차단): '우유'/'발효유'가 포함된 실제 활성 작업 탭
+    """
     sh_milk, err_milk = open_sheet_isolated(sheet_urls_map, "process_milk")
     if sh_milk is None:
-        return [], [], "-", "-", [], [], [], f"[유제품포장일보] {err_milk}"
+        return [], [], [], [], "-", "-", [], [], [], f"[유제품포장일보] {err_milk}"
     try:
         ws_all = api_call_with_retry(sh_milk.worksheets)
         ws_titles = [w.title for w in ws_all]
+        exclude_words = ["복사", "복사용", "양식", "사본", "백업", "대기", "예비", "샘플", "_이력DB_"]
 
-        t_m, t_f, t_m_tpl, t_f_tpl = None, None, None, None
-        for t in ws_titles:
-            wt = t.strip()
-            if wt == "우유":
-                t_m = t
-            elif wt == "발효유":
-                t_f = t
-            elif "우유" in wt and "복사용" in wt and t_m_tpl is None:
-                t_m_tpl = t
-            elif "발효유" in wt and "복사용" in wt and t_f_tpl is None:
-                t_f_tpl = t
+        t_m = next((t for t in ws_titles if t.strip() == "우유"), None)
+        t_f = next((t for t in ws_titles if t.strip() == "발효유"), None)
+
+        if t_m is None:
+            t_m = next((t for t in ws_titles if "우유" in t and "발효" not in t and not any(ex in t for ex in exclude_words)), None)
+        if t_f is None:
+            t_f = next((t for t in ws_titles if "발효유" in t and not any(ex in t for ex in exclude_words)), None)
+
+        t_m_tpl = next((t for t in ws_titles if "우유" in t and "복사용" in t), None)
+        t_f_tpl = next((t for t in ws_titles if "발효유" in t and "복사용" in t), None)
 
         t_dp = next((t for t in ws_titles if t.strip() == HIST_TABS["dairy_prod"]), None)
         t_dc = next((t for t in ws_titles if t.strip() == HIST_TABS["dairy_ccp"]), None)
 
         batch_map = batch_fetch_tabs(sh_milk, [t_m, t_f, t_m_tpl, t_f_tpl, t_dp, t_dc])
 
-        m_rows, m_dt = parse_dairy_pack_rows(t_m, batch_map.get(t_m, []), "우유") if t_m else ([], "-")
-        f_rows, f_dt = parse_dairy_pack_rows(t_f, batch_map.get(t_f, []), "발효유") if t_f else ([], "-")
+        m_rows, m_times, m_dt = parse_dairy_pack_rows(t_m, batch_map.get(t_m, []), "우유") if t_m else ([], [], "-")
+        f_rows, f_times, f_dt = parse_dairy_pack_rows(t_f, batch_map.get(t_f, []), "발효유") if t_f else ([], [], "-")
 
         dairy_hist_p = rows_to_records(batch_map.get(t_dp, [])) if t_dp else []
         dairy_hist_c = rows_to_records(batch_map.get(t_dc, [])) if t_dc else []
 
+        # 실시간 탭 생산시간이 비어있고 당일 누적 이력에 포장생산시간이 백업되어 있으면 자동 보완
+        m_date_obj = parse_date_obj(m_dt)
+        if not m_times and m_date_obj and dairy_hist_c:
+            m_times = extract_hist_dairy_run_times(dairy_hist_c, m_date_obj.strftime("%Y-%m-%d"), "우유")
+        f_date_obj = parse_date_obj(f_dt)
+        if not f_times and f_date_obj and dairy_hist_c:
+            f_times = extract_hist_dairy_run_times(dairy_hist_c, f_date_obj.strftime("%Y-%m-%d"), "발효유")
+
         dairy_prod_names = []
         for tpl_t, lbl in [(t_m or t_m_tpl, "우유"), (t_f or t_f_tpl, "발효유")]:
             if tpl_t:
-                tpl_list, _ = parse_dairy_pack_rows(tpl_t, batch_map.get(tpl_t, []), lbl)
+                tpl_list, _, _ = parse_dairy_pack_rows(tpl_t, batch_map.get(tpl_t, []), lbl)
                 for r in tpl_list:
                     p_clean = str(r.get("제품명", "")).strip()
                     if p_clean and p_clean != "-" and p_clean not in dairy_prod_names:
                         dairy_prod_names.append(p_clean)
 
-        return m_rows, f_rows, m_dt, f_dt, dairy_hist_p, dairy_hist_c, dairy_prod_names, None
+        return m_rows, f_rows, m_times, f_times, m_dt, f_dt, dairy_hist_p, dairy_hist_c, dairy_prod_names, None
     except Exception as e:
-        return [], [], "-", "-", [], [], [], f"[유제품포장일보] {e}"
+        return [], [], [], [], "-", "-", [], [], [], f"[유제품포장일보] {e}"
 
 
 def fetch_process_soy_sheet(sheet_urls_map: dict):
@@ -1689,11 +1881,11 @@ def fetch_process_soy_sheet(sheet_urls_map: dict):
 # ============================ [api/index.py - PART 1 / 2 끝] ============================
 # ==============================================================================
 # [api/index.py - PART 2 / 2]
-# 법규정보 · 협력업체/심사점수 · 클레임/부적합 이력 양방향 파서 + 직통 저장 엔드포인트
+# 협력업체(3블록 전수)·심사점수(H/I열 포함)·일정 탭 통합 + 법규[고시/예고] + 대표 표시사항 핀
 # ==============================================================================
 
 # ==============================================================================
-# 5. [4] 협력업체 서류심사 DB & [4-2] '협력업체, 심사 점수' 통합 KPI 시트 파서
+# 5. [4] 협력업체 서류심사 DB & [4-2] '협력업체, 심사 점수'(+일정 탭) 정밀 파서
 # ==============================================================================
 def fetch_supplier_sheet(sheet_urls_map: dict):
     sh, err = open_sheet_isolated(sheet_urls_map, "supplier")
@@ -1888,150 +2080,282 @@ def fetch_supplier_sheet(sheet_urls_map: dict):
         return [], [], [], [], str(e)
 
 
-def parse_pct_val(val: Any, default: float = 0.0) -> float:
-    s = str(val or "").strip()
-    if not s or s == "-":
-        return default
-    v = to_float(s, default)
-    if "%" not in s and 0 < abs(v) <= 1.5:
-        return round(v * 100.0, 2)
-    return round(v, 2)
+def normalize_audit_type(raw_type: str) -> str:
+    s = str(raw_type or "").strip()
+    if "협력" in s or "출장" in s:
+        return "협력업체 방문"
+    return "방문심사"
+
+
+def parse_schedule_tab_rows(rows: list) -> list:
+    """
+    '일정' 탭 정밀 파서:
+    1) 통합 목록형 헤더(고유ID / 구분 / 심사일자 / 심사명 / 진행현황 / 점수 / 비고) 지원
+    2) 사용자가 직접 좌(방문심사)·우(협력업체 방문) 2단 표로 적어둔 경우도 자동 인식
+    """
+    if not rows or len(rows) < 2:
+        return []
+
+    hdr0_ns = [re.sub(r"\s+", "", str(c)) for c in rows[0]]
+    # 표준 통합 목록형인 경우
+    if "심사명" in hdr0_ns or "고유ID" in hdr0_ns or ("구분" in hdr0_ns and any("일자" in x or "날짜" in x for x in hdr0_ns)):
+        hdr = [str(c).strip() for c in rows[0]]
+        col_uid = next((i for i, h in enumerate(hdr0_ns) if "ID" in h.upper() or "고유" in h), -1)
+        col_tp = next((i for i, h in enumerate(hdr0_ns) if "구분" in h or "분류" in h), -1)
+        col_dt = next((i for i, h in enumerate(hdr0_ns) if "일자" in h or "날짜" in h or "일시" in h), -1)
+        col_nm = next((i for i, h in enumerate(hdr0_ns) if "심사명" in h or "업체" in h or "내용" in h or "제목" in h), -1)
+        col_st = next((i for i, h in enumerate(hdr0_ns) if "진행" in h or "현황" in h or "상태" in h), -1)
+        col_sc = next((i for i, h in enumerate(hdr0_ns) if "점수" in h), -1)
+        col_mm = next((i for i, h in enumerate(hdr0_ns) if "비고" in h or "메모" in h), -1)
+        col_ts = next((i for i, h in enumerate(hdr0_ns) if "수정" in h), -1)
+
+        out = []
+        for r_idx, r in enumerate(rows[1:], start=2):
+            if not any(str(x).strip() for x in r):
+                continue
+            def g(idx: int) -> str:
+                return str(r[idx]).strip() if (0 <= idx < len(r)) else ""
+
+            nm_v = g(col_nm)
+            dt_raw = g(col_dt)
+            if not nm_v and not dt_raw:
+                continue
+            d_obj = parse_date_obj(dt_raw)
+            dt_norm = d_obj.strftime("%Y-%m-%d") if d_obj else dt_raw
+            tp_norm = normalize_audit_type(g(col_tp) or "방문심사")
+            st_raw = g(col_st) or "심사준비중"
+            st_norm = st_raw if st_raw in AUDIT_STATUS_LIST else "심사준비중"
+            uid_v = g(col_uid) or hashlib.md5(f"{tp_norm}|{dt_norm}|{nm_v}|{r_idx}".encode("utf-8")).hexdigest()[:8]
+
+            out.append({
+                "고유ID": uid_v,
+                "구분": tp_norm,
+                "심사일자": dt_norm,
+                "심사명": nm_v,
+                "진행현황": st_norm,
+                "점수": g(col_sc),
+                "비고": g(col_mm),
+                "수정일시": g(col_ts)
+            })
+        out.sort(key=lambda x: x.get("심사일자", ""))
+        return out
+
+    # 사용자가 자유 양식(좌: 방문심사 / 우: 협력업체 방문)으로 만든 경우 탐색
+    out_dual = []
+    anchors = []
+    for r_i, r in enumerate(rows[:10]):
+        for c_i, cell in enumerate(r):
+            cs = re.sub(r"\s+", "", str(cell))
+            if "방문심사" in cs:
+                anchors.append((r_i, c_i, "방문심사"))
+            elif "협력업체방문" in cs or ("협력업체" in cs and "방문" in cs):
+                anchors.append((r_i, c_i, "협력업체 방문"))
+
+    if anchors:
+        anchors.sort(key=lambda x: (x[0], x[1]))
+        for ar, ac, atype in anchors:
+            next_c = min([x[1] for x in anchors if abs(x[0] - ar) <= 2 and x[1] > ac] or [ac + 6])
+            hdr_r = ar + 1
+            c_dt, c_nm, c_st, c_mm = ac, ac + 1, -1, -1
+            for rr in range(ar + 1, min(ar + 4, len(rows))):
+                seg = [re.sub(r"\s+", "", str(x)) for x in rows[rr][ac : min(next_c, len(rows[rr]))]]
+                if any(k in "".join(seg) for k in ["일자", "날짜", "심사", "업체"]):
+                    hdr_r = rr
+                    for off, h_t in enumerate(seg):
+                        if "일자" in h_t or "날짜" in h_t:
+                            c_dt = ac + off
+                        elif "심사명" in h_t or "업체" in h_t or "내용" in h_t:
+                            c_nm = ac + off
+                        elif "진행" in h_t or "상태" in h_t or "현황" in h_t:
+                            c_st = ac + off
+                        elif "비고" in h_t or "메모" in h_t:
+                            c_mm = ac + off
+                    break
+
+            for dr_i, dr in enumerate(rows[hdr_r + 1:], start=1):
+                nm_v = str(dr[c_nm]).strip() if c_nm < len(dr) else ""
+                dt_raw = str(dr[c_dt]).strip() if c_dt < len(dr) else ""
+                if not nm_v:
+                    continue
+                d_obj = parse_date_obj(dt_raw)
+                dt_norm = d_obj.strftime("%Y-%m-%d") if d_obj else dt_raw
+                st_v = str(dr[c_st]).strip() if (0 <= c_st < len(dr)) else "심사준비중"
+                if st_v not in AUDIT_STATUS_LIST:
+                    st_v = "심사준비중"
+                mm_v = str(dr[c_mm]).strip() if (0 <= c_mm < len(dr)) else ""
+                uid_v = hashlib.md5(f"{atype}|{dt_norm}|{nm_v}|{dr_i}".encode("utf-8")).hexdigest()[:8]
+                out_dual.append({
+                    "고유ID": uid_v,
+                    "구분": atype,
+                    "심사일자": dt_norm,
+                    "심사명": nm_v,
+                    "진행현황": st_v,
+                    "점수": "",
+                    "비고": mm_v,
+                    "수정일시": ""
+                })
+        out_dual.sort(key=lambda x: x.get("심사일자", ""))
+    return out_dual
 
 
 def fetch_sup_and_audit_kpi_sheet(sheet_urls_map: dict):
-    """'협력업체, 심사 점수' 구글 시트의 [협력업체] 탭과 [심사점수] 탭을 실시간 파싱"""
+    """
+    '협력업체, 심사 점수' 구글 시트의
+    1) [협력업체] 탭: Summary 표(6~11행) + 3개 병렬 블록(가.연세유업 A~C / 나.연세생건 E~G / 다.이롬 I~K) 전수 파싱
+    2) [심사점수] 탭: 심사개선율·심사점수(Lev.1~5) + 환산표(F7:I10) + 12행 이하 세부내역(H/I열 비고 포함) 전수 파싱
+    3) [일정] 탭: 방문심사 / 협력업체 방문 일정 통합 로드
+    """
     default_sup_kpi = {
         "has_sheet": False,
         "target_rate": 88.3,
         "actual_rate": 92.10,
         "level_str": "Lev.1",
         "signal": "green",
+        "criteria": KPI_LEVEL_CRITERIA["supplier_exec"],
         "weight_rows": [],
-        "visit_rows": []
+        "visit_rows": [],
+        "visit_counts": {"전체": 0, "연세유업": 0, "연세생건": 0, "이롬": 0}
     }
     default_aud_kpi = {
         "has_sheet": False,
         "score_target": 94.28,
         "score_actual": 91.95,
-        "score_level": "-",
+        "score_level": "Lev.5",
         "imp_target": 94.5,
         "imp_actual": 94.85,
+        "imp_level": "Lev.1",
         "imp_cnt_text": "",
         "signal": "red",
+        "score_criteria": KPI_LEVEL_CRITERIA["audit_score"],
+        "imp_criteria": KPI_LEVEL_CRITERIA["audit_imp"],
         "formula_rows": [],
         "history_rows": []
     }
 
     sh, err = open_sheet_isolated(sheet_urls_map, "sup_audit_kpi")
     if sh is None:
-        return default_sup_kpi, default_aud_kpi, f"[협력업체, 심사 점수] {err}"
+        return default_sup_kpi, default_aud_kpi, None, f"[협력업체, 심사 점수] {err}"
 
     try:
         ws_all = api_call_with_retry(sh.worksheets)
         ws_titles = [w.title for w in ws_all]
         t_sup = next((t for t in ws_titles if "협력업체" in t), ws_titles[0] if ws_titles else None)
-        t_aud = next((t for t in ws_titles if "심사" in t), ws_titles[1] if len(ws_titles) > 1 else None)
+        t_aud = next((t for t in ws_titles if "심사" in t and "일정" not in t), ws_titles[1] if len(ws_titles) > 1 else None)
+        t_sched = next((t for t in ws_titles if "일정" in t), None)
 
-        batch_map = batch_fetch_tabs(sh, [t_sup, t_aud], "FORMATTED_VALUE")
+        batch_map = batch_fetch_tabs(sh, [t_sup, t_aud] + ([t_sched] if t_sched else []), "FORMATTED_VALUE")
 
-        # 1) [협력업체] 탭 파싱 (종합 실행률 + 가중치별 실적표 + 계열사별 방문점검 업체 목록)
+        # ------------------------------------------------------------------
+        # 1) [협력업체] 탭 정밀 파싱
+        # ------------------------------------------------------------------
         sup_kpi = dict(default_sup_kpi)
         s_rows = batch_map.get(t_sup, []) if t_sup else []
         if s_rows:
             sup_kpi["has_sheet"] = True
             weight_rows = []
             visit_rows = []
-            aff_anchors = []  # (row_idx, col_idx, 계열사명)
+
+            sum_hdr_idx = -1
+            detail_hdr_idx = -1
 
             for r_i, r in enumerate(s_rows):
                 r_clean = [str(c).strip() for c in r]
+                r_ns = [re.sub(r"\s+", "", x) for x in r_clean]
                 row_join = " ".join(r_clean)
 
-                # 상단 종합 실행률 요약 행 탐색 (예: 협력업체 관리 | 88.3%↑ | 92.10% | Lev.1)
-                if "협력업체" in row_join and ("관리" in row_join or "실행" in row_join):
-                    pcts = re.findall(r"(\d+(?:\.\d+)?)\s*%", row_join)
-                    if len(pcts) >= 2:
-                        sup_kpi["target_rate"] = float(pcts[0])
-                        sup_kpi["actual_rate"] = float(pcts[1])
-                    m_lv = re.search(r"(Lev\.?\s*\d+|달성|미달)", row_join, re.IGNORECASE)
+                # 목표수준 88.3%↑ 추출 (2행 C열 등)
+                if r_i <= 3 and "AUDIT" in row_join.upper():
+                    m_t = re.search(r"(\d{2,3}(?:\.\d+)?)\s*%", row_join)
+                    if m_t:
+                        sup_kpi["target_rate"] = float(m_t.group(1))
+
+                # 4행: 현재점수 | 92.10% | Lev.1
+                if "현재점수" in "".join(r_ns) or ("Summary" in row_join and "%" in row_join):
+                    m_a = re.search(r"(\d{2,3}(?:\.\d+)?)\s*%", row_join)
+                    if m_a:
+                        sup_kpi["actual_rate"] = float(m_a.group(1))
+                    m_lv = re.search(r"(Lev\.?\s*\d+)", row_join, re.IGNORECASE)
                     if m_lv:
-                        sup_kpi["level_str"] = m_lv.group(1).strip()
+                        sup_kpi["level_str"] = m_lv.group(1).replace(" ", "")
 
-                # 가중치별 세부 평가표 행 탐색 (방문점검 / 서류평가 등)
-                non_empty = [x for x in r_clean if x != ""]
-                if len(non_empty) >= 4 and any(k in row_join for k in ["방문", "서류평가", "서류심사"]) and "%" in row_join:
-                    if not any(h in non_empty[0] for h in ["구분", "평가항목", "항목"]):
-                        weight_rows.append({
-                            "평가구분": non_empty[0],
-                            "대상·세부항목": non_empty[1] if len(non_empty) > 1 else "-",
-                            "가중치": non_empty[2] if len(non_empty) > 2 else "-",
-                            "목표/계획": non_empty[3] if len(non_empty) > 3 else "-",
-                            "실적/달성률": " / ".join(non_empty[4:6]) if len(non_empty) > 4 else "-"
-                        })
+                # 6행: 구분 | 연간 목표건수 | 점검수 | 실행율 | 평가 점수 | 적용 비율 | 비고
+                if sum_hdr_idx < 0 and len(r_ns) >= 5 and r_ns[0] == "구분" and any("목표" in x for x in r_ns[:3]) and any("점검" in x for x in r_ns[:4]):
+                    sum_hdr_idx = r_i
 
-                # 계열사별 방문점검 목록 헤더 탐색 (병렬 컬럼 구조 지원)
-                for c_i, cell_v in enumerate(r_clean):
-                    cv_nospace = re.sub(r"\s+", "", cell_v)
-                    for aff_kw in ["연세유업", "연세생건", "연세생활건강", "이롬"]:
-                        if aff_kw in cv_nospace and ("방문" in cv_nospace or cv_nospace == aff_kw):
-                            # 바로 아래 1~2행 내에 '업체명' 또는 '점검일' 헤더가 있는지 확인
-                            sub_txt = ""
-                            for nr in s_rows[r_i : min(r_i + 3, len(s_rows))]:
-                                sub_txt += " " + " ".join(str(x) for x in nr[max(0, c_i - 1) : min(len(nr), c_i + 5)])
-                            if any(hk in sub_txt for hk in ["업체", "점검", "일자", "날짜", "NO", "순번"]):
-                                aff_lbl = "연세생건" if "생건" in aff_kw or "생활건강" in aff_kw else aff_kw
-                                if not any(a[2] == aff_lbl and abs(a[1] - c_i) <= 2 for a in aff_anchors):
-                                    aff_anchors.append((r_i, c_i, aff_lbl))
+                # 14행: 점검일 | 업체명 | 비고 병렬 헤더 행 탐색 ('점검일'이 2회 이상 등장하거나 '점검일'+'업체명' 존재)
+                if detail_hdr_idx < 0 and r_ns.count("점검일") >= 1 and r_ns.count("업체명") >= 1:
+                    detail_hdr_idx = r_i
 
-            # 병렬 배치된 계열사별 방문업체 테이블 추출
-            aff_anchors.sort(key=lambda x: (x[0], x[1]))
-            for idx_a, (ar, ac, aff_nm) in enumerate(aff_anchors):
-                same_band_next_cols = [x[1] for x in aff_anchors if abs(x[0] - ar) <= 3 and x[1] > ac]
-                c_limit = min(same_band_next_cols) if same_band_next_cols else ac + 6
-
-                hdr_r = ar + 1
-                col_dt, col_comp, col_note = -1, -1, -1
-                for rr in range(ar, min(ar + 4, len(s_rows))):
-                    seg = [re.sub(r"\s+", "", str(x)) for x in s_rows[rr][ac : min(c_limit, len(s_rows[rr]))]]
-                    if any("업체" in x for x in seg):
-                        hdr_r = rr
-                        for off, h_txt in enumerate(seg):
-                            if ("점검일" in h_txt or "일자" in h_txt or "날짜" in h_txt or h_txt == "월") and col_dt < 0:
-                                col_dt = ac + off
-                            elif "업체" in h_txt and col_comp < 0:
-                                col_comp = ac + off
-                            elif ("비고" in h_txt or "결과" in h_txt or "품목" in h_txt or "점수" in h_txt) and col_note < 0:
-                                col_note = ac + off
+            # Summary 표(7~11행) 추출
+            if sum_hdr_idx >= 0:
+                for sr in s_rows[sum_hdr_idx + 1 : min(sum_hdr_idx + 8, len(s_rows))]:
+                    sr_pad = [str(x).strip() for x in sr] + [""] * max(0, 7 - len(sr))
+                    g_nm = sr_pad[0]
+                    if not g_nm or "세부내역" in g_nm or g_nm.startswith("2."):
                         break
-
-                if col_comp < 0:
-                    continue
-
-                empty_streak = 0
-                for dr in range(hdr_r + 1, len(s_rows)):
-                    row_d = s_rows[dr]
-                    comp_v = str(row_d[col_comp]).strip() if col_comp < len(row_d) else ""
-                    dt_v = str(row_d[col_dt]).strip() if (0 <= col_dt < len(row_d)) else ""
-                    note_v = str(row_d[col_note]).strip() if (0 <= col_note < len(row_d)) else ""
-
-                    if not comp_v or comp_v in ["-", "합계", "계", "소계", "업체명"]:
-                        empty_streak += 1
-                        if empty_streak >= 3:
-                            break
-                        continue
-                    empty_streak = 0
-                    visit_rows.append({
-                        "계열사 구분": aff_nm,
-                        "점검일(월)": dt_v or "-",
-                        "방문점검 업체명": comp_v,
-                        "비고 / 결과": note_v or "방문점검 완료"
+                    if g_nm == "합계" and sr_pad[4]:
+                        v_tot = to_float(sr_pad[4], 0.0)
+                        if v_tot > 0:
+                            sup_kpi["actual_rate"] = v_tot
+                        if sr_pad[5] and "Lev" in sr_pad[5]:
+                            sup_kpi["level_str"] = sr_pad[5].strip()
+                    weight_rows.append({
+                        "구분": g_nm,
+                        "연간 목표건수": sr_pad[1] or "-",
+                        "점검수": sr_pad[2] or "-",
+                        "실행율": sr_pad[3] or "-",
+                        "평가 점수": sr_pad[4] or "-",
+                        "적용 비율": sr_pad[5] or "-",
+                        "비고": sr_pad[6] or "-"
                     })
 
+            # 세부내역 3개 병렬 블록(가. 연세유업 / 나. 연세생건 / 다. 이롬) 전수 추출
+            if detail_hdr_idx >= 0:
+                hdr_ns = [re.sub(r"\s+", "", str(x)) for x in s_rows[detail_hdr_idx]]
+                above_row = [str(x).strip() for x in s_rows[detail_hdr_idx - 1]] if detail_hdr_idx >= 1 else []
+
+                # '점검일' 열 인덱스마다 블록 시작점으로 인식 (예: 0열, 4열, 8열)
+                dt_cols = [ci for ci, h in enumerate(hdr_ns) if h in ["점검일", "일자", "날짜"]]
+                default_aff_names = ["연세유업", "연세생건", "이롬"]
+
+                for b_idx, c_start in enumerate(dt_cols):
+                    aff_label = default_aff_names[b_idx] if b_idx < len(default_aff_names) else f"그룹{b_idx+1}"
+                    # 바로 윗줄(13행: '가. 연세유업', '나. 연세생건', '다. 이롬')에서 계열사명 확인
+                    look_above = " ".join(above_row[c_start : min(c_start + 3, len(above_row))])
+                    if "연세유업" in look_above or "유업" in look_above:
+                        aff_label = "연세유업"
+                    elif "생건" in look_above or "생활건강" in look_above:
+                        aff_label = "연세생건"
+                    elif "이롬" in look_above:
+                        aff_label = "이롬"
+
+                    for dr in s_rows[detail_hdr_idx + 1:]:
+                        dt_v = str(dr[c_start]).strip() if c_start < len(dr) else ""
+                        comp_v = str(dr[c_start + 1]).strip() if (c_start + 1) < len(dr) else ""
+                        note_v = str(dr[c_start + 2]).strip() if (c_start + 2) < len(dr) else ""
+                        if not comp_v or comp_v in ["-", "업체명", "합계"]:
+                            continue
+                        visit_rows.append({
+                            "계열사 구분": aff_label,
+                            "점검일": dt_v or "-",
+                            "업체명": comp_v,
+                            "비고": note_v or "-"
+                        })
+
+            sup_kpi["level_str"] = eval_kpi_level(sup_kpi["actual_rate"], "supplier_exec")
             sup_kpi["weight_rows"] = weight_rows
             sup_kpi["visit_rows"] = visit_rows
-            sup_kpi["signal"] = "green" if sup_kpi["actual_rate"] >= sup_kpi["target_rate"] else ("yellow" if sup_kpi["actual_rate"] >= 80.0 else "red")
+            sup_kpi["visit_counts"] = {
+                "전체": len(visit_rows),
+                "연세유업": sum(1 for r in visit_rows if r["계열사 구분"] == "연세유업"),
+                "연세생건": sum(1 for r in visit_rows if r["계열사 구분"] == "연세생건"),
+                "이롬": sum(1 for r in visit_rows if r["계열사 구분"] == "이롬")
+            }
+            sup_kpi["signal"] = "green" if sup_kpi["actual_rate"] >= sup_kpi["target_rate"] else ("yellow" if sup_kpi["actual_rate"] >= 85.3 else "red")
 
-        # 2) [심사점수] 탭 파싱 (심사점수 · 심사개선율 요약 + 외부심사 수검 이력 전체)
+        # ------------------------------------------------------------------
+        # 2) [심사점수] 탭 정밀 파싱 (12행 세부내역 + H/I열 미개선 비고 전수 포함)
+        # ------------------------------------------------------------------
         aud_kpi = dict(default_aud_kpi)
         a_rows = batch_map.get(t_aud, []) if t_aud else []
         if a_rows:
@@ -2039,113 +2363,148 @@ def fetch_sup_and_audit_kpi_sheet(sheet_urls_map: dict):
             formula_rows = []
             history_rows = []
             hist_hdr_idx = -1
-            col_map = {}
 
             for r_i, r in enumerate(a_rows):
-                r_clean = [str(c).strip() for c in r]
-                r_nospace = [re.sub(r"\s+", "", x) for x in r_clean]
-                row_join = " ".join(r_clean)
+                r_pad = [str(c).strip() for c in r] + [""] * max(0, 11 - len(r))
+                r_ns = [re.sub(r"\s+", "", x) for x in r_pad]
 
-                # 심사점수 요약 행 (예: 심사점수 | 94.28점↑ | 91.95점)
-                if any(x in ["심사점수", "외부심사점수"] for x in r_nospace):
-                    nums = [float(m) for m in re.findall(r"(\d{2,3}(?:\.\d+)?)", row_join) if 50.0 <= float(m) <= 100.0]
-                    if len(nums) >= 2:
-                        aud_kpi["score_target"] = nums[0]
-                        aud_kpi["score_actual"] = nums[1]
+                # 3행 목표수준 H3(94.28점↑), C3(94.5%↑) 추출
+                if r_i <= 4:
+                    for cell_s in r_pad[:5]:
+                        m_imp_t = re.search(r"(\d{2,3}(?:\.\d+)?)\s*%\s*↑", cell_s)
+                        if m_imp_t:
+                            aud_kpi["imp_target"] = float(m_imp_t.group(1))
+                    for cell_s in r_pad[5:10]:
+                        m_sc_t = re.search(r"(\d{2,3}(?:\.\d+)?)\s*점\s*↑", cell_s)
+                        if m_sc_t:
+                            aud_kpi["score_target"] = float(m_sc_t.group(1))
 
-                # 심사개선율 요약 행 (예: 심사개선율 | 94.5%↑ | 94.85% | 221/233)
-                if any("개선율" in x or "개선률" in x for x in r_nospace) and r_i < 12:
-                    pcts = [float(m) for m in re.findall(r"(\d{2,3}(?:\.\d+)?)\s*%", row_join)]
-                    if len(pcts) >= 2:
-                        aud_kpi["imp_target"] = pcts[0]
-                        aud_kpi["imp_actual"] = pcts[1]
-                    m_cnt = re.search(r"(\d+\s*/\s*\d+)", row_join)
-                    if m_cnt:
-                        aud_kpi["imp_cnt_text"] = m_cnt.group(1).replace(" ", "")
+                # 7~8행 좌측 Summary 표 (A:구분 | B:목표 | C:현재 지표 | D:비고)
+                if r_ns[0] == "심사개선율" and r_i < 12:
+                    v_imp = to_float(r_pad[2], 0.0)
+                    if v_imp > 0:
+                        aud_kpi["imp_actual"] = round(v_imp, 2)
+                    if r_pad[3]:
+                        aud_kpi["imp_level"] = r_pad[3]
+                elif r_ns[0] == "심사점수" and r_i < 12:
+                    v_sc = to_float(r_pad[2], 0.0)
+                    if v_sc > 0:
+                        aud_kpi["score_actual"] = round(v_sc, 2)
+                    if r_pad[3]:
+                        aud_kpi["score_level"] = r_pad[3]
 
-                # 환산 내역 (점수평균 70%, 통과율 30% 등)
-                if r_i < 14 and any(k in row_join for k in ["70%", "30%", "점수평균", "통과율"]):
-                    ne = [x for x in r_clean if x != ""]
-                    if len(ne) >= 2:
-                        formula_rows.append({"항목": ne[0], "세부내용": " / ".join(ne[1:5])})
+                # 7~9행 우측 환산표 (F:구분 | G:점수 | H:배율 | I:계산)
+                if r_i < 12 and r_ns[5] in ["점수평균", "통과율"]:
+                    calc_num = to_float(r_pad[8], 0.0)
+                    formula_rows.append({
+                        "구분": r_pad[5],
+                        "기준수치": f"{r_pad[6]}점" if r_ns[5] == "점수평균" else f"대상 {r_pad[6]}건",
+                        "적용배율": f"{int(round(to_float(r_pad[7], 0) * 100))}%" if to_float(r_pad[7], 0) <= 1.0 else r_pad[7],
+                        "환산점수": f"{calc_num:.2f}점" if calc_num > 0 else r_pad[8]
+                    })
+                elif r_i < 12 and r_ns[5] == "" and r_pad[6].isdigit() and formula_rows and formula_rows[-1]["구분"] == "통과율":
+                    formula_rows[-1]["기준수치"] = f"통과 {r_pad[6]}건 / {formula_rows[-1]['기준수치']}"
 
-                # 수검 세부내역 테이블 헤더 탐색
-                if hist_hdr_idx < 0 and sum(1 for x in r_nospace if any(k in x for k in ["심사일", "심사업체", "심사기관", "지적", "통과", "점수"])) >= 3:
+                # 12행 실제 세부내역 헤더 정확히 매칭 (A열=='심사일' & B열=='심사업체')
+                if hist_hdr_idx < 0 and r_ns[0] in ["심사일", "일자"] and ("심사업체" in r_ns[1] or "업체" in r_ns[1] or "기관" in r_ns[1]):
                     hist_hdr_idx = r_i
-                    for ci, h_txt in enumerate(r_nospace):
-                        if ("심사일" in h_txt or h_txt in ["일자", "날짜", "일시"]) and "dt" not in col_map:
-                            col_map["dt"] = ci
-                        elif any(k in h_txt for k in ["심사업체", "심사기관", "기관", "고객사", "심사명", "구분"]) and "org" not in col_map:
-                            col_map["org"] = ci
-                        elif "지적" in h_txt and "issue" not in col_map:
-                            col_map["issue"] = ci
-                        elif "개선" in h_txt and "율" not in h_txt and "률" not in h_txt and "imp_c" not in col_map:
-                            col_map["imp_c"] = ci
-                        elif ("개선율" in h_txt or "개선률" in h_txt) and "imp_r" not in col_map:
-                            col_map["imp_r"] = ci
-                        elif "점수" in h_txt and "score" not in col_map:
-                            col_map["score"] = ci
-                        elif ("통과" in h_txt or "결과" in h_txt or "판정" in h_txt) and "pass" not in col_map:
-                            col_map["pass"] = ci
-                        elif ("비고" in h_txt or "미개선" in h_txt or "특이" in h_txt or "내용" in h_txt) and "note" not in col_map:
-                            col_map["note"] = ci
 
+            # 13행 이하 수검 세부내역 전체 + H열(구분비고) + I열(미개선 항목) 전수 파싱
+            tot_imp_sum, tot_iss_sum = 0, 0
             if hist_hdr_idx >= 0:
                 for dr in a_rows[hist_hdr_idx + 1:]:
-                    if not any(str(x).strip() for x in dr):
+                    dr_pad = [str(x).strip() for x in dr] + [""] * max(0, 10 - len(dr))
+                    dt_v, org_v = dr_pad[0], dr_pad[1]
+                    if not dt_v and not org_v:
                         continue
-                    def g_col(k_nm: str) -> str:
-                        idx_c = col_map.get(k_nm, -1)
-                        return str(dr[idx_c]).strip() if (0 <= idx_c < len(dr)) else ""
+                    if any(k in dt_v for k in ["합계", "평균", "총계"]) or any(k in org_v for k in ["합계", "평균", "총계"]):
+                        continue
 
-                    org_v = g_col("org")
-                    dt_v = g_col("dt")
-                    if not org_v and not dt_v:
-                        continue
-                    if any(tot_w in org_v for tot_w in ["합계", "평균", "총계"]) or any(tot_w in dt_v for tot_w in ["합계", "평균", "총계"]):
-                        if not aud_kpi["imp_cnt_text"]:
-                            iss_tot = g_col("issue")
-                            imp_tot = g_col("imp_c")
-                            if iss_tot and imp_tot:
-                                aud_kpi["imp_cnt_text"] = f"개선 {imp_tot}건 / 지적 {iss_tot}건"
-                        continue
+                    imp_c, iss_c, imp_r, sc_v, pass_v = dr_pad[2], dr_pad[3], dr_pad[4], dr_pad[5], dr_pad[6]
+                    col_h_type = dr_pad[7]  # 예: 점수X/통과, 미통과, 통과, 보고서 수령 전
+                    col_i_open = " ".join([x for x in dr_pad[8:11] if x]).strip()  # 예: 48,96번 항목 미개선
+
+                    if imp_c.isdigit() and iss_c.isdigit():
+                        tot_imp_sum += int(imp_c)
+                        tot_iss_sum += int(iss_c)
 
                     history_rows.append({
                         "심사일": dt_v or "-",
-                        "심사업체(기관)": org_v or "-",
-                        "지적건수": g_col("issue") or "-",
-                        "개선완료": g_col("imp_c") or "-",
-                        "개선율": g_col("imp_r") or "-",
-                        "심사점수": g_col("score") or "-",
-                        "통과여부": g_col("pass") or "-",
-                        "비고(미개선·특이사항)": g_col("note") or "-"
+                        "심사업체": org_v or "-",
+                        "개선건수": imp_c or "-",
+                        "지적건수": iss_c or "-",
+                        "개선율(%)": f"{imp_r}%" if (imp_r and imp_r != "-" and "%" not in imp_r) else (imp_r or "-"),
+                        "점수": sc_v or "-",
+                        "통과여부": pass_v or "-",
+                        "평가유형(H열)": col_h_type or "-",
+                        "미개선 · 특이사항(I열)": col_i_open or "-"
                     })
 
+            if tot_iss_sum > 0:
+                aud_kpi["imp_cnt_text"] = f"개선 {tot_imp_sum}건 / 지적 {tot_iss_sum}건"
+            aud_kpi["score_level"] = eval_kpi_level(aud_kpi["score_actual"], "audit_score")
+            aud_kpi["imp_level"] = eval_kpi_level(aud_kpi["imp_actual"], "audit_imp")
             aud_kpi["formula_rows"] = formula_rows
             aud_kpi["history_rows"] = history_rows
-            aud_kpi["signal"] = "green" if aud_kpi["score_actual"] >= aud_kpi["score_target"] else "red"
+            aud_kpi["signal"] = "green" if aud_kpi["score_actual"] >= aud_kpi["score_target"] else ("yellow" if aud_kpi["score_actual"] >= 92.78 else "red")
 
-        return sup_kpi, aud_kpi, None
+        # ------------------------------------------------------------------
+        # 3) [일정] 탭 파싱 (존재할 경우 최우선 사용)
+        # ------------------------------------------------------------------
+        sched_from_sak = None
+        if t_sched is not None:
+            sched_from_sak = parse_schedule_tab_rows(batch_map.get(t_sched, []))
+
+        return sup_kpi, aud_kpi, sched_from_sak, None
     except Exception as e:
-        return default_sup_kpi, default_aud_kpi, f"[협력업체, 심사 점수] {e}"
+        return default_sup_kpi, default_aud_kpi, None, f"[협력업체, 심사 점수] {e}"
 
 
 # ==============================================================================
-# 6. [5] 법규정보 시트 파서 (D-Day 자동 산출 + 부자재 폐기 방지용 선별 노출)
+# 6. [5] 법규정보 시트 파서 ([고시] / [예고] 구분 + 당사 필요 조치 1줄 요약)
 # ==============================================================================
 def make_law_id(tab_name: str, law_name: str, enf_raw: str, notice_raw: str) -> str:
     raw_key = f"{tab_name.strip()}|{re.sub(r'\\s+', '', law_name)}|{re.sub(r'\\s+', '', enf_raw)}|{re.sub(r'\\s+', '', notice_raw)}"
     return hashlib.md5(raw_key.encode("utf-8")).hexdigest()[:10]
 
 
-def summarize_law_one_line(content_str: str) -> str:
-    s = re.sub(r"\s+", " ", str(content_str or "")).strip()
-    if not s:
-        return "-"
-    # '주요내용' 이후 핵심 문장 우선 추출
-    m = re.search(r"(?:주요\s*내용|개정\s*내용)\s*[:\-\]]?\s*(.+)", s)
-    target = m.group(1).strip() if m else s
-    return target[:95] + ("…" if len(target) > 95 else "")
+def clean_law_title(raw_title: str) -> str:
+    s = re.sub(r"\s+", " ", str(raw_title or "")).strip()
+    return s
+
+
+def build_auto_action_summary(law_name: str, content_str: str, is_notice: bool) -> str:
+    """법규명과 원문을 분석하여 '당사가 무엇을 해야 하는지' 행동 중심 1줄 요약 생성"""
+    c = re.sub(r"\s+", " ", str(content_str or "")).strip()
+    t = str(law_name or "")
+    prefix = "[예고·확정대기] " if is_notice else ""
+
+    if "알레르기" in c or "알레르기" in t:
+        return f"{prefix}신규 알레르기 유발물질 표시대상 확대 — 해당 원료 함유 품목 표시도안 사전 점검 필요"
+    if "유전자변형" in c or "GMO" in c.upper() or "유전자변형" in t:
+        return f"{prefix}유전자변형식품(GMO) 표시대상·기준 개정 — 대두·옥수수 등 원재료 증명서 및 표시대상 확인 필요"
+    if "영양" in c or "영양성분" in t or "당류" in c or "나트륨" in c:
+        return f"{prefix}영양성분 표시기준 개정 — 영양성분표 도안 문구 및 허용오차 범위 재검토 필요"
+    if "식품첨가물" in t or "첨가물" in c:
+        return f"{prefix}식품첨가물 사용기준 개정 — 당사 배합 원료·첨가물 규격 및 사용량 기준 부합 여부 확인"
+    if "소비기한" in c or "유통기한" in c:
+        return f"{prefix}소비기한 설정·표시기준 개정 — 품목제조보고 및 포장재 소비기한 표기 점검 필요"
+    if "축산물" in t or "원유" in c or "유가공" in c:
+        return f"{prefix}축산물·유가공품 위생·표시기준 개정 — 우유·발효유 해당 품목 규격 및 표시사항 검토 필요"
+    if "이력추적" in c or "이력추적" in t:
+        return f"{prefix}식품이력추적관리 기준 개정 — 대상 품목 등록정보 및 표시사항 확인 필요"
+    if "광고" in t or "표시" in t:
+        m = re.search(r"(?:주요\s*내용|개정\s*내용)\s*[:\-\]]?\s*(.+)", c)
+        core = (m.group(1).strip() if m else c)[:42]
+        if is_notice:
+            return f"예고 단계(최종 고시 전 대기) — {core}… 관련 표시도안 사전 파악"
+        return f"개정고시 반영 — {core}… 관련 당사 포장재 문구 점검 필요"
+
+    m = re.search(r"(?:주요\s*내용|개정\s*내용)\s*[:\-\]]?\s*(.+)", c)
+    core = (m.group(1).strip() if m else c)[:48]
+    if is_notice:
+        return f"예고 단계(고시 확정 대기) — {core}…"
+    return f"고시 시행 대비 규격·표시 점검 — {core}…"
 
 
 def fetch_law_info_sheet(sheet_urls_map: dict):
@@ -2168,9 +2527,8 @@ def fetch_law_info_sheet(sheet_urls_map: dict):
             rows = batch_map.get(t_name, [])
             if len(rows) < 3:
                 continue
-            is_notice_tab = "예고" in t_name
+            tab_has_notice = "예고" in t_name
 
-            # 헤더 행 자동 탐색 (주무부처 / 법규명 / 내용 / 시행일 등)
             hdr_idx = -1
             col_ministry, col_law, col_content, col_notice_dt, col_enf_dt, col_rel = -1, -1, -1, -1, -1, -1
             for r_i, r in enumerate(rows[:12]):
@@ -2195,7 +2553,6 @@ def fetch_law_info_sheet(sheet_urls_map: dict):
             if hdr_idx < 0 or col_law < 0:
                 continue
 
-            # 병합 셀 스팬 고려: 법규명 열 ~ 내용 열 사이, 내용 열 ~ 고시일 열 사이 텍스트 결합
             c_law_end = col_content if col_content > col_law else col_law + 1
             next_after_content = min([c for c in [col_notice_dt, col_enf_dt, col_rel] if c > col_content] or [col_content + 1])
 
@@ -2208,7 +2565,7 @@ def fetch_law_info_sheet(sheet_urls_map: dict):
                     last_ministry = min_v
 
                 law_parts = [str(x).strip() for x in dr[col_law : min(c_law_end, len(dr))] if str(x).strip()]
-                law_nm = " ".join(dict.fromkeys(law_parts)).strip()
+                law_nm = clean_law_title(" ".join(dict.fromkeys(law_parts)))
                 if not law_nm or law_nm in ["법규명", "법령명"]:
                     continue
 
@@ -2219,22 +2576,28 @@ def fetch_law_info_sheet(sheet_urls_map: dict):
                 enf_raw = str(dr[col_enf_dt]).strip() if (0 <= col_enf_dt < len(dr)) else ""
                 rel_raw = " ".join([str(x).strip() for x in dr[col_rel:] if str(x).strip()]) if (0 <= col_rel < len(dr)) else ""
 
+                # 법규명에 '입법예고'/'행정예고'/'개정령(안)'이 있거나 예고 탭이면 [예고], 아니면 [고시]
+                is_notice_item = tab_has_notice or any(k in law_nm for k in ["예고", "개정안", "개정령(안)", "고시(안)"])
+                stage_type = "예고" if is_notice_item else "고시"
+
                 enf_d = parse_date_obj(enf_raw)
                 d_day = (enf_d - today_d).days if enf_d else None
-                enf_iso = enf_d.strftime("%Y-%m-%d") if enf_d else (enf_raw or "-")
+                enf_iso = enf_d.strftime("%Y-%m-%d") if enf_d else (enf_raw or "미정")
 
                 is_qs_dept = ("품질안전" in rel_raw) or ("식품안전" in rel_raw) or ("품질관리" in rel_raw) or ("전부문" in rel_raw) or ("전사" in rel_raw)
-                # 기본 자동 노출: 확정 고시 탭(예고 제외) + 품질안전부문 관련 + 시행일이 오늘 기준 -14일 이후(미시행 및 직전 시행 포함)
-                auto_default_show = (not is_notice_tab) and is_qs_dept and (d_day is not None and d_day >= -14)
+                auto_default_show = (not tab_has_notice) and is_qs_dept and (d_day is not None and d_day >= -14)
 
                 lid = make_law_id(t_name, law_nm, enf_raw, notice_raw)
+                auto_act = build_auto_action_summary(law_nm, content_full, is_notice_item)
+
                 all_laws.append({
                     "law_id": lid,
                     "탭구분": t_name.strip(),
-                    "예고여부": is_notice_tab,
+                    "법규단계": stage_type,  # "고시" | "예고"
+                    "예고여부": is_notice_item,
                     "주무부처": last_ministry or "-",
                     "법규명": law_nm,
-                    "요약내용": summarize_law_one_line(content_full),
+                    "자동조치요약": auto_act,
                     "원문내용": content_full or "-",
                     "고시_예고일": notice_raw or "-",
                     "시행일": enf_iso,
@@ -2251,13 +2614,13 @@ def fetch_law_info_sheet(sheet_urls_map: dict):
 
 
 def apply_law_preferences(raw_laws: list, law_prefs: dict) -> dict:
-    """사용자 수동 체크(넣다/뺐다) 및 부자재 준비상태를 결합하여 대시보드 D-Day 목록 생성"""
     enriched = []
     for item in raw_laws:
         lid = item["law_id"]
         pref = law_prefs.get(lid, {})
-        mode = pref.get("mode", "auto")  # "auto" | "Pin"(강제노출) | "Hide"(강제제외)
+        mode = pref.get("mode", "auto")
         prep = pref.get("prep", "검토전")
+        custom_summary = str(pref.get("summary", "")).strip()
         if prep not in LAW_PREP_LIST:
             prep = "검토전"
 
@@ -2274,7 +2637,7 @@ def apply_law_preferences(raw_laws: list, law_prefs: dict) -> dict:
             d_cls = "badge-neutral"
             sort_key = 99999
         elif d_val == 0:
-            d_label = "D-Day(금일시행)"
+            d_label = "D-Day"
             d_cls = "badge-err"
             sort_key = 0
         elif d_val > 0:
@@ -2282,13 +2645,15 @@ def apply_law_preferences(raw_laws: list, law_prefs: dict) -> dict:
             d_cls = "badge-err" if d_val <= 30 else ("badge-warn" if d_val <= 90 else "badge-info")
             sort_key = d_val
         else:
-            d_label = f"시행중(+{abs(d_val)}일)"
+            d_label = f"시행+{abs(d_val)}일"
             d_cls = "badge-ok"
             sort_key = 50000 + abs(d_val)
 
         cp = dict(item)
         cp["pref_mode"] = mode
         cp["prep_status"] = prep
+        cp["custom_summary"] = custom_summary
+        cp["실무조치요약"] = custom_summary if custom_summary else item["자동조치요약"]
         cp["show_on_dashboard"] = show_dash
         cp["d_day_label"] = d_label
         cp["d_day_cls"] = d_cls
@@ -2308,7 +2673,7 @@ def apply_law_preferences(raw_laws: list, law_prefs: dict) -> dict:
 
 
 # ==============================================================================
-# 7. [6] '클레임, 부적합 이력' 시트 (`클레임` 탭 · `부적합` 탭) 양방향 파서
+# 7. [6] '클레임, 부적합 이력' 시트 양방향 파서
 # ==============================================================================
 def fetch_claim_nc_history_sheet(sheet_urls_map: dict):
     sh, err = open_sheet_isolated(sheet_urls_map, "claim_nc_hist")
@@ -2367,16 +2732,8 @@ def fetch_claim_nc_history_sheet(sheet_urls_map: dict):
         claim_rows = parse_tab_items(batch_map.get(t_clm, []), "클레임") if t_clm else []
         nc_rows = parse_tab_items(batch_map.get(t_nc, []), "부적합") if t_nc else []
 
-        all_items = claim_rows + nc_rows
-        # 중점관리 우선 + 최신 등록일 순 정렬
-        all_items.sort(key=lambda x: (0 if x["중요도"] == "중점관리" else 1, x.get("등록일", "") or ""), reverse=False)
-        all_items = sorted(all_items, key=lambda x: x.get("등록일", ""), reverse=True)
-
-        active_items = [
-            x for x in all_items
-            if x["대시보드노출"] == "Y"
-        ]
-        # 대시보드에서는 중점관리 건이 최상단에 오도록 정렬
+        all_items = sorted(claim_rows + nc_rows, key=lambda x: x.get("등록일", ""), reverse=True)
+        active_items = [x for x in all_items if x["대시보드노출"] == "Y"]
         active_items.sort(key=lambda x: (0 if x["중요도"] == "중점관리" else 1, 1 if x["진행상태"] == "적합(종결)" else 0))
 
         cause_map: Dict[str, int] = {}
@@ -2410,56 +2767,25 @@ def fetch_claim_nc_history_sheet(sheet_urls_map: dict):
 
 
 # ==============================================================================
-# 8. [7] 심사일정 DB(방문심사/협력업체 방문) + 수동KPI + 특이사항/법규체크 보드
+# 8. [7] 보조 설정 DB(수동KPI · 특이사항 · 법규체크 · 대표 표시사항 체크)
 # ==============================================================================
-def normalize_audit_type(raw_type: str) -> str:
-    s = str(raw_type or "").strip()
-    if "협력" in s or "출장" in s:
-        return "협력업체 방문"
-    return "방문심사"
-
-
 def fetch_audit_and_manual_db(sheet_urls_map: dict):
     sh, err = open_sheet_isolated(sheet_urls_map, "audit_db")
     if sh is None:
-        return [], {}, None, None, {}, err
+        return [], {}, None, None, {}, [], err
 
     try:
         ws_list = api_call_with_retry(sh.worksheets)
         ws_titles = [w.title for w in ws_list]
-        t_sched = ws_titles[0] if ws_titles else None
+        t_sched_legacy = ws_titles[0] if ws_titles else None
         t_manual = next((t for t in ws_titles if t.strip() == MANUAL_KPI_TAB), None)
         t_sp = next((t for t in ws_titles if t.strip() == SPECIAL_BOARD_TAB), None)
 
-        batch_map = batch_fetch_tabs(sh, [t_sched, t_manual, t_sp])
+        batch_map = batch_fetch_tabs(sh, [t_sched_legacy, t_manual, t_sp])
 
-        sched_records = []
-        if t_sched:
-            rows = batch_map.get(t_sched, [])
-            if len(rows) >= 2:
-                hdr = [str(c).strip() for c in rows[0]]
-                for r in rows[1:]:
-                    if not any(str(x).strip() for x in r):
-                        continue
-                    r_pad = [str(x).strip() for x in r] + [""] * max(0, len(hdr) - len(r))
-                    item = dict(zip(hdr, r_pad[:len(hdr)]))
-                    d_obj = parse_date_obj(item.get("심사일자", ""))
-                    dt_norm = d_obj.strftime("%Y-%m-%d") if d_obj else item.get("심사일자", "")
-                    st_val = item.get("진행현황", "심사준비중")
-                    if st_val not in AUDIT_STATUS_LIST:
-                        st_val = "심사준비중"
-                    a_type = normalize_audit_type(item.get("구분", "방문심사"))
-                    sched_records.append({
-                        "고유ID": item.get("고유ID", "") or str(uuid.uuid4())[:8],
-                        "구분": a_type,
-                        "심사일자": dt_norm,
-                        "심사명": item.get("심사명", ""),
-                        "진행현황": st_val,
-                        "점수": item.get("점수", ""),
-                        "비고": item.get("비고", ""),
-                        "수정일시": item.get("수정일시", "")
-                    })
-                sched_records.sort(key=lambda x: x["심사일자"])
+        legacy_sched = []
+        if t_sched_legacy:
+            legacy_sched = parse_schedule_tab_rows(batch_map.get(t_sched_legacy, []))
 
         saved_manual = {}
         if t_manual:
@@ -2490,6 +2816,7 @@ def fetch_audit_and_manual_db(sheet_urls_map: dict):
         loaded_lbl_memo = None
         loaded_micro = None
         loaded_law_prefs = {}
+        loaded_label_pins = []
         if t_sp:
             sp_rows = batch_map.get(t_sp, [])
             if len(sp_rows) >= 2:
@@ -2499,7 +2826,7 @@ def fetch_audit_and_manual_db(sheet_urls_map: dict):
                         b_val = str(sr[1]).strip()
                         b_ts = str(sr[2]).strip() if len(sr) >= 3 else ""
                         if b_key == "label_memo" and b_val:
-                            loaded_lbl_memo = b_val
+                            loaded_lbl_memo = b_val.strip()
                         elif b_key == "micro_status_json" and b_val:
                             try:
                                 parsed_m = json.loads(b_val)
@@ -2516,10 +2843,17 @@ def fetch_audit_and_manual_db(sheet_urls_map: dict):
                                     loaded_law_prefs = parsed_lp
                             except Exception:
                                 pass
+                        elif b_key == "label_pins_json" and b_val:
+                            try:
+                                parsed_pins = json.loads(b_val)
+                                if isinstance(parsed_pins, list):
+                                    loaded_label_pins = [str(x).strip() for x in parsed_pins if str(x).strip()]
+                            except Exception:
+                                pass
 
-        return sched_records, saved_manual, loaded_lbl_memo, loaded_micro, loaded_law_prefs, None
+        return legacy_sched, saved_manual, loaded_lbl_memo, loaded_micro, loaded_law_prefs, loaded_label_pins, None
     except Exception as e:
-        return [], {}, None, None, {}, f"[심사점수 및 일정 관리 DB] {e}"
+        return [], {}, None, None, {}, [], f"[설정 DB] {e}"
 
 
 def parse_factual_date(row_dict: dict):
@@ -2538,6 +2872,26 @@ def classify_label_status(status_str: str) -> str:
     if s in ["개시/준비", "보류", "검토/개시", ""]:
         return "제외(개시/준비·보류)"
     return "검토완료(확인필)"
+
+
+def make_label_item_key(row: dict) -> str:
+    doc_no = str(row.get("*docNo", "")).strip()
+    if doc_no and doc_no != "-":
+        return doc_no
+    raw = f"{row.get('요청부서', '')}|{row.get('제목', '')}"
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()[:10]
+
+
+def strip_duplicate_dept_prefix(title_str: str, dept_str: str) -> str:
+    """제목 앞머리에 이미 [마케팅1팀] 등이 적혀 있으면 중복 표시되지 않도록 정리"""
+    t = str(title_str or "").strip()
+    d = re.sub(r"\s+", "", str(dept_str or ""))
+    m = re.match(r"^\[([^\]]+)\]\s*(.+)$", t)
+    if m:
+        bracket_inner = re.sub(r"\s+", "", m.group(1))
+        if d and (d in bracket_inner or bracket_inner in d):
+            return m.group(2).strip()
+    return t
 
 
 def fetch_label_status_sheet(sheet_urls_map: dict):
@@ -2591,13 +2945,9 @@ def fetch_raw_material_db_sheet(sheet_urls_map: dict):
 
 
 # ==============================================================================
-# 9. 심사 요약(최근접 도래 배너 + 방문심사 전용 게이지) · 표시사항 분석 · 번들 엔진
+# 9. 심사 요약 · 표시사항 분석(부서별 브리핑 & 대표 표시사항 핀) · 번들 엔진
 # ==============================================================================
 def get_active_audit_summary(sched_list: list, today_str: str) -> dict:
-    """
-    1) 상단 안내 배너(upcoming_banner): 방문심사 + 협력업체 방문 중 오늘 기준 가장 가까운 도래 일정 표시
-    2) 5단계 진행 게이지(status, pct, active_uid): 오직 '방문심사' 항목에만 작동
-    """
     today_d = parse_date_obj(today_str) or now_kst().date()
     if not sched_list:
         return {
@@ -2618,7 +2968,6 @@ def get_active_audit_summary(sched_list: list, today_str: str) -> dict:
         diff_d = (d_obj - today_d).days if d_obj else None
         enriched_all.append((d_obj, diff_d, r))
 
-    # 1) 전체(방문심사 + 협력업체 방문) 중 가장 먼저 도래하는 일정 탐색
     future_or_today_all = sorted(
         [x for x in enriched_all if x[0] is not None and x[1] >= 0 and x[2].get("진행현황") != "심사종료"],
         key=lambda x: x[1]
@@ -2638,7 +2987,6 @@ def get_active_audit_summary(sched_list: list, today_str: str) -> dict:
         up_banner = f"[최근 일정 · {nr.get('구분', '방문심사')}] {nr['심사명']} ({dt_s})"
         up_type = nr.get("구분", "방문심사")
 
-    # 2) 5단계 게이지 대상: 오직 '방문심사'만 필터링
     visit_only = [x for x in enriched_all if normalize_audit_type(x[2].get("구분", "방문심사")) == "방문심사"]
     if not visit_only:
         return {
@@ -2685,7 +3033,7 @@ def get_active_audit_summary(sched_list: list, today_str: str) -> dict:
     }
 
 
-def build_label_analytics(lbl_rows: list) -> dict:
+def build_label_analytics(lbl_rows: list, pinned_ids: List[str]) -> dict:
     reviewing_rows = [r for r in lbl_rows if r.get("분류") == "식품안전팀 검토중"]
     completed_rows = [r for r in lbl_rows if r.get("분류") == "검토완료(확인필)"]
     valid_rows = [r for r in lbl_rows if r.get("분류") != "제외(개시/준비·보류)"]
@@ -2706,6 +3054,22 @@ def build_label_analytics(lbl_rows: list) -> dict:
 
     m_avg_25 = round(cnt_25_all / active_m_25, 1) if cnt_25_all > 0 else 0.0
     m_avg_26 = round(cnt_26_all / active_m_26, 1) if cnt_26_all > 0 else 0.0
+
+    # 부서별 현재 검토중 건수 브리핑 생성 (예: 마케팅1팀 4건 · 마케팅2팀 3건 · 이롬 2건 등 총 14건 검토중)
+    rev_dept_map: Dict[str, int] = {}
+    for r in reviewing_rows:
+        dp = (r.get("요청부서", "") or "기타").strip() or "기타"
+        rev_dept_map[dp] = rev_dept_map.get(dp, 0) + 1
+    rev_dept_breakdown = [{"dept": k, "cnt": v} for k, v in sorted(rev_dept_map.items(), key=lambda x: x[1], reverse=True)]
+
+    if rev_dept_breakdown:
+        top_parts = [f"{x['dept']} {x['cnt']}건" for x in rev_dept_breakdown[:3]]
+        rest_cnt = sum(x["cnt"] for x in rev_dept_breakdown[3:])
+        if rest_cnt > 0:
+            top_parts.append(f"외 {rest_cnt}건")
+        rev_summary_line = f"{' · '.join(top_parts)} — 총 {len(reviewing_rows)}건 검토중"
+    else:
+        rev_summary_line = "현재 검토 대기 품목 0건"
 
     monthly_cmp = [
         {
@@ -2751,7 +3115,6 @@ def build_label_analytics(lbl_rows: list) -> dict:
     sorted_sites = sorted(site_counts.items(), key=lambda x: x[1], reverse=True)
     top_sites = [{"생산처": k, "2026년_검토건수": v} for k, v in sorted_sites[:10]]
 
-    # 도넛 원 차트용 상위 5개 생산처 + 기타 집계
     site_chart_items = [{"label": k, "count": v} for k, v in sorted_sites[:5]]
     etc_cnt = sum(v for _, v in sorted_sites[5:])
     if etc_cnt > 0:
@@ -2759,9 +3122,24 @@ def build_label_analytics(lbl_rows: list) -> dict:
 
     top_pkgs = [{"포장재유형": k, "2026년_검토건수": v} for k, v in sorted(pkg_counts.items(), key=lambda x: x[1], reverse=True)[:10]]
 
+    pin_set = set(pinned_ids or [])
     keep_cols = ["*docNo", "상태", "제목", "요청부서", "대분류(마케팅 카테고리)", "보관방법", "생산처", "검토 포장재 유형", "등록일자", "최종수정자", "분류", "등록연도", "등록월"]
+
+    slim_reviewing = []
+    for r in reviewing_rows:
+        ikey = make_label_item_key(r)
+        clean_t = strip_duplicate_dept_prefix(r.get("제목", ""), r.get("요청부서", ""))
+        item_d = {k: r.get(k, "") for k in keep_cols}
+        item_d["_item_key"] = ikey
+        item_d["_clean_title"] = clean_t
+        item_d["_pinned"] = (ikey in pin_set)
+        slim_reviewing.append(item_d)
+
+    pinned_only = [x for x in slim_reviewing if x["_pinned"]]
+    # 대표 표시사항을 하나라도 체크해 두었으면 체크된 품목만 노출, 아직 하나도 체크 안 했으면 상위 5건 자동 표시
+    featured_list = pinned_only if len(pinned_only) > 0 else slim_reviewing[:5]
+
     slim_all = [{k: r.get(k, "") for k in keep_cols} for r in lbl_rows]
-    slim_reviewing = [{k: r.get(k, "") for k in keep_cols} for r in reviewing_rows]
 
     return {
         "reviewing_cnt": len(reviewing_rows),
@@ -2777,6 +3155,11 @@ def build_label_analytics(lbl_rows: list) -> dict:
         "m_avg_25": m_avg_25,
         "m_avg_26": m_avg_26,
         "avg_diff": round(m_avg_26 - m_avg_25, 1),
+        "rev_dept_breakdown": rev_dept_breakdown,
+        "rev_summary_line": rev_summary_line,
+        "has_manual_pins": len(pinned_only) > 0,
+        "pinned_ids": list(pin_set),
+        "featured_reviewing": featured_list,
         "monthly_cmp": monthly_cmp,
         "cat_cmp": cat_cmp,
         "dept_cmp": dept_cmp,
@@ -2857,15 +3240,20 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
             cost_rows, cost_targets, err_cost = resolve_with_last_good("cost", f_cost.result(), 2)
             claim_trend, claim_cat, err_claim = resolve_with_last_good("claim", f_claim.result(), 2)
             rt_today, rt_yest, rt_hp, rt_hc, fsk_prods, err_rt = resolve_with_last_good("rt", f_rt.result(), 5)
-            milk_pack, ferm_pack, milk_dt, ferm_dt, dy_hp, dy_hc, dairy_prods, err_milk = resolve_with_last_good("milk", f_milk.result(), 7)
+            milk_pack, ferm_pack, milk_times, ferm_times, milk_dt, ferm_dt, dy_hp, dy_hc, dairy_prods, err_milk = resolve_with_last_good("milk", f_milk.result(), 9)
             soy_def_tab, soy_map, soy_b, soy_h, soy_hist, err_soy = resolve_with_last_good("soy", f_soy.result(), 5)
             sup_m, sup_g, sup_uc, sup_ud, err_sup = resolve_with_last_good("sup", f_sup.result(), 4)
-            audit_sched, saved_manual_kpis, saved_lbl_memo, saved_micro, saved_law_prefs, err_audit = resolve_with_last_good("audit", f_audit.result(), 5)
+            legacy_sched, saved_manual_kpis, saved_lbl_memo, saved_micro, saved_law_prefs, saved_lbl_pins, err_audit = resolve_with_last_good("audit", f_audit.result(), 6)
             lbl_rows, err_lbl = resolve_with_last_good("lbl", f_lbl.result(), 1)
             raw_sub, raw_m_cnt, err_raw = resolve_with_last_good("raw", f_raw.result(), 2)
             raw_laws, err_law = resolve_with_last_good("law", f_law.result(), 1)
-            sup_kpi_sheet, aud_kpi_sheet, err_sak = resolve_with_last_good("sak", f_sak.result(), 2)
+            sup_kpi_sheet, aud_kpi_sheet, sak_sched, err_sak = resolve_with_last_good("sak", f_sak.result(), 3)
             claim_nc_data, err_cnh = resolve_with_last_good("cnh", f_cnh.result(), 1)
+
+        # 심사 일정: '협력업체, 심사 점수' 시트의 [일정] 탭이 있으면 최우선 사용, 비어있으면 기존 DB 일정 승계
+        audit_sched = sak_sched if (sak_sched is not None and len(sak_sched) > 0) else (legacy_sched if sak_sched is None else [])
+        if sak_sched is not None and len(sak_sched) == 0 and legacy_sched:
+            audit_sched = legacy_sched
 
         master_prods = []
         seen_norm = set()
@@ -2961,7 +3349,6 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
         soy_uninspected_cnt = sum(1 for r in soy_b if not bool(r.get("검사완료여부", False)))
         soy_contam_total = sum(int(to_float(r.get("오염수량", 0), 0)) for r in soy_b if bool(r.get("검사완료여부", False)))
 
-        # 서류심사 집계 + '협력업체, 심사 점수' 시트의 종합 실행률 결합
         total_sup_cnt = len(sup_m)
         unsub_sup_cnt = sum(1 for r in sup_m if r.get("점수") == "미제출")
         sub_sup_cnt = total_sup_cnt - unsub_sup_cnt
@@ -2972,49 +3359,58 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
 
         final_sup_target = sup_kpi_sheet["target_rate"] if sup_kpi_sheet.get("has_sheet") else 88.3
         final_sup_rate = sup_kpi_sheet["actual_rate"] if sup_kpi_sheet.get("has_sheet") else doc_exec_rate
-        sig_supplier = "green" if final_sup_rate >= final_sup_target else ("yellow" if final_sup_rate >= 78.0 else "red")
+        final_sup_lv = sup_kpi_sheet.get("level_str", eval_kpi_level(final_sup_rate, "supplier_exec"))
+        sig_supplier = "green" if final_sup_rate >= final_sup_target else ("yellow" if final_sup_rate >= 85.3 else "red")
 
         merged_manual = {k: {**v, "notes": list(v["notes"])} for k, v in DEFAULT_MANUAL_KPIS.items()}
         for mk_k, mk_val in saved_manual_kpis.items():
             if mk_k in merged_manual:
                 merged_manual[mk_k].update(mk_val)
 
-        # '협력업체, 심사 점수' 시트 데이터로 KPI 6번(협력업체) & KPI 7번(심사점수) 실시간 덮어쓰기
+        # 8대 KPI 6번(협력업체): 종합 실행률 + Lev 등급 자동 반영
         if sup_kpi_sheet.get("has_sheet"):
+            vc = sup_kpi_sheet.get("visit_counts", {})
             merged_manual["kpi_11"].update({
-                "target_text": f"실행률 {final_sup_target}% 이상",
-                "actual_text": f"{final_sup_rate:.2f}% ({sup_kpi_sheet.get('level_str', '집계중')})",
+                "target_text": f"{final_sup_target}% 이상 (Lev.1)",
+                "actual_text": f"{final_sup_rate:.2f}% ({final_sup_lv})",
                 "compact_val": f"{final_sup_rate:.2f}%",
-                "sub_badge": f"방문점검 {len(sup_kpi_sheet.get('visit_rows', []))}건 · 서류제출 {sub_sup_cnt}/{total_sup_cnt}개사",
+                "sub_badge": f"방문점검 {vc.get('전체', 0)}개사(유업{vc.get('연세유업',0)}·생건{vc.get('연세생건',0)}·이롬{vc.get('이롬',0)})",
                 "target_num": final_sup_target,
                 "actual_num": final_sup_rate,
                 "signal": sig_supplier
             })
 
+        # 8대 KPI 7번(심사점수): 요청대로 대표 화면에는 '심사점수'만 깔끔하게 표시 (클릭 시 심사개선율 동시 표출)
         if aud_kpi_sheet.get("has_sheet"):
             sc_t = aud_kpi_sheet["score_target"]
             sc_a = aud_kpi_sheet["score_actual"]
-            im_t = aud_kpi_sheet["imp_target"]
-            im_a = aud_kpi_sheet["imp_actual"]
+            sc_lv = aud_kpi_sheet["score_level"]
             merged_manual["kpi_5"].update({
-                "target_text": f"{sc_t}점 이상",
-                "actual_text": f"{sc_a}점",
+                "target_text": f"{sc_t}점 이상 (Lev.1)",
+                "actual_text": f"{sc_a}점 ({sc_lv})",
                 "compact_val": f"{sc_a}점",
-                "sub_badge": f"심사개선율 {im_a}% (목표 {im_t}%↑)",
+                "sub_badge": f"수검 {len(aud_kpi_sheet.get('history_rows', []))}건 · 클릭 시 심사개선율 상세",
                 "target_num": sc_t,
                 "actual_num": sc_a,
                 "signal": aud_kpi_sheet["signal"]
             })
 
-        label_memo_final = saved_lbl_memo if saved_lbl_memo is not None else DEFAULT_LABEL_MEMO
+        label_memo_final = (saved_lbl_memo if saved_lbl_memo is not None else DEFAULT_LABEL_MEMO).strip()
         micro_final = saved_micro if saved_micro is not None else dict(DEFAULT_MICRO_STATUS)
 
         law_bundle = apply_law_preferences(raw_laws, saved_law_prefs or {})
-        label_analytics = build_label_analytics(lbl_rows)
+        label_analytics = build_label_analytics(lbl_rows, saved_lbl_pins or [])
 
         sub_raw_cnt = len(raw_sub)
         verified_raw_cnt = sum(1 for r in raw_sub if re.search(r"완료|적합", str(r.get("검증상태", ""))))
         allergy_raw_cnt = sum(1 for r in raw_sub if str(r.get("신규알레르기", "")).strip() != "")
+
+        # 날짜별 유제품 포장시간 맵 미리 생성 (과거 누적 이력 최상단 도출용)
+        dairy_hist_dates = sorted(list({r.get("생산일자", "") for r in (dy_hp + dy_hc) if r.get("생산일자")}), reverse=True)
+        dairy_hist_times_map = {
+            dt_k: extract_hist_dairy_run_times(dy_hc, dt_k, "ALL")
+            for dt_k in dairy_hist_dates
+        }
 
         errors = []
         for label_nm, er in [
@@ -3072,6 +3468,8 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
                     "active_rt_cnt": active_rt_cnt,
                     "wait_rt_cnt": wait_rt_cnt,
                     "red_rt_cnt": red_rt_cnt,
+                    "active_milk_cnt": active_milk_cnt,
+                    "active_ferm_cnt": active_ferm_cnt,
                     "active_dairy_cnt": active_dairy_cnt,
                     "soy_default_tab": soy_def_tab,
                     "soy_blocks_cnt": soy_blocks_cnt,
@@ -3087,6 +3485,9 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
                 "ferm_date": ferm_dt,
                 "milk_pack": milk_pack,
                 "ferm_pack": ferm_pack,
+                "milk_run_times": milk_times,
+                "ferm_run_times": ferm_times,
+                "dairy_hist_times_map": dairy_hist_times_map,
                 "soy_default_tab": soy_def_tab,
                 "soy_tabs_map": soy_map,
                 "rt_hist_p": rt_hp,
@@ -3101,7 +3502,7 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
                 "target_exec": final_sup_target,
                 "exec_rate": final_sup_rate,
                 "doc_exec_rate": doc_exec_rate,
-                "level_str": sup_kpi_sheet.get("level_str", "-"),
+                "level_str": final_sup_lv,
                 "total_cnt": total_sup_cnt,
                 "sub_cnt": sub_sup_cnt,
                 "unsub_cnt": unsub_sup_cnt,
@@ -3177,16 +3578,22 @@ class SpecialBoardPayload(BaseModel):
 
 class LawPrefPayload(BaseModel):
     law_id: str
-    mode: Optional[str] = None  # "auto" | "Pin" | "Hide"
-    prep: Optional[str] = None  # "검토전" | "부자재변경중" | "반영완료"
+    mode: Optional[str] = None
+    prep: Optional[str] = None
+    summary: Optional[str] = None
+
+
+class LabelPinPayload(BaseModel):
+    item_key: str
+    pinned: bool
 
 
 class ClaimNcHistPayload(BaseModel):
-    action: str  # "add" | "update_status" | "update" | "delete" | "toggle_dash"
+    action: str
     uid: Optional[str] = ""
-    category: str = "클레임"  # "클레임" | "부적합"
+    category: str = "클레임"
     reg_date: Optional[str] = ""
-    importance: Optional[str] = "일반"  # "일반" | "중점관리"
+    importance: Optional[str] = "일반"
     product_name: Optional[str] = ""
     exp_date: Optional[str] = ""
     cause_type: Optional[str] = "공정·설비"
@@ -3288,7 +3695,7 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = ""):
                 if str(cr.get("생산일자", "")).strip() == d_dt and str(cr.get("라인구분", "")).strip() == d_ln:
                     rcat = str(cr.get("기록분류", ""))
                     if rcat == "포장생산시간":
-                        ccp_lines.append(f"[생산시간] {cr.get('기록내용_수치', '-')}")
+                        ccp_lines.append(f"[생산시간·{cr.get('세부항목', '')}] {cr.get('기록내용_수치', '-')}")
                     elif rcat == "CCP모니터링":
                         ccp_lines.append(f"[{cr.get('세부항목', 'CCP')}] {cr.get('기록내용_수치', '-')}")
                     elif rcat == "특이사항":
@@ -3315,40 +3722,42 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = ""):
 
 @app.post("/api/audit-schedule")
 def api_save_audit_schedule(body: AuditSchedulePayload):
-    """방문심사 / 협력업체 방문 구분을 포함해 audit_db 단독 시트 직통 저장"""
+    """
+    '협력업체, 심사 점수' 구글 시트 내 [일정] 탭에 양방향 영구 저장 (탭이 없으면 자동 생성)
+    만약 해당 시트를 열 수 없는 경우에만 기존 audit_db로 안전 폴백
+    """
     sheet_urls_map = get_sheet_urls_map()
-    sh, err = open_sheet_isolated(sheet_urls_map, "audit_db")
+    sh, err = open_sheet_isolated(sheet_urls_map, "sup_audit_kpi")
+    using_sak = True
     if sh is None:
-        raise HTTPException(status_code=500, detail=f"심사 DB 시트를 열 수 없습니다: {err}")
+        using_sak = False
+        sh, err = open_sheet_isolated(sheet_urls_map, "audit_db")
+        if sh is None:
+            raise HTTPException(status_code=500, detail=f"일정 저장용 구글 시트를 열 수 없습니다: {err}")
 
-    ws_sched = api_call_with_retry(sh.get_worksheet, 0)
+    if using_sak:
+        ws_all = api_call_with_retry(sh.worksheets)
+        ws_sched = next((w for w in ws_all if "일정" in w.title), None)
+        if ws_sched is None:
+            ws_sched = api_call_with_retry(sh.add_worksheet, title=AUDIT_SCHED_TAB, rows=150, cols=10)
+    else:
+        ws_sched = api_call_with_retry(sh.get_worksheet, 0)
+
     rows = get_values_formatted(ws_sched)
-    cur_list = []
-    if len(rows) >= 2:
-        hdr = [str(c).strip() for c in rows[0]]
-        for r in rows[1:]:
-            if not any(str(x).strip() for x in r):
-                continue
-            r_pad = [str(x).strip() for x in r] + [""] * max(0, len(hdr) - len(r))
-            item = dict(zip(hdr, r_pad[:len(hdr)]))
-            d_obj = parse_date_obj(item.get("심사일자", ""))
-            cur_list.append({
-                "고유ID": item.get("고유ID", "") or str(uuid.uuid4())[:8],
-                "구분": normalize_audit_type(item.get("구분", "방문심사")),
-                "심사일자": d_obj.strftime("%Y-%m-%d") if d_obj else item.get("심사일자", ""),
-                "심사명": item.get("심사명", ""),
-                "진행현황": item.get("진행현황", "심사준비중") if item.get("진행현황") in AUDIT_STATUS_LIST else "심사준비중",
-                "점수": item.get("점수", ""),
-                "비고": item.get("비고", ""),
-                "수정일시": item.get("수정일시", "")
-            })
+    cur_list = parse_schedule_tab_rows(rows)
+
+    # [일정] 탭을 새로 만든 직후 비어 있고 캐시에 기존 일정이 있다면 유실 없이 함께 보존
+    if not cur_list and _BUNDLE_CACHE["data"] is not None:
+        cached_scheds = _BUNDLE_CACHE["data"].get("audit", {}).get("schedules", [])
+        if cached_scheds:
+            cur_list = [dict(x) for x in cached_scheds]
 
     today_str = now_kst().strftime("%Y-%m-%d")
     now_s = now_kst().strftime("%Y-%m-%d %H:%M:%S")
 
     if body.action == "add":
         if not (body.audit_name or "").strip():
-            raise HTTPException(status_code=400, detail="심사명을 입력해 주세요.")
+            raise HTTPException(status_code=400, detail="심사명 또는 방문 업체명을 입력해 주세요.")
         cur_list.append({
             "고유ID": body.uid.strip() if (body.uid and body.uid.strip()) else str(uuid.uuid4())[:8],
             "구분": normalize_audit_type(body.audit_type),
@@ -3391,34 +3800,40 @@ def api_save_audit_schedule(body: AuditSchedulePayload):
     safe_ws_update(ws_sched, payload)
 
     new_summary = get_active_audit_summary(cur_list, today_str)
+    if "sak" in _LAST_GOOD_SHEETS:
+        prev_s, prev_a, _, _ = _LAST_GOOD_SHEETS["sak"]
+        _LAST_GOOD_SHEETS["sak"] = (prev_s, prev_a, cur_list, None)
     if _BUNDLE_CACHE["data"] is not None:
         _BUNDLE_CACHE["data"]["audit"]["summary"] = new_summary
         _BUNDLE_CACHE["data"]["audit"]["schedules"] = cur_list
 
     return {
         "ok": True,
-        "message": "심사 일정이 저장되었습니다.",
+        "message": "'협력업체, 심사 점수' 시트의 [일정] 탭에 영구 저장되었습니다.",
         "summary": new_summary,
         "schedules": cur_list
     }
 
 
 def _read_and_write_special_board(updater_fn):
-    """대시보드_특이사항_보드 탭(표시사항 메모, 미생물 판정, 법규 체크상태) 공통 직통 저장기"""
     sheet_urls_map = get_sheet_urls_map()
     sh, err = open_sheet_isolated(sheet_urls_map, "audit_db")
     if sh is None:
-        raise HTTPException(status_code=500, detail=f"심사 DB 시트를 열 수 없습니다: {err}")
+        # audit_db가 없을 경우 '협력업체, 심사 점수' 시트 내 보조 탭 활용
+        sh, err = open_sheet_isolated(sheet_urls_map, "sup_audit_kpi")
+        if sh is None:
+            raise HTTPException(status_code=500, detail=f"설정 저장용 시트를 열 수 없습니다: {err}")
 
     ws_list = api_call_with_retry(sh.worksheets)
     ws_sp = next((w for w in ws_list if w.title.strip() == SPECIAL_BOARD_TAB), None)
     if ws_sp is None:
-        ws_sp = api_call_with_retry(sh.add_worksheet, title=SPECIAL_BOARD_TAB, rows=25, cols=4)
+        ws_sp = api_call_with_retry(sh.add_worksheet, title=SPECIAL_BOARD_TAB, rows=30, cols=4)
 
     board_map = {
         "label_memo": DEFAULT_LABEL_MEMO,
         "micro_status_json": json.dumps(DEFAULT_MICRO_STATUS, ensure_ascii=False),
-        "law_prefs_json": "{}"
+        "law_prefs_json": "{}",
+        "label_pins_json": "[]"
     }
     sp_rows = get_values_formatted(ws_sp)
     if len(sp_rows) >= 2:
@@ -3439,7 +3854,7 @@ def _read_and_write_special_board(updater_fn):
 def api_save_special_boards(body: SpecialBoardPayload):
     def _upd(b_map: dict, now_s: str):
         if body.label_memo is not None:
-            b_map["label_memo"] = str(body.label_memo)
+            b_map["label_memo"] = str(body.label_memo).strip()
         if body.micro_status is not None:
             st_v = str(body.micro_status.get("status", "출고적합")).strip()
             if st_v not in MICRO_STATUS_LIST:
@@ -3453,7 +3868,7 @@ def api_save_special_boards(body: SpecialBoardPayload):
 
     b_map, _ = _read_and_write_special_board(_upd)
     new_sp = {
-        "label_memo": b_map.get("label_memo", DEFAULT_LABEL_MEMO),
+        "label_memo": b_map.get("label_memo", DEFAULT_LABEL_MEMO).strip(),
         "micro_status": json.loads(b_map.get("micro_status_json", "{}")) or dict(DEFAULT_MICRO_STATUS)
     }
     if _BUNDLE_CACHE["data"] is not None:
@@ -3464,7 +3879,7 @@ def api_save_special_boards(body: SpecialBoardPayload):
 
 @app.post("/api/law-pref")
 def api_save_law_pref(body: LawPrefPayload):
-    """법규 D-Day 대시보드 노출 여부(넣다/뺐다) 및 부자재 준비상태 직통 저장"""
+    """법규 D-Day 대시보드 노출 여부, 부자재 준비상태, 사용자 지정 1줄 조치요약 직통 저장"""
     def _upd(b_map: dict, _now_s: str):
         try:
             prefs = json.loads(b_map.get("law_prefs_json", "{}"))
@@ -3473,11 +3888,13 @@ def api_save_law_pref(body: LawPrefPayload):
         except Exception:
             prefs = {}
 
-        cur_item = prefs.get(body.law_id, {"mode": "auto", "prep": "검토전"})
+        cur_item = prefs.get(body.law_id, {"mode": "auto", "prep": "검토전", "summary": ""})
         if body.mode in ["auto", "Pin", "Hide"]:
             cur_item["mode"] = body.mode
         if body.prep in LAW_PREP_LIST:
             cur_item["prep"] = body.prep
+        if body.summary is not None:
+            cur_item["summary"] = body.summary.strip()
         prefs[body.law_id] = cur_item
         b_map["law_prefs_json"] = json.dumps(prefs, ensure_ascii=False)
 
@@ -3492,12 +3909,43 @@ def api_save_law_pref(body: LawPrefPayload):
             _BUNDLE_CACHE["data"]["law"] = new_law_bundle
             _BUNDLE_CACHE["data"]["law_prefs_raw"] = new_prefs
 
-    return {"ok": True, "message": "법규 D-Day 관리 설정이 저장되었습니다.", "law": new_law_bundle}
+    return {"ok": True, "message": "법규 D-Day 설정 및 실무 요약이 저장되었습니다.", "law": new_law_bundle}
+
+
+@app.post("/api/label-pin")
+def api_save_label_pin(body: LabelPinPayload):
+    """표시사항 현재 검토중 목록에서 체크한 '대표 표시사항' 품목 핀 저장"""
+    def _upd(b_map: dict, _now_s: str):
+        try:
+            pins = json.loads(b_map.get("label_pins_json", "[]"))
+            if not isinstance(pins, list):
+                pins = []
+        except Exception:
+            pins = []
+
+        pin_set = {str(x).strip() for x in pins if str(x).strip()}
+        k = body.item_key.strip()
+        if body.pinned:
+            pin_set.add(k)
+        else:
+            pin_set.discard(k)
+        b_map["label_pins_json"] = json.dumps(sorted(list(pin_set)), ensure_ascii=False)
+
+    b_map, _ = _read_and_write_special_board(_upd)
+    new_pins = json.loads(b_map.get("label_pins_json", "[]"))
+
+    new_lbl_analytics = None
+    if _BUNDLE_CACHE["data"] is not None:
+        lbl_rows_cached = _LAST_GOOD_SHEETS.get("lbl", ([], None))[0]
+        if lbl_rows_cached:
+            new_lbl_analytics = build_label_analytics(lbl_rows_cached, new_pins)
+            _BUNDLE_CACHE["data"]["label_status"] = new_lbl_analytics
+
+    return {"ok": True, "message": "대표 표시사항 노출 설정이 저장되었습니다.", "label_status": new_lbl_analytics}
 
 
 @app.post("/api/claim-nc-history")
 def api_save_claim_nc_history(body: ClaimNcHistPayload):
-    """'클레임, 부적합 이력' 구글 시트의 [클레임] 탭 또는 [부적합] 탭에 자동 헤더 생성 및 영구 누적 저장"""
     sheet_urls_map = get_sheet_urls_map()
     sh, err = open_sheet_isolated(sheet_urls_map, "claim_nc_hist")
     if sh is None:
@@ -3558,21 +4006,6 @@ def api_save_claim_nc_history(body: ClaimNcHistPayload):
             if it["고유ID"] == body.uid:
                 it["대시보드노출"] = "N" if it.get("대시보드노출", "Y") == "Y" else "Y"
                 it["수정일시"] = now_s
-    elif body.action == "update":
-        st_clean = body.status if body.status in CLAIM_HIST_STATUS_LIST else "검사중"
-        for it in cur_records:
-            if it["고유ID"] == body.uid:
-                it["등록일"] = (body.reg_date or it["등록일"]).strip()
-                it["중요도"] = "중점관리" if body.importance == "중점관리" else "일반"
-                it["제품명"] = (body.product_name or "").strip() or "-"
-                it["소비기한"] = (body.exp_date or "").strip() or "-"
-                it["발생공정_원인유형"] = (body.cause_type or "공정·설비").strip()
-                it["상세사유"] = (body.reason_detail or "").strip() or "-"
-                it["추가검사_조치내역"] = (body.extra_action or "").strip() or "-"
-                it["진행상태"] = st_clean
-                it["최종판정"] = body.final_judge if body.final_judge else auto_judge_by_status(st_clean, "")
-                it["대시보드노출"] = "N" if body.show_dash == "N" else "Y"
-                it["수정일시"] = now_s
     elif body.action == "delete":
         cur_records = [x for x in cur_records if x["고유ID"] != body.uid]
 
@@ -3600,7 +4033,9 @@ def api_save_manual_kpi(body: ManualKpiPayload):
     sheet_urls_map = get_sheet_urls_map()
     sh, err = open_sheet_isolated(sheet_urls_map, "audit_db")
     if sh is None:
-        raise HTTPException(status_code=500, detail=f"심사 DB 시트를 열 수 없습니다: {err}")
+        sh, err = open_sheet_isolated(sheet_urls_map, "sup_audit_kpi")
+        if sh is None:
+            raise HTTPException(status_code=500, detail=f"설정 시트를 열 수 없습니다: {err}")
 
     ws_list = api_call_with_retry(sh.worksheets)
     ws_manual = next((w for w in ws_list if w.title.strip() == MANUAL_KPI_TAB), None)
@@ -3665,9 +4100,10 @@ def api_generate_ai_briefing():
     mc = bundle.get("special_boards", {}).get("micro_status", DEFAULT_MICRO_STATUS)
 
     factual_fallback = (
-        f"[Q-Safety 금일 브리핑] 상온공정({ps['rt_today_tab']}) {ps['active_rt_cnt']}건 가동, 두유배양({ps['soy_default_tab']}) 미검사 {ps['soy_uninspected_cnt']}호기, 미생물 판정 '{mc.get('status', '출고적합')}'입니다. "
-        f"표시사항 검토중 {lb['reviewing_cnt']}건, 법규 D-Day 관리 {lw['active_cnt']}건, 차기 일정 '{au['upcoming_banner']}'이며, "
-        f"클레임·부적합 진행 {cnh['active']}건(중점 {cnh['major']}건), 부문 누적 원가절감 {cs['actual_uk']}억원({cs['rate']}%)입니다."
+        f"[Q-Safety 금일 브리핑] 상온공정({ps['rt_today_tab']}) {ps['active_rt_cnt']}건 · 유제품(우유 {ps['active_milk_cnt']}·발효유 {ps['active_ferm_cnt']}) 가동 중이며, "
+        f"두유배양({ps['soy_default_tab']}) 미검사 {ps['soy_uninspected_cnt']}호기, 미생물 판정 '{mc.get('status', '출고적합')}'입니다. "
+        f"표시사항은 '{lb['rev_summary_line']}'(법규 D-Day {lw['active_cnt']}건 관리), 차기 일정은 '{au['upcoming_banner']}', "
+        f"클레임·부적합 진행 {cnh['active']}건, 부문 누적 원가절감 {cs['actual_uk']}억원({cs['rate']}%)입니다."
     )
 
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -3677,9 +4113,9 @@ def api_generate_ai_briefing():
     prompt_txt = (
         "다음 연세유업 아산공장 품질안전부문 실시간 지표를 바탕으로 추정 없이 오직 팩트 수치만 요약하여 "
         "부문장 출근 보고용 3줄 핵심 브리핑을 한국어로 간결하게 작성해줘.\n"
-        f"- 공정: 상온({ps['rt_today_tab']}) 가동 {ps['active_rt_cnt']}건·특이사항 {ps['today_notes']} / 유제품 {ps['active_dairy_cnt']}건 / 두유배양({ps['soy_default_tab']}) 미검사 {ps['soy_uninspected_cnt']}건 / 미생물: {mc.get('status')}\n"
-        f"- 식안팀: 표시사항 검토중 {lb['reviewing_cnt']}건(전년비 {lb['ytd_pct']:+.1f}%), 법규 시행 D-Day 추적 {lw['active_cnt']}건(60일이내 미반영 {lw['urgent_cnt']}건)\n"
-        f"- 심사/이력: 도래 일정 '{au['upcoming_banner']}', 클레임·부적합 현재 추적 {cnh['active']}건(중점관리 {cnh['major']}건)"
+        f"- 공정: 상온({ps['rt_today_tab']}) 가동 {ps['active_rt_cnt']}건·특이사항 {ps['today_notes']} / 유제품 {ps['active_dairy_cnt']}건(우유 {ps['active_milk_cnt']}·발효유 {ps['active_ferm_cnt']}) / 두유배양({ps['soy_default_tab']}) 미검사 {ps['soy_uninspected_cnt']}건 / 미생물: {mc.get('status')}\n"
+        f"- 식안팀: 표시사항({lb['rev_summary_line']}, 26년 누적 {lb['cnt_26_all']}건 전년비 {lb['ytd_pct']:+.1f}%), 법규 시행 D-Day 추적 {lw['active_cnt']}건\n"
+        f"- 심사/이력: 도래 일정 '{au['upcoming_banner']}', 클레임·부적합 현재 추적 {cnh['active']}건(중점 {cnh['major']}건)"
     )
 
     for endpoint in [

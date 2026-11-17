@@ -2805,7 +2805,6 @@ def fetch_sup_and_audit_kpi_sheet(sheet_urls_map: dict):
 # 6. [5] '법규정보' 시트 — '1.개정이유' 완전 스킵 & '2.주요내용' 전문 추출 + 대시보드 탭 동기화
 # ==============================================================================
 def make_law_id(tab_name: str, law_name: str, enf_raw: str, notice_raw: str) -> str:
-    def make_law_id(tab_name: str, law_name: str, enf_raw: str, notice_raw: str) -> str:
     ln = re.sub(r"\s+", "", law_name)
     en = re.sub(r"\s+", "", enf_raw)
     nt = re.sub(r"\s+", "", notice_raw)

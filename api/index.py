@@ -1,6 +1,6 @@
 # ==============================================================================
-# [api/index.py - PART 1 / 2]
-# Q-Safety 백엔드 통합 엔진 (미생물 주석 역매칭 · 법규 '2.주요내용' 전문 추출 · 대시보드 탭 동기화)
+# [api/index.py - PART 1 / 4]
+# Q-Safety 백엔드 통합 엔진 (진입점 · 상수 · 인증 · 원가절감 & 클레임 파서)
 # ==============================================================================
 import hashlib
 import json
@@ -26,7 +26,7 @@ from pydantic import BaseModel
 # ==============================================================================
 # 0. Vercel FastAPI 최상단 진입점(Entrypoint) 및 CORS 설정
 # ==============================================================================
-app = FastAPI(title="Q-Safety API", version="6.5.0")
+app = FastAPI(title="Q-Safety API", version="6.6.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -66,6 +66,9 @@ LAW_PREP_LIST = ["검토전", "부자재변경중", "반영완료"]
 # '법규정보' 시트 내 '대시보드' 탭 표준 컬럼
 LAW_DASH_TAB = "대시보드"
 LAW_DASH_COLS = ["법규ID", "구분", "시행일", "법규명", "준비상태", "핵심요약", "관련부서", "수정일시"]
+
+# '표시사항 현황' 시트 내 '특이사항' 탭 이름
+LABEL_SPECIAL_TAB = "특이사항"
 
 CLAIM_HIST_STATUS_LIST = ["출고대기", "검사중", "원인·조치중", "적합(종결)", "부적합"]
 CLAIM_HIST_COLS = [
@@ -181,6 +184,7 @@ def eval_kpi_level(val: float, crit_key: str) -> str:
     return "Lev.5"
 
 
+# 수동 관리 KPI 초기 구조 (kpi_11 협력업체 · kpi_5 심사점수는 하드코딩 수치 제거 -> 100% 구글 시트 실시간 연동)
 DEFAULT_MANUAL_KPIS = {
     "kpi_8": {
         "no": "3",
@@ -247,14 +251,14 @@ DEFAULT_MANUAL_KPIS = {
         "title": "6. 협력업체 관리강화",
         "short_title": "6. 협력업체 관리",
         "target_text": "88.3% 이상 (Lev.1)",
-        "actual_text": "92.10% (Lev.1)",
-        "compact_val": "92.10%",
-        "sub_badge": "목표 88.3%↑ 대비 Lev.1 달성",
+        "actual_text": "시트 연동 대기",
+        "compact_val": "-",
+        "sub_badge": "'협력업체, 심사 점수' 시트 실시간 연동",
         "target_num": 88.3,
-        "actual_num": 92.1,
+        "actual_num": 0.0,
         "suffix": "%",
         "unit_label": "(단위 : %)",
-        "signal": "green",
+        "signal": "gray",
         "has_chart": True,
         "notes_title": "협력업체 현장·서류 관리강화 내역",
         "notes": [
@@ -267,14 +271,14 @@ DEFAULT_MANUAL_KPIS = {
         "title": "7. 심사점수",
         "short_title": "7. 심사점수",
         "target_text": "94.28점 이상 (Lev.1)",
-        "actual_text": "91.95점 (Lev.5)",
-        "compact_val": "91.95점",
-        "sub_badge": "클릭 시 심사개선율 · 수검이력 상세 조회",
+        "actual_text": "시트 연동 대기",
+        "compact_val": "-",
+        "sub_badge": "'협력업체, 심사 점수' 시트 실시간 연동",
         "target_num": 94.28,
-        "actual_num": 91.95,
+        "actual_num": 0.0,
         "suffix": "",
         "unit_label": "(단위 : 점)",
-        "signal": "red",
+        "signal": "gray",
         "has_chart": True,
         "notes_title": "외부심사 점수 관리 내역",
         "notes": [
@@ -305,10 +309,8 @@ DEFAULT_MANUAL_KPIS = {
     }
 }
 
-DEFAULT_LABEL_MEMO = (
-    "• 원재료 변경 품목 전성분 및 알레르기 유발물질 표시 교차 점검 진행\n"
-    "• 표시사항 신규·변경 의뢰 건 부자재 발주 전 최종 확인필 여부 상시 체크"
-)
+# 하드코딩 예시 문구 완전 제거 ('표시사항 현황' 시트의 [특이사항] 탭 내용만 100% 반영)
+DEFAULT_LABEL_MEMO = ""
 
 DEFAULT_MICRO_STATUS = {
     "mode": "자동연동",
@@ -593,10 +595,6 @@ def clean_product_for_match(name: str) -> str:
 
 
 def expand_micro_alias_pool(rep_name: str, saved_alias_col: str = "", custom_note_map: dict = None) -> Tuple[str, str]:
-    """
-    미생물 일보의 대표품목명(예: 연세우유(주1), 연세 딸기(주10), Ωmega3건강박사)으로부터
-    (주1~주12) 주석 사전 + 시트 실시간 각주 + 현장 약칭을 결합해 (전체검색풀, 매칭주석안내) 반환
-    """
     rep_s = re.sub(r"\s+", " ", str(rep_name or "")).strip()
     m_ju = re.search(r"\(주(\d+)\)", rep_s)
     ju_key = f"주{m_ju.group(1)}" if m_ju else ""
@@ -610,7 +608,6 @@ def expand_micro_alias_pool(rep_name: str, saved_alias_col: str = "", custom_not
         if DEFAULT_MICRO_FOOTNOTES.get(ju_key):
             parts.append(DEFAULT_MICRO_FOOTNOTES[ju_key])
 
-    # 주석 번호가 빠진 요일(예: 토·일요일 호상요구르트 '연세 딸기', '연세 플레인', '연세 복숭아')도 주10~12와 동일 매핑
     rep_ns = re.sub(r"\s+", "", rep_s)
     if not ju_key:
         if rep_ns in ["연세딸기", "호상딸기"]:
@@ -663,7 +660,6 @@ def is_product_match(record_prod: str, selected_prod: str, kw_text: str = "") ->
                 matched_this = True
                 break
         if not matched_this:
-            # 공백 단위 핵심 토큰 교차 매칭 (예: '오늘 좋은 떠먹는 딸기' <-> '오늘좋은 딸기')
             stop_words = {"연세", "연세우유", "전용목장", "우유", "발효유", "요구르트", "요거트", "떠먹는"}
             raw_toks = [clean_product_for_match(t) for t in re.split(r"[\s\(\)/]+", q_str)]
             sig_toks = [t for t in raw_toks if len(t) >= 2 and t not in stop_words]
@@ -966,10 +962,10 @@ def build_division_claim_summary(cat_list: list, year_str: str, division_categor
         "monthly": monthly,
         "raw": sub
     }
-
-
+# ============================ [api/index.py - PART 1 / 4 끝] ============================
 # ==============================================================================
-# 4. [3] 4대 현장·실험실 일보(상온 · 유제품 · 두유배양 · 미생물 검사일보) 정밀 파서
+# [api/index.py - PART 2 / 4]
+# 4대 현장·실험실 일보 (상온 · 유제품 · 두유배양 · 미생물 검사일보) 정밀 파서
 # ==============================================================================
 def select_date_tab_titles(ws_titles: List[str]):
     today = now_kst()
@@ -2263,14 +2259,10 @@ def fetch_process_soy_sheet(sheet_urls_map: dict):
         return default_tab_title, soy_tabs_parsed, def_pack["blocks"], def_pack["hourly"], soy_hist, None
     except Exception as e:
         return "-", {}, [], [], [], f"[두유배양일보] {e}"
-# ============================ [api/index.py - PART 1 / 2 끝] ============================
+# ============================ [api/index.py - PART 2 / 4 끝] ============================
 # ==============================================================================
-# [api/index.py - PART 2 / 2]
-# 법규 '2.주요내용' 전문 추출(개정이유 스킵·잘린문구 자동복구) · 포장제품 기준 미생물 주석 역매칭
-# ==============================================================================
-
-# ==============================================================================
-# 5. [4] 협력업체 서류심사 DB & [4-2] '협력업체, 심사 점수'(+일정 탭) 정밀 파서
+# [api/index.py - PART 3 / 4]
+# 협력업체·심사점수(하드코딩 제거) · 법규 '2.주요내용' 전문 추출 · 표시사항 [특이사항] 탭 연동
 # ==============================================================================
 def fetch_supplier_sheet(sheet_urls_map: dict):
     sh, err = open_sheet_isolated(sheet_urls_map, "supplier")
@@ -2576,12 +2568,13 @@ def parse_schedule_tab_rows(rows: list) -> list:
 
 
 def fetch_sup_and_audit_kpi_sheet(sheet_urls_map: dict):
+    """하드코딩 예비 실적 제거: 100% '협력업체, 심사 점수' 시트 실시간 셀 값만 반영"""
     default_sup_kpi = {
         "has_sheet": False,
         "target_rate": 88.3,
-        "actual_rate": 92.10,
-        "level_str": "Lev.1",
-        "signal": "green",
+        "actual_rate": 0.0,
+        "level_str": "-",
+        "signal": "gray",
         "criteria": KPI_LEVEL_CRITERIA["supplier_exec"],
         "weight_rows": [],
         "visit_rows": [],
@@ -2590,13 +2583,13 @@ def fetch_sup_and_audit_kpi_sheet(sheet_urls_map: dict):
     default_aud_kpi = {
         "has_sheet": False,
         "score_target": 94.28,
-        "score_actual": 91.95,
-        "score_level": "Lev.5",
+        "score_actual": 0.0,
+        "score_level": "-",
         "imp_target": 94.5,
-        "imp_actual": 94.85,
-        "imp_level": "Lev.1",
+        "imp_actual": 0.0,
+        "imp_level": "-",
         "imp_cnt_text": "",
-        "signal": "red",
+        "signal": "gray",
         "score_criteria": KPI_LEVEL_CRITERIA["audit_score"],
         "imp_criteria": KPI_LEVEL_CRITERIA["audit_imp"],
         "formula_rows": [],
@@ -2694,7 +2687,7 @@ def fetch_sup_and_audit_kpi_sheet(sheet_urls_map: dict):
                             "비고": note_v or "-"
                         })
 
-            sup_kpi["level_str"] = eval_kpi_level(sup_kpi["actual_rate"], "supplier_exec")
+            sup_kpi["level_str"] = eval_kpi_level(sup_kpi["actual_rate"], "supplier_exec") if sup_kpi["actual_rate"] > 0 else "-"
             sup_kpi["weight_rows"] = weight_rows
             sup_kpi["visit_rows"] = visit_rows
             sup_kpi["visit_counts"] = {
@@ -2750,6 +2743,12 @@ def fetch_sup_and_audit_kpi_sheet(sheet_urls_map: dict):
                 if hist_hdr_idx < 0 and r_ns[0] in ["심사일", "일자"] and ("심사업체" in r_ns[1] or "업체" in r_ns[1] or "기관" in r_ns[1]):
                     hist_hdr_idx = r_i
 
+            # 상단 요약 셀이 비어 있을 경우 환산점수 합계로 자동 계산
+            if aud_kpi["score_actual"] <= 0 and formula_rows:
+                sum_f = sum(to_float(fr.get("환산점수", 0), 0.0) for fr in formula_rows)
+                if sum_f > 0:
+                    aud_kpi["score_actual"] = round(sum_f, 2)
+
             tot_imp_sum, tot_iss_sum = 0, 0
             if hist_hdr_idx >= 0:
                 for dr in a_rows[hist_hdr_idx + 1:]:
@@ -2782,8 +2781,11 @@ def fetch_sup_and_audit_kpi_sheet(sheet_urls_map: dict):
 
             if tot_iss_sum > 0:
                 aud_kpi["imp_cnt_text"] = f"개선 {tot_imp_sum}건 / 지적 {tot_iss_sum}건"
-            aud_kpi["score_level"] = eval_kpi_level(aud_kpi["score_actual"], "audit_score")
-            aud_kpi["imp_level"] = eval_kpi_level(aud_kpi["imp_actual"], "audit_imp")
+                if aud_kpi["imp_actual"] <= 0:
+                    aud_kpi["imp_actual"] = round((tot_imp_sum / tot_iss_sum) * 100, 2)
+
+            aud_kpi["score_level"] = eval_kpi_level(aud_kpi["score_actual"], "audit_score") if aud_kpi["score_actual"] > 0 else "-"
+            aud_kpi["imp_level"] = eval_kpi_level(aud_kpi["imp_actual"], "audit_imp") if aud_kpi["imp_actual"] > 0 else "-"
             aud_kpi["formula_rows"] = formula_rows
             aud_kpi["history_rows"] = history_rows
             aud_kpi["signal"] = "green" if aud_kpi["score_actual"] >= aud_kpi["score_target"] else ("yellow" if aud_kpi["score_actual"] >= 92.78 else "red")
@@ -2803,7 +2805,6 @@ def make_law_id(tab_name: str, law_name: str, enf_raw: str, notice_raw: str) -> 
 
 
 def is_broken_old_summary(s: str) -> bool:
-    """이전에 잘못 잘려 저장된 요약문('개정 이유', '…' 등)인지 판별"""
     if not s:
         return True
     t = s.strip()
@@ -2818,16 +2819,11 @@ def is_broken_old_summary(s: str) -> bool:
 
 
 def extract_pure_law_substance(law_name: str, content_str: str) -> str:
-    """
-    원문에서 '1. 개정 이유'(배경 서론) 구간을 완전히 건너뛰고,
-    오직 '2. 주요 내용'의 핵심 항목(가. 나. 1) * 세부 대상 품목·물질명)만 끝까지 추출 (강제 글자 절단 없음!)
-    """
     raw = str(content_str or "").strip()
     t = str(law_name or "").strip()
     if not raw or raw == "-":
         return f"{t} 개정 세부기준 확인"
 
-    # 1) '주요 내용' / '주요내용' / '개정 내용' 시작 지점 탐색 -> 그 앞의 '1. 개정 이유' 통째로 제거!
     m_main = re.search(
         r"(?:^|\n)\s*(?:2\.|Ⅱ\.|[2②]|[\[【\(])?\s*(?:주요\s*내용|개정\s*내용|주요\s*골자)\s*[\]】\)]?\s*[:\-]?",
         raw
@@ -2835,10 +2831,8 @@ def extract_pure_law_substance(law_name: str, content_str: str) -> str:
     if m_main:
         target_body = raw[m_main.end():]
     else:
-        # '주요 내용' 헤더가 없는 단문 고시인 경우 맨 앞 '1. 개정이유' 타이틀만 제거
         target_body = re.sub(r"^\s*(?:1\.|[1①]|[\[【\(])?\s*개정\s*이유\s*[\]】\)]?\s*[:\-]?\s*", "", raw)
 
-    # 2) '3. 의견제출' / '3. 참고사항' / '부칙' 이후 행정 안내문 제거
     m_stop = re.search(
         r"(?:^|\n)\s*(?:3\.|4\.|Ⅲ\.|[3③]|[\[【\(])?\s*(?:의견\s*제출|참고\s*사항|기타\s*사항|부\s*칙|향후\s*일정)",
         target_body
@@ -2854,31 +2848,26 @@ def extract_pure_law_substance(law_name: str, content_str: str) -> str:
         ns_ln = re.sub(r"\s+", "", ln)
         if ns_ln in ["개정이유", "1.개정이유", "주요내용", "2.주요내용", "개정내용"]:
             continue
-        # 조문 번호 꼬리표 (안 제4조, 제12조의2 등) 제거하여 가독성 극대화
         ln_clean = re.sub(r"\(\s*안\s*제[^)]+\)", "", ln)
         ln_clean = re.sub(r"\(\s*제\d+조[^)]*\)", "", ln_clean)
         ln_clean = re.sub(r"\(\s*별표\s*\d+[^)]*\)", "", ln_clean)
         ln_clean = re.sub(r"\s+", " ", ln_clean).strip()
 
-        # '* 간장류: 한식간장, 양조간장...' 같은 세부 대상 품목 주석은 별도 보존해 앞 항목에 결합
         if ln_clean.startswith("*") or ln_clean.startswith("※"):
             note_body = ln_clean.lstrip("*※ ").strip()
             if note_body:
                 sub_notes.append(f"[{note_body}]")
             continue
 
-        # 앞머리 기호(가., 나., 1), ①, -, ㅇ 등) 정리
         ln_clean = re.sub(r"^(?:[가-하]\.|[0-9]+\)|[0-9]+\.|[①-⑩]|[-•▪▫▶▸ㅇ])\s*", "", ln_clean).strip(" :-")
         if len(ln_clean) >= 3:
             items.append(ln_clean)
 
-    # 항목이 하나도 안 잡혔으면 원문 전체 정리본 사용
     if not items and not sub_notes:
         fallback = re.sub(r"\s+", " ", target_body).strip()
         fallback = re.sub(r"^(?:1\.\s*)?개정\s*이유\s*[:\-·]?\s*", "", fallback)
         return fallback if fallback else f"{t} 세부 개정내용 확인"
 
-    # 핵심 항목들을 ' / '로 깔끔하게 연결하고 세부 대상 품목([간장류: ...])도 빠짐없이 부착
     joined_main = " / ".join(items)
     if sub_notes:
         joined_main = f"{joined_main} {' '.join(sub_notes)}".strip()
@@ -2887,7 +2876,6 @@ def extract_pure_law_substance(law_name: str, content_str: str) -> str:
 
 
 def generate_gemini_law_summary_single(law_name: str, content_str: str) -> Optional[str]:
-    """원클릭 AI 정밀 요약 요청 시 Gemini 2.5 Flash로 핵심 내용 요약 생성"""
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
         return None
@@ -3098,7 +3086,6 @@ def fetch_law_info_sheet(sheet_urls_map: dict):
                     "auto_default": auto_default_show
                 })
 
-        # '대시보드' 탭이 비어 있거나 이전 구버전('개정 이유' 등) 잘린 요약문이 들어 있으면 즉시 깨끗한 요약으로 자동 복구 기록
         needs_resync = (t_dash and not dash_initialized and bool(all_laws))
         if dash_initialized and dash_tab_map:
             for v_obj in dash_tab_map.values():
@@ -3144,7 +3131,6 @@ def apply_law_preferences(raw_laws: list, dash_initialized: bool, dash_tab_map: 
         if prep not in LAW_PREP_LIST:
             prep = "검토전"
 
-        # 잘못 잘린 구버전 요약문이면 버리고 새 '2. 주요 내용' 전문 추출본 적용
         if is_broken_old_summary(custom_sum):
             clean_custom = ""
         else:
@@ -3189,7 +3175,7 @@ def apply_law_preferences(raw_laws: list, dash_initialized: bool, dash_tab_map: 
 
 
 # ==============================================================================
-# 7. [6] '클레임, 부적합 이력' 시트 & [7] 보조 설정 DB 파서
+# 7. [6] '클레임, 부적합 이력' · [7] 보조 설정 DB · [8] '표시사항 현황'([특이사항] 탭 포함)
 # ==============================================================================
 def fetch_claim_nc_history_sheet(sheet_urls_map: dict):
     sh, err = open_sheet_isolated(sheet_urls_map, "claim_nc_hist")
@@ -3310,7 +3296,8 @@ def fetch_audit_and_manual_db(sheet_urls_map: dict):
                     mr_pad = [str(x).strip() for x in mr] + [""] * max(0, len(m_hdr) - len(mr))
                     md = dict(zip(m_hdr, mr_pad[:len(m_hdr)]))
                     k_key = md.get("kpi_key", "")
-                    if k_key in DEFAULT_MANUAL_KPIS:
+                    # kpi_11(협력업체)과 kpi_5(심사점수)는 구글 시트 실시간 값을 최우선 사용하므로 수동 덮어쓰기에서 제외
+                    if k_key in DEFAULT_MANUAL_KPIS and k_key not in ("kpi_11", "kpi_5"):
                         notes_raw = md.get("notes_joined", "")
                         act_txt = md.get("actual_text", DEFAULT_MANUAL_KPIS[k_key]["actual_text"])
                         saved_manual[k_key] = {
@@ -3325,7 +3312,7 @@ def fetch_audit_and_manual_db(sheet_urls_map: dict):
                             "notes": [x.strip() for x in notes_raw.split("||") if x.strip()] if notes_raw else list(DEFAULT_MANUAL_KPIS[k_key]["notes"])
                         }
 
-        loaded_lbl_memo = None
+        loaded_lbl_memo_fallback = None
         loaded_micro = None
         loaded_law_prefs = {}
         loaded_label_pins = []
@@ -3337,8 +3324,8 @@ def fetch_audit_and_manual_db(sheet_urls_map: dict):
                         b_key = str(sr[0]).strip()
                         b_val = str(sr[1]).strip()
                         b_ts = str(sr[2]).strip() if len(sr) >= 3 else ""
-                        if b_key == "label_memo" and b_val:
-                            loaded_lbl_memo = b_val.strip()
+                        if b_key == "label_memo":
+                            loaded_lbl_memo_fallback = b_val
                         elif b_key == "micro_status_json" and b_val:
                             try:
                                 parsed_m = json.loads(b_val)
@@ -3363,7 +3350,7 @@ def fetch_audit_and_manual_db(sheet_urls_map: dict):
                             except Exception:
                                 pass
 
-        return legacy_sched, saved_manual, loaded_lbl_memo, loaded_micro, loaded_law_prefs, loaded_label_pins, None
+        return legacy_sched, saved_manual, loaded_lbl_memo_fallback, loaded_micro, loaded_law_prefs, loaded_label_pins, None
     except Exception as e:
         return [], {}, None, None, {}, [], f"[설정 DB] {e}"
 
@@ -3405,15 +3392,73 @@ def strip_duplicate_dept_prefix(title_str: str, dept_str: str) -> str:
     return t
 
 
-def fetch_label_status_sheet(sheet_urls_map: dict):
+def parse_label_special_tab_rows(rows: list) -> str:
+    """
+    '표시사항 현황' 시트 내 [특이사항] 탭의 내용을 읽어 메모 문자열로 반환.
+    - 사용자가 직접 시트 셀에 여러 줄로 적어둔 경우도 지원하고,
+    - 사이트 모달에서 저장한 표준 포맷(헤더: 특이사항내용 | 수정일시)도 모두 깔끔하게 파싱
+    """
+    if not rows:
+        return ""
+    r0_ns = [re.sub(r"\s+", "", str(x)) for x in rows[0]]
+    is_std_header = len(r0_ns) >= 1 and r0_ns[0] in ["특이사항내용", "특이사항", "내용", "메모"]
+    target_rows = rows[1:] if is_std_header else rows
+
+    lines = []
+    for r in target_rows:
+        if not r:
+            continue
+        if is_std_header:
+            c0 = str(r[0]).strip()
+            if c0:
+                lines.append(c0)
+        else:
+            # 직접 시트에 입력한 경우: 날짜 타임스탬프 열을 제외한 텍스트 결합
+            cells = [str(x).strip() for x in r if str(x).strip() and not re.match(r"^20\d{2}-\d{2}-\d{2}\s+\d{2}:\d{2}", str(x).strip())]
+            if cells:
+                lines.append(" ".join(cells))
+    return "\n".join(lines).strip()
+
+
+def save_label_special_tab_memo(sheet_urls_map: dict, memo_text: str):
+    """사이트에서 수정한 표시사항 특이사항 메모를 '표시사항 현황' 시트의 [특이사항] 탭에 직접 저장"""
     sh, err = open_sheet_isolated(sheet_urls_map, "label_status")
     if sh is None:
-        return [], err
+        raise HTTPException(status_code=500, detail=f"'표시사항 현황' 시트를 열 수 없습니다: {err}")
+
+    ws_all = api_call_with_retry(sh.worksheets)
+    ws_sp = next((w for w in ws_all if w.title.strip() == LABEL_SPECIAL_TAB), None)
+    if ws_sp is None:
+        ws_sp = api_call_with_retry(sh.add_worksheet, title=LABEL_SPECIAL_TAB, rows=50, cols=4)
+
+    now_s = now_kst().strftime("%Y-%m-%d %H:%M:%S")
+    clean_lines = [ln.strip() for ln in str(memo_text or "").splitlines() if ln.strip()]
+    payload = [["특이사항내용", "수정일시"]]
+    for ln in clean_lines:
+        payload.append([ln, now_s])
+
+    api_call_with_retry(ws_sp.clear)
+    safe_ws_update(ws_sp, payload)
+
+
+def fetch_label_status_sheet(sheet_urls_map: dict):
+    """'표시사항 현황' 시트의 메인 심의 탭 + [특이사항] 탭을 한 번에 일괄 조회"""
+    sh, err = open_sheet_isolated(sheet_urls_map, "label_status")
+    if sh is None:
+        return [], None, err
     try:
-        ws = api_call_with_retry(sh.get_worksheet, 0)
-        rows = get_values_unformatted(ws)
+        ws_all = api_call_with_retry(sh.worksheets)
+        ws_titles = [w.title for w in ws_all]
+        t_main = next((t for t in ws_titles if t.strip() != LABEL_SPECIAL_TAB), ws_titles[0] if ws_titles else None)
+        t_sp = next((t for t in ws_titles if t.strip() == LABEL_SPECIAL_TAB), None)
+
+        batch_map = batch_fetch_tabs(sh, [t_main] + ([t_sp] if t_sp else []), "UNFORMATTED_VALUE")
+        rows = batch_map.get(t_main, []) if t_main else []
+        sp_memo = parse_label_special_tab_rows(batch_map.get(t_sp, [])) if t_sp is not None else None
+
         if len(rows) < 2:
-            return [], "표시사항 현황 시트에 데이터가 없습니다."
+            return [], sp_memo, "표시사항 현황 시트에 데이터가 없습니다."
+
         headers = [str(h).strip() for h in rows[0]]
         data = []
         for r in rows[1:]:
@@ -3429,9 +3474,9 @@ def fetch_label_status_sheet(sheet_urls_map: dict):
             item["_mo_num"] = mo_num
             item["분류"] = classify_label_status(item.get("상태", ""))
             data.append(item)
-        return data, None
+        return data, sp_memo, None
     except Exception as e:
-        return [], str(e)
+        return [], None, str(e)
 
 
 def fetch_raw_material_db_sheet(sheet_urls_map: dict):
@@ -3453,10 +3498,10 @@ def fetch_raw_material_db_sheet(sheet_urls_map: dict):
     except Exception as e:
         return submitted, total_master_count, str(e)
     return submitted, total_master_count, None
-
-
+# ============================ [api/index.py - PART 3 / 4 끝] ============================
 # ==============================================================================
-# 8. 심사 요약 · 표시사항 분석 · 통합 번들 엔진 (포장일보 제품명 기준으로만 통일)
+# [api/index.py - PART 4 / 4]
+# 통합 번들 엔진 · LOT 4단 역추적 · '표시사항 현황' [특이사항] 탭 양방향 저장 엔드포인트
 # ==============================================================================
 def get_active_audit_summary(sched_list: list, today_str: str) -> dict:
     today_d = parse_date_obj(today_str) or now_kst().date()
@@ -3754,8 +3799,8 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
             soy_def_tab, soy_map, soy_b, soy_h, soy_hist, err_soy = resolve_with_last_good("soy", f_soy.result(), 5)
             micro_data, err_micro = resolve_with_last_good("micro", f_micro.result(), 1)
             sup_m, sup_g, sup_uc, sup_ud, err_sup = resolve_with_last_good("sup", f_sup.result(), 4)
-            legacy_sched, saved_manual_kpis, saved_lbl_memo, saved_micro, saved_law_prefs, saved_lbl_pins, err_audit = resolve_with_last_good("audit", f_audit.result(), 6)
-            lbl_rows, err_lbl = resolve_with_last_good("lbl", f_lbl.result(), 1)
+            legacy_sched, saved_manual_kpis, saved_lbl_memo_fb, saved_micro, saved_law_prefs, saved_lbl_pins, err_audit = resolve_with_last_good("audit", f_audit.result(), 6)
+            lbl_rows, lbl_sp_memo, err_lbl = resolve_with_last_good("lbl", f_lbl.result(), 2)
             raw_sub, raw_m_cnt, err_raw = resolve_with_last_good("raw", f_raw.result(), 2)
             raw_laws, dash_init_flag, dash_tab_map, err_law = resolve_with_last_good("law", f_law.result(), 3)
             sup_kpi_sheet, aud_kpi_sheet, sak_sched, err_sak = resolve_with_last_good("sak", f_sak.result(), 3)
@@ -3765,7 +3810,7 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
         if sak_sched is not None and len(sak_sched) == 0 and legacy_sched:
             audit_sched = legacy_sched
 
-        # [요청 반영] 검색 제품 목록은 오직 '상온(식품안전나라)' + '우유·발효유 포장일보' 제품명으로만 깔끔히 통일!
+        # LOT 역추적 제품 목록: 오직 '우유·발효유 포장일보' + '상온(식품안전나라)' 제품명으로 통일
         master_prods = []
         seen_norm = set()
 
@@ -3870,23 +3915,24 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
         guide_sup_cnt = sum(1 for r in sup_m if r.get("결과") == "지도")
         out_sup_cnt = sum(1 for r in sup_m if r.get("결과") == "등급 외")
 
+        # 협력업체 관리강화 & 심사점수: 하드코딩 없이 100% 구글 시트 값만 반영
         final_sup_target = sup_kpi_sheet["target_rate"] if sup_kpi_sheet.get("has_sheet") else 88.3
         final_sup_rate = sup_kpi_sheet["actual_rate"] if sup_kpi_sheet.get("has_sheet") else doc_exec_rate
-        final_sup_lv = sup_kpi_sheet.get("level_str", eval_kpi_level(final_sup_rate, "supplier_exec"))
-        sig_supplier = "green" if final_sup_rate >= final_sup_target else ("yellow" if final_sup_rate >= 85.3 else "red")
+        final_sup_lv = sup_kpi_sheet.get("level_str") if sup_kpi_sheet.get("has_sheet") else (eval_kpi_level(final_sup_rate, "supplier_exec") if final_sup_rate > 0 else "-")
+        sig_supplier = "gray" if final_sup_rate <= 0 else ("green" if final_sup_rate >= final_sup_target else ("yellow" if final_sup_rate >= 85.3 else "red"))
 
         merged_manual = {k: {**v, "notes": list(v["notes"])} for k, v in DEFAULT_MANUAL_KPIS.items()}
         for mk_k, mk_val in saved_manual_kpis.items():
-            if mk_k in merged_manual:
+            if mk_k in merged_manual and mk_k not in ("kpi_11", "kpi_5"):
                 merged_manual[mk_k].update(mk_val)
 
-        if sup_kpi_sheet.get("has_sheet"):
+        if sup_kpi_sheet.get("has_sheet") or final_sup_rate > 0:
             vc = sup_kpi_sheet.get("visit_counts", {})
             merged_manual["kpi_11"].update({
                 "target_text": f"{final_sup_target}% 이상 (Lev.1)",
                 "actual_text": f"{final_sup_rate:.2f}% ({final_sup_lv})",
                 "compact_val": f"{final_sup_rate:.2f}%",
-                "sub_badge": f"방문점검 {vc.get('전체', 0)}개사(유업{vc.get('연세유업',0)}·생건{vc.get('연세생건',0)}·이롬{vc.get('이롬',0)})",
+                "sub_badge": f"방문점검 {vc.get('전체', 0)}개사(유업{vc.get('연세유업',0)}·생건{vc.get('연세생건',0)}·이롬{vc.get('이롬',0)})" if sup_kpi_sheet.get("has_sheet") else f"서류제출 {sub_sup_cnt}/{total_sup_cnt}개사",
                 "target_num": final_sup_target,
                 "actual_num": final_sup_rate,
                 "signal": sig_supplier
@@ -3898,15 +3944,21 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
             sc_lv = aud_kpi_sheet["score_level"]
             merged_manual["kpi_5"].update({
                 "target_text": f"{sc_t}점 이상 (Lev.1)",
-                "actual_text": f"{sc_a}점 ({sc_lv})",
-                "compact_val": f"{sc_a}점",
+                "actual_text": f"{sc_a}점 ({sc_lv})" if sc_a > 0 else "수검 데이터 집계중",
+                "compact_val": f"{sc_a}점" if sc_a > 0 else "-",
                 "sub_badge": f"수검 {len(aud_kpi_sheet.get('history_rows', []))}건 · 클릭 시 심사개선율 상세",
                 "target_num": sc_t,
                 "actual_num": sc_a,
                 "signal": aud_kpi_sheet["signal"]
             })
 
-        label_memo_final = (saved_lbl_memo if saved_lbl_memo is not None else DEFAULT_LABEL_MEMO).strip()
+        # 표시사항 특이사항 메모: '표시사항 현황' 시트 내 [특이사항] 탭 값을 최우선 적용 (빈칸이면 빈칸 그대로 유지)
+        if lbl_sp_memo is not None:
+            label_memo_final = lbl_sp_memo.strip()
+        elif saved_lbl_memo_fb is not None:
+            label_memo_final = saved_lbl_memo_fb.strip()
+        else:
+            label_memo_final = DEFAULT_LABEL_MEMO
 
         raw_m_pref = saved_micro if isinstance(saved_micro, dict) else dict(DEFAULT_MICRO_STATUS)
         m_mode = raw_m_pref.get("mode", "자동연동")
@@ -4074,7 +4126,7 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
 
 
 # ==============================================================================
-# 9. 정적 파일 · LOT 4단 역추적(포장일보 제품명 -> 미생물 주1~주12 역매칭) · 저장 API
+# 9. 정적 파일 · LOT 4단 역추적 · 시트 직통 양방향 저장 API 엔드포인트
 # ==============================================================================
 class AuditSchedulePayload(BaseModel):
     action: str
@@ -4251,7 +4303,7 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = ""):
             matched_dy.append(dr_copy)
     matched_dy.sort(key=lambda x: x.get("생산일자", ""), reverse=True)
 
-    # 4. 미생물 검사일보 역매칭 (포장 제품명 -> 미생물 하단 주1~주12 각주 사전 자동 확장 매칭!)
+    # 4. 미생물 검사일보 역매칭 (포장 제품명 -> 미생물 하단 주1~주12 각주 사전 자동 확장 매칭)
     matched_micro = []
     has_prod_filter = bool((product and product != "ALL") or (kw and kw.strip()))
 
@@ -4320,7 +4372,6 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = ""):
 
 @app.post("/api/law-ai-summary")
 def api_generate_law_ai_summary(body: LawAiReqPayload):
-    """모달창에서 [Gemini AI 정밀 요약 생성] 클릭 시 원문 전체를 읽고 핵심 요약 반환"""
     bundle = build_full_dashboard_bundle(force_refresh=False)
     all_laws = bundle.get("law", {}).get("all_laws", [])
     target = next((x for x in all_laws if x.get("law_id") == body.law_id), None)
@@ -4436,7 +4487,6 @@ def _read_and_write_special_board(updater_fn):
         ws_sp = api_call_with_retry(sh.add_worksheet, title=SPECIAL_BOARD_TAB, rows=30, cols=4)
 
     board_map = {
-        "label_memo": DEFAULT_LABEL_MEMO,
         "micro_status_json": json.dumps(DEFAULT_MICRO_STATUS, ensure_ascii=False),
         "law_prefs_json": "{}",
         "label_pins_json": "[]"
@@ -4458,14 +4508,32 @@ def _read_and_write_special_board(updater_fn):
 
 @app.post("/api/special-boards")
 def api_save_special_boards(body: SpecialBoardPayload):
-    def _upd(b_map: dict, now_s: str):
-        if body.label_memo is not None:
-            b_map["label_memo"] = str(body.label_memo).strip()
-        if body.micro_status is not None:
+    """
+    - label_memo 수정 시: '표시사항 현황' 시트 내 [특이사항] 탭에 직접 저장 (빈칸 저장도 완벽 반영)
+    - micro_status 수정 시: 통합 설정 보드에 저장
+    """
+    sheet_urls_map = get_sheet_urls_map()
+    now_s = now_kst().strftime("%Y-%m-%d %H:%M:%S")
+
+    current_lbl_memo = ""
+    if _BUNDLE_CACHE["data"] and _BUNDLE_CACHE["data"].get("special_boards"):
+        current_lbl_memo = _BUNDLE_CACHE["data"]["special_boards"].get("label_memo", "")
+
+    if body.label_memo is not None:
+        clean_memo = str(body.label_memo).strip()
+        save_label_special_tab_memo(sheet_urls_map, clean_memo)
+        current_lbl_memo = clean_memo
+        if "lbl" in _LAST_GOOD_SHEETS:
+            prev_rows, _, prev_err = _LAST_GOOD_SHEETS["lbl"]
+            _LAST_GOOD_SHEETS["lbl"] = (prev_rows, clean_memo, prev_err)
+
+    eff_micro = None
+    if body.micro_status is not None:
+        def _upd_m(b_map: dict, ts: str):
             mode_v = str(body.micro_status.get("mode", "수동지정")).strip()
             st_v = str(body.micro_status.get("status", "출고적합")).strip()
             if st_v == "자동연동" or mode_v == "자동연동":
-                m_obj = {"mode": "자동연동", "status": "출고적합", "note": "", "updated_at": now_s}
+                m_obj = {"mode": "자동연동", "status": "출고적합", "note": "", "updated_at": ts}
             else:
                 if st_v not in ["출고적합", "검사중", "재검·출고보류"]:
                     st_v = "출고적합"
@@ -4473,32 +4541,37 @@ def api_save_special_boards(body: SpecialBoardPayload):
                     "mode": "수동지정",
                     "status": st_v,
                     "note": str(body.micro_status.get("note", "")).strip(),
-                    "updated_at": now_s
+                    "updated_at": ts
                 }
             b_map["micro_status_json"] = json.dumps(m_obj, ensure_ascii=False)
 
-    b_map, _ = _read_and_write_special_board(_upd)
-    saved_m = json.loads(b_map.get("micro_status_json", "{}")) or dict(DEFAULT_MICRO_STATUS)
-
-    micro_cached = _LAST_GOOD_SHEETS.get("micro", ({}, None))[0]
-    if micro_cached.get("has_sheet") and saved_m.get("mode") != "수동지정":
-        eff_micro = {
-            "mode": "자동연동",
-            "status": micro_cached.get("auto_status", "출고적합"),
-            "note": micro_cached.get("auto_note", ""),
-            "updated_at": "시트 실시간 연동"
-        }
+        b_map, _ = _read_and_write_special_board(_upd_m)
+        saved_m = json.loads(b_map.get("micro_status_json", "{}")) or dict(DEFAULT_MICRO_STATUS)
+        micro_cached = _LAST_GOOD_SHEETS.get("micro", ({}, None))[0]
+        if micro_cached.get("has_sheet") and saved_m.get("mode") != "수동지정":
+            eff_micro = {
+                "mode": "자동연동",
+                "status": micro_cached.get("auto_status", "출고적합"),
+                "note": micro_cached.get("auto_note", ""),
+                "updated_at": "시트 실시간 연동"
+            }
+        else:
+            eff_micro = saved_m
     else:
-        eff_micro = saved_m
+        if _BUNDLE_CACHE["data"] and _BUNDLE_CACHE["data"].get("special_boards"):
+            eff_micro = _BUNDLE_CACHE["data"]["special_boards"].get("micro_status", dict(DEFAULT_MICRO_STATUS))
+        else:
+            eff_micro = dict(DEFAULT_MICRO_STATUS)
 
     new_sp = {
-        "label_memo": b_map.get("label_memo", DEFAULT_LABEL_MEMO).strip(),
+        "label_memo": current_lbl_memo,
         "micro_status": eff_micro
     }
     if _BUNDLE_CACHE["data"] is not None:
         _BUNDLE_CACHE["data"]["special_boards"] = new_sp
 
-    return {"ok": True, "message": "변경사항이 시트에 즉시 저장되었습니다.", "special_boards": new_sp}
+    msg = "'표시사항 현황' 시트의 [특이사항] 탭에 저장되었습니다." if body.label_memo is not None else "변경사항이 저장되었습니다."
+    return {"ok": True, "message": msg, "special_boards": new_sp}
 
 
 @app.post("/api/law-pref")
@@ -4539,7 +4612,6 @@ def api_save_law_pref(body: LawPrefPayload):
         cur_s = (existing_entry.get("summary") if existing_entry else "")
         if is_broken_old_summary(cur_s):
             cur_s = ""
-        # 새로 체크하여 대시보드에 넣을 때 GEMINI_API_KEY가 있으면 AI 요약 자동 보강, 없으면 '2.주요내용' 추출본 사용
         if body.summary is not None and body.summary.strip():
             final_s = body.summary.strip()
         elif cur_s:
@@ -4621,7 +4693,7 @@ def api_save_label_pin(body: LabelPinPayload):
 
     new_lbl_analytics = None
     if _BUNDLE_CACHE["data"] is not None:
-        lbl_rows_cached = _LAST_GOOD_SHEETS.get("lbl", ([], None))[0]
+        lbl_rows_cached = _LAST_GOOD_SHEETS.get("lbl", ([], None, None))[0]
         if lbl_rows_cached:
             new_lbl_analytics = build_label_analytics(lbl_rows_cached, new_pins)
             _BUNDLE_CACHE["data"]["label_status"] = new_lbl_analytics
@@ -4749,6 +4821,8 @@ def api_save_manual_kpi(body: ManualKpiPayload):
     now_s = now_kst().strftime("%Y-%m-%d %H:%M:%S")
     payload = [MANUAL_KPI_COLS]
     for k, v in all_manual.items():
+        if k in ("kpi_11", "kpi_5"):
+            continue
         payload.append([
             str(k),
             str(v.get("target_text", "")),
@@ -4824,4 +4898,4 @@ def api_generate_ai_briefing():
             continue
 
     return {"ok": True, "source": "factual_engine", "briefing": factual_fallback}
-# ============================ [api/index.py - PART 2 / 2 끝] ============================
+# ============================ [api/index.py - PART 4 / 4 끝] ============================

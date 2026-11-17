@@ -1273,7 +1273,12 @@ def parse_rt_process_rows(tab_title_raw: str, rows: list):
         std_temp = next((re.sub(r"\s+", " ", str(br[18])).strip() for br in b_rows if str(br[18]).strip() not in ["", "-", "멸균온도"]), "")
         std_press = next((re.sub(r"\s+", " ", str(br[19])).strip() for br in b_rows if str(br[19]).strip() not in ["", "-", "균질압"]), "")
         std_hold = next((re.sub(r"\s+", " ", str(br[20])).strip() for br in b_rows if str(br[20]).strip() not in ["", "-", "멸균시간"]), "")
-        std_v_prod = next((re.sub(r"\s+", " ", str(br[21])).strip() for br in b_rows if str(br[21])).strip() not in ["", "-", "호기별 제품"]), "")
+        std_v_prod = next(
+    (re.sub(r"\s+", " ", str(br[21])).strip()
+     for br in b_rows
+     if str(br[21]).strip() not in ["", "-", "호기별 제품"]),
+    ""
+)
 
         matched_prods = ho_products.get(pack_ho, [])
         matched_prod_str = ", ".join(matched_prods) if matched_prods else (std_v_prod or "-")
@@ -2800,7 +2805,11 @@ def fetch_sup_and_audit_kpi_sheet(sheet_urls_map: dict):
 # 6. [5] '법규정보' 시트 — '1.개정이유' 완전 스킵 & '2.주요내용' 전문 추출 + 대시보드 탭 동기화
 # ==============================================================================
 def make_law_id(tab_name: str, law_name: str, enf_raw: str, notice_raw: str) -> str:
-    raw_key = f"{tab_name.strip()}|{re.sub(r'\\s+', '', law_name)}|{re.sub(r'\\s+', '', enf_raw)}|{re.sub(r'\\s+', '', notice_raw)}"
+    def make_law_id(tab_name: str, law_name: str, enf_raw: str, notice_raw: str) -> str:
+    ln = re.sub(r"\s+", "", law_name)
+    en = re.sub(r"\s+", "", enf_raw)
+    nt = re.sub(r"\s+", "", notice_raw)
+    raw_key = f"{tab_name.strip()}|{ln}|{en}|{nt}"
     return hashlib.md5(raw_key.encode("utf-8")).hexdigest()[:10]
 
 

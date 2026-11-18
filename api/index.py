@@ -3827,12 +3827,20 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
         dairy_only_prods, rt_only_prods, master_prods = [], [], []
         seen_dairy, seen_rt, seen_all = set(), set(), set()
 
+        def make_prod_dedup_key(s: str) -> str:
+            vol_tok = extract_volume_ml_token(s)
+            ns = re.sub(r"\s+", "", s).lower()
+            pk = "B" if "병" in ns else ("C" if "카톤" in ns else "")
+            return f"{clean_product_for_match(s)}|{vol_tok}|{pk}"
+
         def push_prod(target_list: list, seen_set: set, p_str: str):
             ps = re.sub(r"\(주\s*\d+\)", "", str(p_str or "")).strip()
             if not ps or ps in ["-", "(비가동)", "(제품명 미기입)"]:
                 return
-            nk = clean_product_for_match(ps)
-            if nk and len(nk) >= 2 and nk not in seen_set:
+            if re.match(r"^\d+(?:\.\d+)?\s*(?:㎖|mL|ml|L|g|kg)?$", ps):
+                return
+            nk = make_prod_dedup_key(ps)
+            if len(clean_product_for_match(ps)) >= 2 and nk not in seen_set:
                 seen_set.add(nk)
                 target_list.append(ps)
 
@@ -3921,8 +3929,20 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
         active_milk_cnt = active_milk_carton_cnt + active_milk_bottle_cnt
         active_ferm_cnt = sum(1 for r in ferm_pack if "금일생산" in str(r.get("가동여부", "")))
         active_dairy_cnt = active_milk_cnt + active_ferm_cnt
+
+        # 야간에 실시간 시트가 익일 양식(00.00)으로 초기화된 경우 당일(또는 최근일) 이력 DB에서 세부 건수까지 동기화
         if active_dairy_cnt == 0 and dy_hp:
-            active_dairy_cnt = sum(1 for r in dy_hp if r.get("생산일자") == today_str)
+            today_dy = [r for r in dy_hp if r.get("생산일자") == today_str]
+            if not today_dy:
+                latest_dy_dt = max((r.get("생산일자", "") for r in dy_hp), default="")
+                if latest_dy_dt == (cur_kst - timedelta(days=1)).strftime("%Y-%m-%d"):
+                    today_dy = [r for r in dy_hp if r.get("생산일자") == latest_dy_dt]
+            if today_dy:
+                active_milk_carton_cnt = sum(1 for r in today_dy if r.get("라인구분") == "우유(카톤)")
+                active_milk_bottle_cnt = sum(1 for r in today_dy if r.get("라인구분") == "우유(병포장)")
+                active_ferm_cnt = sum(1 for r in today_dy if "발효" in str(r.get("라인구분", "")))
+                active_milk_cnt = active_milk_carton_cnt + active_milk_bottle_cnt
+                active_dairy_cnt = len(today_dy)
 
         soy_blocks_cnt = len(soy_b)
         soy_total_samples = sum(int(to_float(r.get("총 검사수량", 0), 0)) for r in soy_b)
@@ -3986,6 +4006,7 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
         else:
             label_memo_final = DEFAULT_LABEL_MEMO
 
+        # 미생물 출고 판정: '미생물 일보' 구글 시트 최신 확정 판정 결과를 100% 최우선 반영
         raw_m_pref = saved_micro if isinstance(saved_micro, dict) else dict(DEFAULT_MICRO_STATUS)
         m_mode = raw_m_pref.get("mode", "자동연동")
         if micro_data.get("has_sheet") and m_mode != "수동지정":
@@ -4006,9 +4027,50 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
         law_bundle = apply_law_preferences(raw_laws, dash_init_flag, dash_tab_map or {}, saved_law_prefs or {})
         label_analytics = build_label_analytics(lbl_rows, saved_lbl_pins or [])
 
+        # 원자재 표시사항 DB: '해당없음(안전)' 배제 후 실제 신규 4종(들깨·참깨·캐슈넛·아몬드) 검출 품목만 정밀 집계
         sub_raw_cnt = len(raw_sub)
-        verified_raw_cnt = sum(1 for r in raw_sub if re.search(r"완료|적합", str(r.get("검증상태", ""))))
-        allergy_raw_cnt = sum(1 for r in raw_sub if str(r.get("신규알레르기", "")).strip() != "")
+        verified_raw_cnt = 0
+        allergy_raw_cnt = 0
+        new_allergen_stats = {"들깨": 0, "참깨": 0, "캐슈넛": 0, "아몬드": 0}
+        enriched_raw_rows = []
+
+        for r in raw_sub:
+            rc = dict(r)
+            v_st = str(rc.get("검증상태", "")).strip()
+            e_alg = str(rc.get("기존알레르기", "")).strip()
+            n_alg = str(rc.get("신규알레르기", "")).strip()
+            ing_txt = str(rc.get("원재료명(한글표시사항)", rc.get("원재료명", ""))).strip()
+
+            if re.search(r"완료|적합", v_st) or (not v_st and (e_alg or n_alg)):
+                verified_raw_cnt += 1
+
+            is_safe_txt = (not n_alg) or any(sk in n_alg for sk in ["해당없음", "안전", "없음", "무", "-"])
+            detected_4 = []
+            check_pool = ("" if is_safe_txt else n_alg) + " " + ing_txt
+            if "들깨" in check_pool:
+                detected_4.append("들깨")
+            if "참깨" in check_pool or "흑임자" in check_pool or "검은깨" in check_pool or "통깨" in check_pool:
+                detected_4.append("참깨")
+            if "캐슈넛" in check_pool or "캐슈너트" in check_pool:
+                detected_4.append("캐슈넛")
+            if "아몬드" in check_pool:
+                detected_4.append("아몬드")
+
+            has_new_alg = (not is_safe_txt) or (len(detected_4) > 0)
+            if has_new_alg:
+                allergy_raw_cnt += 1
+                for d_k in detected_4:
+                    new_allergen_stats[d_k] += 1
+                if is_safe_txt and detected_4:
+                    rc["_신규알레르기_표시"] = ", ".join(detected_4) + " (원재료명 검출)"
+                else:
+                    rc["_신규알레르기_표시"] = n_alg
+            else:
+                rc["_신규알레르기_표시"] = n_alg if n_alg else "해당없음 (안전)"
+
+            rc["_has_new_allergy"] = has_new_alg
+            rc["_detected_list"] = detected_4
+            enriched_raw_rows.append(rc)
 
         dairy_hist_dates = sorted(list({r.get("생산일자", "") for r in (dy_hp + dy_hc) if r.get("생산일자")}), reverse=True)
         dairy_hist_times_map = {
@@ -4144,11 +4206,12 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
             },
             "label_status": label_analytics,
             "raw_db": {
-                "master_cnt": raw_m_cnt,
+                "master_cnt": raw_m_cnt if raw_m_cnt > 0 else sub_raw_cnt,
                 "sub_cnt": sub_raw_cnt,
                 "verified_cnt": verified_raw_cnt,
                 "allergy_cnt": allergy_raw_cnt,
-                "rows": raw_sub
+                "allergen_breakdown": new_allergen_stats,
+                "rows": enriched_raw_rows
             }
         }
 
@@ -4357,6 +4420,7 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
                 dr_copy["포장기_시작~종료시간"] = " / ".join(time_lines) if time_lines else "-"
                 dr_copy["살균기온도_균질압_CCP"] = " / ".join(ccp_lines) if ccp_lines else "-"
                 dr_copy["현장특이사항"] = " / ".join(note_lines) if note_lines else "이상없음"
+                dr_copy["접착_실링_관능"] = f"{dr.get('접착_외관_요약', '-')} / 관능:{dr.get('관능검사', dr.get('관능', '-'))}"
                 matched_dy.append(dr_copy)
         matched_dy.sort(key=lambda x: x.get("생산일자", ""), reverse=True)
 
@@ -4365,20 +4429,20 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
 
         for mr in micro_h:
             rep_nm = mr.get("대표품목명", "")
-            full_alias_pool, ju_badge = expand_micro_alias_pool(rep_nm, mr.get("연관품목_주석포함", ""))
+            ho_vol_s = str(mr.get("호기_용량", "")).strip()
+            full_alias_pool, ju_badge = expand_micro_alias_pool(f"{rep_nm} {ho_vol_s}", mr.get("연관품목_주석포함", ""))
             m_insp_dt = str(mr.get("검사일자_생산일", "")).strip()
 
-            # 소비기한이 입력된 경우에만 생산일자 일치 조건 적용, 품목 단독 검색 시에는 전체 누적 미생물 이력 매칭!
             if not is_exp_empty:
                 if not dy_prod_dates_info or m_insp_dt not in dy_prod_dates_info:
                     continue
 
             matched_target_label = ""
             for dp_nm in dy_prod_names_matched:
-                if is_product_match(full_alias_pool, dp_nm, ""):
+                if is_product_match(full_alias_pool, dp_nm, "", allow_no_vol_record=True):
                     matched_target_label = dp_nm
                     break
-            if not matched_target_label and has_prod_filter and is_product_match(full_alias_pool, product, kw):
+            if not matched_target_label and has_prod_filter and is_product_match(full_alias_pool, product, kw, allow_no_vol_record=True):
                 matched_target_label = product if (product and product != "ALL") else kw
             if not matched_target_label and not has_prod_filter and m_insp_dt in dy_prod_dates_info:
                 matched_target_label = rep_nm
@@ -4394,7 +4458,7 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
                 "매칭 포장품목": f"{matched_target_label} {ju_badge}".strip(),
                 "미생물일보 표기명": rep_nm,
                 "Storage Tank": mr.get("Storage_Tank", "-"),
-                "호기/용량": mr.get("호기_용량", "-"),
+                "호기/용량": ho_vol_s or "-",
                 "세부라인": mr.get("세부라인", "-"),
                 "대장균군": mr.get("대장균군", "-"),
                 "세균수": mr.get("세균수", "-"),
@@ -4403,7 +4467,6 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
                 "판정": mr.get("판정", "적합")
             })
 
-        # 최근 포장 생산분 중 아직 배양 중이거나 판정 입력 전인 날짜에 대해 판정예정일 안내 행 추가
         for p_dt_str, (p_nm_val, base_ln_val) in sorted(dy_prod_dates_info.items(), reverse=True)[:4]:
             if p_dt_str in judged_insp_dates:
                 continue
@@ -4422,7 +4485,7 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
                     "판정일자": f"예정 {exp_j_iso}",
                     "대분류": "3. 발효유·호상" if base_ln_val == "발효유" else "1. 우유(카톤·병)",
                     "매칭 포장품목": f"{p_nm_val} {ju_b}".strip(),
-                    "미생물일보 표기명": "배양 진행중 (판정 시 자동연동)",
+                    "미생물일보 표기명": "배양 진행중 (미생물 일보 작성 시 자동연동)",
                     "Storage Tank": "-",
                     "호기/용량": "-",
                     "세부라인": "-",
@@ -4433,7 +4496,7 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
                     "판정": st_label
                 })
 
-        matched_micro.sort(key=lambda x: (0 if "판정" in x.get("판정", "") and "예정" not in x.get("판정", "") and "대기" not in x.get("판정", "") else 0, x.get("생산·검사일", "")), reverse=True)
+        matched_micro.sort(key=lambda x: x.get("생산·검사일", ""), reverse=True)
 
     dairy_sum = len(matched_dy) + len(matched_micro)
     rt_sum = len(matched_rt) + len(matched_soy)

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================================
   [public/index.html - PART 1 / 4]
-  Q-Safety 프론트엔드 (반응형 무스크롤 CSS · 사이드바 · 모닝브리핑 4분할 · 서브뷰 · 모달)
+  Q-Safety 프론트엔드 (화면배율 연동 무스크롤 CSS · 8대 KPI 장표 스타일 · 좌측 메뉴 복원 · 모닝브리핑 4분할)
 =========================================================================== -->
 <html lang="ko">
 <head>
@@ -12,15 +12,17 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root {
-      --yonsei-navy: #002B66;
+      --ui-scale: 1;
+      --yonsei-navy: #002659;
       --yonsei-blue: #003378;
       --yonsei-mid: #0052B4;
       --yonsei-light: #EFF6FF;
       --bg-body: #F1F5F9;
       --bg-card: #FFFFFF;
-      --border-col: #E2E8F0;
+      --border-col: #CBD5E1;
+      --border-soft: #E2E8F0;
       --text-main: #0F172A;
-      --text-sub: #475569;
+      --text-sub: #334155;
       --text-muted: #64748B;
       --ok-fg: #047857;
       --ok-bg: #ECFDF5;
@@ -32,9 +34,18 @@
       --info-bg: #E0F2FE;
       --purple-fg: #6D28D9;
       --purple-bg: #F5F3FF;
-      --sidebar-w: 224px;
-      --topbar-h: 48px;
+      --sidebar-w: clamp(216px, 14.5vw, 248px);
+      --topbar-h: clamp(48px, 5.2vh, 58px);
+      --fs-base: calc(clamp(12.5px, 0.84vw, 16px) * var(--ui-scale));
+      --fs-sm: calc(clamp(11.5px, 0.75vw, 14px) * var(--ui-scale));
+      --fs-xs: calc(clamp(10.5px, 0.68vw, 13px) * var(--ui-scale));
+      --fs-lg: calc(clamp(14px, 0.96vw, 18.5px) * var(--ui-scale));
+      --fs-xl: calc(clamp(16.5px, 1.18vw, 23px) * var(--ui-scale));
+      --notes-h: clamp(68px, 8.8vh, 92px);
     }
+
+    html[data-scale="lg"] { --ui-scale: 1.1; }
+    html[data-scale="xl"] { --ui-scale: 1.2; }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
@@ -44,12 +55,11 @@
       font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
       background: var(--bg-body);
       color: var(--text-main);
-      font-size: clamp(12px, 0.78vw, 14px);
+      font-size: var(--fs-base);
       line-height: 1.38;
       -webkit-font-smoothing: antialiased;
     }
 
-    /* 레이아웃 뼈대 */
     .app-shell {
       display: flex;
       width: 100vw;
@@ -57,12 +67,12 @@
       overflow: hidden;
     }
 
-    /* 좌측 사이드바 (작은 화면에서도 잘리지 않도록 유동 간격) */
+    /* ==================== 좌측 사이드바 ==================== */
     .sidebar {
       width: var(--sidebar-w);
       min-width: var(--sidebar-w);
       height: 100vh;
-      background: linear-gradient(180deg, #002659 0%, #003378 100%);
+      background: linear-gradient(180deg, #002352 0%, #003378 100%);
       color: #FFFFFF;
       display: flex;
       flex-direction: column;
@@ -73,35 +83,35 @@
     .brand-box {
       display: flex;
       align-items: center;
-      gap: 9px;
-      padding: clamp(10px, 1.3vh, 16px) 14px;
+      gap: 10px;
+      padding: clamp(10px, 1.4vh, 16px) 14px;
       border-bottom: 1px solid rgba(255,255,255,0.1);
       cursor: pointer;
       flex-shrink: 0;
     }
     .brand-logo {
-      width: 32px;
-      height: 32px;
+      width: 34px;
+      height: 34px;
       border-radius: 50%;
       background: #FFFFFF;
       padding: 2px;
       object-fit: contain;
       flex-shrink: 0;
     }
-    .brand-title { font-size: 16px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.15; }
-    .brand-sub { font-size: 10.5px; color: #BFDBFE; margin-top: 2px; white-space: nowrap; }
+    .brand-title { font-size: clamp(16px, 1.05vw, 19px); font-weight: 800; letter-spacing: -0.3px; line-height: 1.15; }
+    .brand-sub { font-size: 11px; color: #BFDBFE; margin-top: 2px; white-space: nowrap; }
 
     .nav-scroll {
       flex: 1;
       min-height: 0;
       overflow-y: auto;
-      padding: 6px 8px;
+      padding: 6px 9px;
     }
     .nav-scroll::-webkit-scrollbar { width: 4px; }
     .nav-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 4px; }
 
     .nav-group-lbl {
-      font-size: 10.5px;
+      font-size: 11px;
       font-weight: 700;
       color: #93C5FD;
       padding: clamp(6px, 0.9vh, 11px) 8px 4px;
@@ -113,17 +123,17 @@
       align-items: center;
       justify-content: space-between;
       gap: 6px;
-      padding: clamp(5px, 0.78vh, 8.5px) 10px;
+      padding: clamp(5.5px, 0.82vh, 9px) 10px;
       margin-bottom: 2px;
       border: none;
       border-radius: 7px;
       background: transparent;
-      color: rgba(255,255,255,0.86);
-      font-size: 12.5px;
+      color: rgba(255,255,255,0.88);
+      font-size: clamp(12.5px, 0.8vw, 14.5px);
       font-weight: 600;
       text-align: left;
       cursor: pointer;
-      transition: background 0.15s, color 0.15s;
+      transition: background 0.14s, color 0.14s;
       white-space: nowrap;
     }
     .nav-btn:hover { background: rgba(255,255,255,0.1); color: #FFFFFF; }
@@ -133,23 +143,23 @@
       font-weight: 800;
       box-shadow: inset 3px 0 0 #60A5FA;
     }
-    .nav-btn .nav-arr { font-size: 11px; opacity: 0.65; }
+    .nav-btn .nav-arr { font-size: 12px; opacity: 0.7; }
 
     .sidebar-foot {
       padding: 8px 10px 10px;
-      border-top: 1px solid rgba(255,255,255,0.1);
-      background: rgba(0, 18, 46, 0.35);
+      border-top: 1px solid rgba(255,255,255,0.12);
+      background: rgba(0, 16, 42, 0.38);
       flex-shrink: 0;
     }
     .btn-sync-full {
       width: 100%;
-      padding: 7px 10px;
+      padding: 7.5px 10px;
       border-radius: 7px;
-      border: 1px solid rgba(147,197,253,0.4);
+      border: 1px solid rgba(147,197,253,0.42);
       background: #00449E;
       color: #FFFFFF;
       font-weight: 700;
-      font-size: 12px;
+      font-size: 12.5px;
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -160,7 +170,7 @@
     .btn-sync-full:hover { background: #0052B4; }
     .sync-meta {
       margin-top: 6px;
-      font-size: 10px;
+      font-size: 10.5px;
       color: #CBD5E1;
       line-height: 1.35;
     }
@@ -171,9 +181,9 @@
       margin-top: 3px;
     }
     .auto-pill {
-      padding: 1px 6px;
+      padding: 1px 7px;
       border-radius: 99px;
-      font-size: 9.5px;
+      font-size: 10px;
       font-weight: 700;
       background: rgba(16,185,129,0.22);
       color: #6EE7B7;
@@ -181,7 +191,7 @@
       cursor: pointer;
     }
 
-    /* 우측 메인 컨텐츠 영역 */
+    /* ==================== 우측 메인 컨텐츠 & 상단바 ==================== */
     .main-area {
       flex: 1;
       min-width: 0;
@@ -191,13 +201,12 @@
       overflow: hidden;
     }
 
-    /* 상단 헤더바 */
     .topbar {
       height: var(--topbar-h);
       min-height: var(--topbar-h);
       background: #FFFFFF;
-      border-bottom: 1px solid var(--border-col);
-      padding: 0 14px;
+      border-bottom: 1px solid var(--border-soft);
+      padding: 0 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -208,7 +217,7 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: 13px;
+      font-size: var(--fs-base);
       font-weight: 800;
       color: var(--yonsei-blue);
       white-space: nowrap;
@@ -220,18 +229,51 @@
     .topbar-right {
       display: flex;
       align-items: center;
-      gap: 7px;
+      gap: 8px;
       flex-shrink: 0;
     }
+    /* 화면배율 (표준 · 크게 · 특대) 스위치 복원 */
+    .scale-ctrl {
+      display: inline-flex;
+      align-items: center;
+      background: #F1F5F9;
+      border: 1px solid #CBD5E1;
+      border-radius: 7px;
+      padding: 2px 3px;
+      gap: 2px;
+    }
+    .scale-lbl {
+      font-size: 11px;
+      font-weight: 700;
+      color: #475569;
+      padding: 0 5px;
+      white-space: nowrap;
+    }
+    .scale-btn {
+      border: none;
+      background: transparent;
+      color: #475569;
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 5px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .scale-btn.active {
+      background: var(--yonsei-blue);
+      color: #FFFFFF;
+    }
+
     .global-search-wrap {
       position: relative;
       display: flex;
       align-items: center;
     }
     .global-search-input {
-      width: clamp(190px, 18vw, 270px);
-      height: 31px;
-      padding: 0 26px 0 10px;
+      width: clamp(185px, 16vw, 270px);
+      height: 32px;
+      padding: 0 26px 0 11px;
       border: 1px solid #CBD5E1;
       border-radius: 99px;
       background: #F8FAFC;
@@ -242,7 +284,7 @@
     .global-search-input:focus { border-color: var(--yonsei-mid); background: #FFFFFF; }
     .search-clear-btn {
       position: absolute;
-      right: 7px;
+      right: 8px;
       border: none;
       background: none;
       color: #94A3B8;
@@ -251,129 +293,125 @@
       display: none;
     }
     .btn-ai-brief {
-      height: 31px;
-      padding: 0 11px;
+      height: 32px;
+      padding: 0 12px;
       border-radius: 99px;
       border: 1px solid #BFDBFE;
       background: #EFF6FF;
       color: var(--yonsei-blue);
-      font-size: 11.5px;
-      font-weight: 700;
+      font-size: 12px;
+      font-weight: 800;
       cursor: pointer;
       white-space: nowrap;
     }
     .btn-ai-brief:hover { background: #DBEAFE; }
 
     .status-live-pill {
-      height: 31px;
-      padding: 0 11px;
+      height: 32px;
+      padding: 0 12px;
       border-radius: 99px;
       background: var(--ok-bg);
       border: 1px solid #A7F3D0;
       color: var(--ok-fg);
-      font-size: 11.5px;
-      font-weight: 700;
+      font-size: 12px;
+      font-weight: 800;
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 6px;
       white-space: nowrap;
     }
-    .live-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #10B981;
-    }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #10B981; }
 
-    /* 뷰 컨테이너: 홈 대시보드는 100% 무스크롤 고정, 상세 서브뷰만 자연 스크롤 */
+    /* ==================== 뷰 섹션 컨테이너 ==================== */
     .view-section {
       display: none;
       flex: 1;
       min-height: 0;
-      padding: 12px 14px 18px;
+      padding: 13px 16px 20px;
       overflow-y: auto;
     }
     .view-section.active { display: block; }
 
-    #view-home.view-section.active {
+    /* [모닝브리핑] & [8대 KPI 현황판]은 전 해상도 100% 무스크롤 고정 */
+    #view-home.view-section.active,
+    #view-kpi.view-section.active {
       display: flex;
       flex-direction: column;
       height: calc(100vh - var(--topbar-h));
-      padding: clamp(7px, 1vh, 12px) clamp(10px, 1vw, 15px);
+      padding: clamp(8px, 1.05vh, 13px) clamp(11px, 1.1vw, 17px);
       overflow: hidden;
     }
 
-    /* 홈 상단 타이틀 줄 */
+    /* ==================== [1] 모닝 브리핑 통합 대시보드 (가안 완벽 구현) ==================== */
     .home-title-bar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 8px;
+      gap: 10px;
       margin-bottom: clamp(6px, 0.85vh, 10px);
       flex-shrink: 0;
     }
     .home-title-left {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       min-width: 0;
     }
     .home-h1 {
-      font-size: clamp(14.5px, 1.08vw, 17.5px);
+      font-size: var(--fs-lg);
       font-weight: 800;
       color: var(--text-main);
       border-left: 4px solid var(--yonsei-blue);
-      padding-left: 8px;
+      padding-left: 9px;
       white-space: nowrap;
     }
     .date-chip {
       background: var(--yonsei-blue);
       color: #FFFFFF;
-      font-size: 11.5px;
-      font-weight: 700;
-      padding: 3px 9px;
+      font-size: var(--fs-xs);
+      font-weight: 800;
+      padding: 3.5px 10px;
       border-radius: 6px;
       white-space: nowrap;
     }
 
-    /* 홈 2x2 4분할 그리드 (전 해상도 무스크롤 핵심) */
     .quad-grid {
       flex: 1;
       min-height: 0;
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      grid-template-rows: minmax(0, 1.04fr) minmax(0, 0.96fr);
-      gap: clamp(7px, 0.95vh, 12px);
+      grid-template-rows: minmax(0, 1.05fr) minmax(0, 0.95fr);
+      gap: clamp(8px, 1.05vh, 13px);
       overflow: hidden;
     }
     .quad-card {
       background: var(--bg-card);
-      border: 1px solid var(--border-col);
-      border-radius: 11px;
-      padding: clamp(8px, 1.05vh, 13px) clamp(10px, 1vw, 14px);
+      border: 1px solid var(--border-soft);
+      border-radius: 12px;
+      padding: clamp(9px, 1.1vh, 14px) clamp(11px, 1.05vw, 16px);
       display: flex;
       flex-direction: column;
       min-height: 0;
       overflow: hidden;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
     }
     .quad-hdr {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 6px;
+      gap: 8px;
       padding-bottom: clamp(5px, 0.7vh, 8px);
-      margin-bottom: clamp(5px, 0.7vh, 8px);
-      border-bottom: 1px solid #F1F5F9;
+      margin-bottom: clamp(6px, 0.8vh, 9px);
+      border-bottom: 1px solid #E2E8F0;
       flex-shrink: 0;
     }
     .quad-title {
-      font-size: clamp(12.5px, 0.88vw, 14.5px);
+      font-size: var(--fs-lg);
       font-weight: 800;
       color: var(--text-main);
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 6px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -381,7 +419,7 @@
     .quad-actions {
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 6px;
       flex-shrink: 0;
       white-space: nowrap;
     }
@@ -389,104 +427,165 @@
       border: none;
       background: none;
       color: var(--yonsei-mid);
-      font-size: 11.5px;
-      font-weight: 700;
+      font-size: var(--fs-sm);
+      font-weight: 800;
       cursor: pointer;
       padding: 2px 4px;
       white-space: nowrap;
     }
     .link-chip:hover { text-decoration: underline; }
 
-    /* Q1: 4대 공정·출고 타일 (절대 줄바꿈/잘림 없음) */
+    /* Q1: 4대 공정 타일 (상단 공간 확장 + 큰 숫자) + 하단 3~4줄 고정 특이사항 박스 */
     .q1-tile-grid {
+      flex: 1;
+      min-height: 0;
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: clamp(5px, 0.7vh, 8px);
-      flex-shrink: 0;
+      grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+      gap: clamp(6px, 0.8vh, 10px);
     }
     .proc-tile {
-      border: 1px solid #E2E8F0;
+      border: 1px solid #CBD5E1;
       background: #F8FAFC;
-      border-radius: 8px;
-      padding: clamp(6px, 0.8vh, 9px) 10px;
+      border-radius: 9px;
+      padding: clamp(7px, 0.9vh, 11px) 12px;
       cursor: pointer;
-      transition: border-color 0.15s, background 0.15s;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 3px;
+      transition: border-color 0.14s, background 0.14s;
       min-width: 0;
     }
-    .proc-tile:hover { border-color: #93C5FD; background: #FFFFFF; }
+    .proc-tile:hover { border-color: #60A5FA; background: #FFFFFF; }
     .pt-top {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 4px;
-      margin-bottom: 3px;
+      gap: 6px;
     }
     .pt-name {
-      font-size: clamp(11.5px, 0.8vw, 13px);
+      font-size: var(--fs-sm);
       font-weight: 800;
       color: #1E293B;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .pt-main-row {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 6px;
-      min-width: 0;
-    }
     .pt-val {
-      font-size: clamp(13px, 0.95vw, 16px);
-      font-weight: 800;
-      color: var(--yonsei-blue);
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    .pt-sub {
-      font-size: 11px;
-      color: var(--text-muted);
+      font-size: var(--fs-xl);
+      font-weight: 900;
+      color: var(--text-main);
+      letter-spacing: -0.3px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      min-width: 0;
     }
-    .q1-notes-box {
-      margin-top: clamp(5px, 0.7vh, 8px);
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
-      background: #F0FDF4;
-      border: 1px solid #BBF7D0;
-      border-radius: 7px;
-      padding: 6px 9px;
-      font-size: 11.5px;
-      color: #14532D;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      gap: 3px;
+    .pt-sub {
+      font-size: var(--fs-xs);
+      font-weight: 600;
+      color: var(--text-sub);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .q1-notes-box.warn { background: #FFFBEB; border-color: #FDE68A; color: #78350F; }
 
-    /* Q2: 표시사항 + 법규 2단 분할 + 하단 특이사항 메모 */
+    /* 좌상단 & 우상단 하단부 대칭 고정 3~4줄 특이사항 박스 */
+    .bottom-notes-3line {
+      margin-top: clamp(6px, 0.85vh, 9px);
+      height: var(--notes-h);
+      min-height: var(--notes-h);
+      max-height: var(--notes-h);
+      border-radius: 8px;
+      padding: 6px 11px;
+      font-size: var(--fs-xs);
+      font-weight: 700;
+      line-height: 1.44;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+    .bottom-notes-3line::-webkit-scrollbar { width: 4px; }
+    .bottom-notes-3line::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); border-radius: 4px; }
+    .bottom-notes-3line.q1-ok {
+      background: #F0FDF4;
+      border: 1px solid #86EFAC;
+      color: #14532D;
+    }
+    .bottom-notes-3line.q1-warn {
+      background: #FEFCE8;
+      border: 1px solid #FDE047;
+      color: #713F12;
+    }
+    .bottom-notes-3line.q2-memo {
+      background: #FFFBEB;
+      border: 1px solid #FDE68A;
+      color: #78350F;
+    }
+
+    /* Q2: 좌측 표시사항 3단 대형 숫자 현황판 + 우측 법규 1~2줄 카드 */
     .q2-split {
       flex: 1;
       min-height: 0;
       display: grid;
-      grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
-      gap: 8px;
+      grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+      gap: 9px;
       overflow: hidden;
     }
-    .sub-col-box {
-      border: 1px solid #E2E8F0;
+    .lbl-stat-stack {
+      display: grid;
+      grid-template-rows: 1.18fr 0.91fr 0.91fr;
+      gap: clamp(5px, 0.68vh, 8px);
+      min-height: 0;
+    }
+    .lbl-num-card {
+      border: 1px solid #CBD5E1;
+      background: #F8FAFC;
       border-radius: 8px;
-      padding: 6px 8px;
+      padding: 6px 11px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      cursor: pointer;
+      min-width: 0;
+    }
+    .lbl-num-card:hover { border-color: #60A5FA; background: #FFFFFF; }
+    .lbl-num-card.highlight { background: #EFF6FF; border-color: #BFDBFE; }
+    .lnc-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .lnc-title { font-size: var(--fs-base); font-weight: 800; color: #0F172A; white-space: nowrap; }
+    .lnc-big { font-size: var(--fs-xl); font-weight: 900; color: var(--yonsei-blue); white-space: nowrap; }
+    .lnc-pill {
+      background: var(--yonsei-blue);
+      color: #FFFFFF;
+      font-size: var(--fs-base);
+      font-weight: 900;
+      padding: 2px 10px;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+    .lnc-sub {
+      font-size: var(--fs-xs);
+      font-weight: 600;
+      color: var(--text-sub);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sub-col-box {
+      border: 1px solid #CBD5E1;
+      border-radius: 8px;
+      padding: 7px 9px;
       display: flex;
       flex-direction: column;
       min-height: 0;
       overflow: hidden;
-      background: #FCFDFE;
+      background: #F8FAFC;
     }
     .sub-col-hdr {
       display: flex;
@@ -498,9 +597,9 @@
       white-space: nowrap;
     }
     .sub-col-title {
-      font-size: 11.5px;
+      font-size: var(--fs-sm);
       font-weight: 800;
-      color: #334155;
+      color: #1E293B;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -511,7 +610,7 @@
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 5px;
       padding-right: 2px;
     }
     .mini-scroll-list::-webkit-scrollbar { width: 4px; }
@@ -520,16 +619,28 @@
     .mini-item {
       background: #FFFFFF;
       border: 1px solid #E2E8F0;
-      border-radius: 6px;
-      padding: 5px 7px;
-      font-size: 11.5px;
+      border-radius: 7px;
+      padding: 6px 9px;
+      font-size: var(--fs-sm);
       cursor: pointer;
     }
-    .mini-item:hover { border-color: #93C5FD; }
+    .mini-item:hover { border-color: #60A5FA; }
+    .law-mini-title {
+      font-weight: 800;
+      font-size: var(--fs-base);
+      color: #0F172A;
+      margin-top: 4px;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
     .law-mini-sum {
-      margin-top: 2px;
-      font-size: 11px;
+      margin-top: 3px;
+      font-size: var(--fs-xs);
       color: var(--text-sub);
+      line-height: 1.35;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
@@ -537,70 +648,46 @@
       word-break: keep-all;
     }
 
-    .q2-memo-bar {
-      margin-top: clamp(5px, 0.65vh, 7px);
-      flex-shrink: 0;
-      max-height: clamp(46px, 6.8vh, 64px);
-      background: #FFFBEB;
-      border: 1px solid #FDE68A;
-      border-radius: 7px;
-      padding: 5px 9px;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .q2-memo-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 11px;
-      font-weight: 800;
-      color: #92400E;
-      flex-shrink: 0;
-    }
-    .q2-memo-body {
-      font-size: 11px;
-      color: #78350F;
-      overflow-y: auto;
-      white-space: pre-line;
-      line-height: 1.32;
-      margin-top: 2px;
-    }
-
-    /* Q3: 방문심사 게이지 & 일정 리스트 */
-    .audit-banner {
-      background: #EFF6FF;
-      border: 1px solid #BFDBFE;
-      border-radius: 7px;
-      padding: 5px 8px;
-      font-size: 11.5px;
-      font-weight: 700;
-      color: var(--yonsei-blue);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      flex-shrink: 0;
-    }
-    .gauge-box {
-      margin-top: 5px;
-      border: 1px solid #E2E8F0;
-      border-radius: 8px;
-      padding: 6px 8px;
+    /* Q3: 방문심사 · 협력업체 방문 일정 (큰 글씨 · 두꺼운 진행률 바) */
+    .q3-hero-box {
       background: #F8FAFC;
+      border: 1px solid #CBD5E1;
+      border-radius: 9px;
+      padding: clamp(7px, 0.9vh, 10px) 11px;
       flex-shrink: 0;
+    }
+    .q3-banner-line {
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+      font-size: var(--fs-base);
+      font-weight: 800;
+      color: #0F172A;
+      line-height: 1.34;
+    }
+    .q3-tag-navy {
+      background: #0F294A;
+      color: #FFFFFF;
+      font-size: var(--fs-xs);
+      font-weight: 800;
+      padding: 2.5px 8px;
+      border-radius: 5px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      margin-top: 1px;
     }
     .gauge-track {
-      height: 12px;
-      background: #E2E8F0;
+      height: clamp(14px, 1.8vh, 18px);
+      background: #DCE4EE;
       border-radius: 99px;
       overflow: hidden;
-      margin: 4px 0 5px;
+      margin: 7px 0 6px;
     }
     .gauge-fill {
       height: 100%;
       border-radius: 99px;
       transition: width 0.25s ease;
-      font-size: 9.5px;
+      font-size: 11px;
       font-weight: 800;
       color: #FFFFFF;
       display: flex;
@@ -610,47 +697,47 @@
     .step-btn-row {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 4px;
+      gap: 5px;
     }
     .step-btn {
-      padding: 3px 2px;
-      font-size: 10.5px;
-      font-weight: 700;
-      border-radius: 5px;
+      padding: 4.5px 4px;
+      font-size: var(--fs-xs);
+      font-weight: 800;
+      border-radius: 6px;
       border: 1px solid #CBD5E1;
       background: #FFFFFF;
-      color: #475569;
+      color: #334155;
       cursor: pointer;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .step-btn.active { background: var(--yonsei-blue); color: #FFFFFF; border-color: var(--yonsei-blue); }
+    .step-btn.active { background: #0F3A7D; color: #FFFFFF; border-color: #0F3A7D; }
 
     .q3-split {
-      margin-top: 6px;
+      margin-top: 7px;
       flex: 1;
       min-height: 0;
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 7px;
+      gap: 8px;
       overflow: hidden;
     }
 
-    /* Q4: 클레임·부적합 & LOT 빠른 역추적 */
+    /* Q4: 클레임·부적합 진행 현황 & 대형 역추적 버튼 */
     .q4-body {
       flex: 1;
       min-height: 0;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: clamp(6px, 0.85vh, 10px);
       overflow: hidden;
     }
     .q4-zero-box {
       background: var(--ok-bg);
-      border: 1px solid #A7F3D0;
-      border-radius: 8px;
-      padding: 7px 10px;
+      border: 1px solid #86EFAC;
+      border-radius: 9px;
+      padding: clamp(7px, 0.95vh, 11px) 12px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -658,38 +745,237 @@
       flex-shrink: 0;
     }
     .q4-cnt-grid {
+      flex: 1;
+      min-height: 0;
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 6px;
-      flex-shrink: 0;
+      gap: 8px;
     }
     .q4-cnt-card {
-      border: 1px solid #E2E8F0;
-      border-radius: 8px;
-      padding: 6px 8px;
+      border: 1px solid #CBD5E1;
+      border-radius: 9px;
+      padding: 7px 8px;
       text-align: center;
       background: #F8FAFC;
-    }
-    .q4-cnt-num { font-size: clamp(15px, 1.1vw, 19px); font-weight: 800; color: var(--text-main); margin-top: 2px; }
-    .q4-lot-bar {
-      margin-top: auto;
-      padding-top: 6px;
-      border-top: 1px dashed #E2E8F0;
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 6px;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .q4-cnt-lbl { font-size: var(--fs-xs); font-weight: 700; color: var(--text-sub); }
+    .q4-cnt-num { font-size: calc(var(--fs-xl) * 1.15); font-weight: 900; color: #0F172A; margin-top: 3px; }
+
+    .q4-lot-btns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .btn-lot-wide {
+      padding: clamp(6px, 0.85vh, 9px) 10px;
+      border-radius: 8px;
+      border: 1px solid #CBD5E1;
+      background: #FFFFFF;
+      color: #0F172A;
+      font-size: var(--fs-sm);
+      font-weight: 800;
+      cursor: pointer;
+      text-align: center;
+    }
+    .btn-lot-wide:hover { border-color: var(--yonsei-mid); background: #EFF6FF; color: var(--yonsei-blue); }
+    .q4-foot-caption {
+      font-size: var(--fs-xs);
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
       flex-shrink: 0;
     }
 
-    /* 공통 컴포넌트 (버튼 · 배지 · 카드 · 표) */
+    /* ==================== [2] 2026 부문 8대 KPI 중간보고 장표 디자인 ==================== */
+    .exec-kpi-top {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding-bottom: 7px;
+      margin-bottom: 9px;
+      border-bottom: 2.5px solid #8EA9C1;
+      flex-shrink: 0;
+    }
+    .exec-kpi-h1 {
+      font-size: clamp(18px, 1.35vw, 24px);
+      font-weight: 900;
+      color: #002060;
+      letter-spacing: -0.4px;
+    }
+    .exec-kpi-grid {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(0, 1fr));
+      gap: clamp(9px, 1.1vh, 14px);
+    }
+    .exec-card {
+      background: #F2F2F2;
+      border: 1px solid #CBD5E1;
+      box-shadow: 0 2px 5px rgba(15, 23, 42, 0.08);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      cursor: pointer;
+      transition: transform 0.12s, box-shadow 0.12s;
+    }
+    .exec-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 14px rgba(0, 51, 120, 0.14);
+      border-color: #64748B;
+    }
+    .exec-card-hdr {
+      background: #44546A;
+      color: #FFFFFF;
+      font-size: var(--fs-base);
+      font-weight: 800;
+      text-align: center;
+      padding: clamp(7px, 0.95vh, 10px) 8px;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .exec-edit-mini {
+      position: absolute;
+      right: 7px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(255,255,255,0.16);
+      color: #FFFFFF;
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 4px;
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 1px 6px;
+      cursor: pointer;
+    }
+    .exec-edit-mini:hover { background: rgba(255,255,255,0.3); }
+
+    .exec-card-body {
+      flex: 1;
+      min-height: 0;
+      padding: clamp(10px, 1.2vh, 15px) 14px 10px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .exec-red-dot {
+      position: absolute;
+      top: 11px;
+      right: 13px;
+      width: 21px;
+      height: 21px;
+      border-radius: 50%;
+      background: #FF0000;
+      border: 1.5px solid #1E293B;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+    }
+    .exec-bullet {
+      font-size: var(--fs-sm);
+      font-weight: 800;
+      color: #111827;
+      margin-bottom: 5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding-right: 24px;
+    }
+    .exec-bullet::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #44546A;
+      flex-shrink: 0;
+    }
+    .exec-unit {
+      text-align: right;
+      font-size: 11.5px;
+      font-weight: 800;
+      color: #1F4E79;
+      margin-top: 2px;
+      flex-shrink: 0;
+    }
+    .exec-bars-area {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding-top: 6px;
+    }
+    .exec-bars-stage {
+      flex: 1;
+      min-height: 70px;
+      max-height: 155px;
+      border-bottom: 1.5px solid #CBD5E1;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      gap: clamp(26px, 2.8vw, 48px);
+      padding: 0 12px;
+    }
+    .exec-bar-col {
+      width: clamp(36px, 3.2vw, 48px);
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      align-items: center;
+    }
+    .exec-bar-rect {
+      width: 100%;
+      min-height: 22px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding-top: 5px;
+      color: #FFFFFF;
+      font-size: 11.5px;
+      font-weight: 800;
+      transition: height 0.3s ease;
+    }
+    .exec-bar-rect.target { background: #7F7F7F; }
+    .exec-bar-rect.actual { background: #ED7D31; }
+    .exec-bar-rect.low-bar {
+      align-items: center;
+      padding-top: 0;
+    }
+    .exec-bars-axis {
+      display: flex;
+      justify-content: center;
+      gap: clamp(26px, 2.8vw, 48px);
+      padding-top: 5px;
+    }
+    .exec-axis-lbl {
+      width: clamp(36px, 3.2vw, 48px);
+      text-align: center;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #475569;
+    }
+    .exec-notes-box {
+      margin-top: auto;
+      padding-top: 10px;
+      font-size: var(--fs-sm);
+      font-weight: 700;
+      color: #111827;
+      line-height: 1.6;
+    }
+
+    /* ==================== 공통 배지 · 버튼 · 서브 페이지 표 ==================== */
     .badge {
       display: inline-flex;
       align-items: center;
-      padding: 2px 7px;
+      padding: 2px 8px;
       border-radius: 99px;
-      font-size: 10.5px;
-      font-weight: 700;
+      font-size: var(--fs-xs);
+      font-weight: 800;
       white-space: nowrap;
       flex-shrink: 0;
     }
@@ -701,10 +987,10 @@
     .badge-neutral { background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; }
 
     .btn {
-      padding: 5px 11px;
+      padding: 6px 12px;
       border-radius: 7px;
-      font-size: 12px;
-      font-weight: 700;
+      font-size: var(--fs-sm);
+      font-weight: 800;
       border: 1px solid #CBD5E1;
       background: #FFFFFF;
       color: var(--text-main);
@@ -714,9 +1000,8 @@
     .btn:hover { background: #F8FAFC; }
     .btn-primary { background: var(--yonsei-blue); color: #FFFFFF; border-color: var(--yonsei-blue); }
     .btn-primary:hover { background: var(--yonsei-mid); }
-    .btn-sm { padding: 3px 8px; font-size: 11px; border-radius: 6px; }
+    .btn-sm { padding: 3.5px 9px; font-size: var(--fs-xs); border-radius: 6px; }
 
-    /* 서브 페이지 공통 헤더 · 탭 · 테이블 */
     .page-hdr {
       display: flex;
       align-items: center;
@@ -726,13 +1011,13 @@
       flex-wrap: wrap;
     }
     .page-h2 {
-      font-size: 18px;
+      font-size: 18.5px;
       font-weight: 800;
       color: var(--text-main);
       border-left: 4px solid var(--yonsei-blue);
       padding-left: 9px;
     }
-    .page-desc { font-size: 12px; color: var(--text-muted); margin-top: 3px; padding-left: 13px; }
+    .page-desc { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; padding-left: 13px; }
 
     .tab-bar {
       display: flex;
@@ -740,7 +1025,7 @@
       gap: 6px;
       margin-bottom: 12px;
       flex-wrap: wrap;
-      border-bottom: 1px solid var(--border-col);
+      border-bottom: 1px solid var(--border-soft);
       padding-bottom: 8px;
     }
     .tab-btn {
@@ -749,8 +1034,8 @@
       border: 1px solid #CBD5E1;
       background: #FFFFFF;
       color: var(--text-sub);
-      font-size: 12.5px;
-      font-weight: 700;
+      font-size: 13px;
+      font-weight: 800;
       cursor: pointer;
       white-space: nowrap;
     }
@@ -762,13 +1047,13 @@
 
     .panel-card {
       background: #FFFFFF;
-      border: 1px solid var(--border-col);
+      border: 1px solid var(--border-soft);
       border-radius: 11px;
       padding: 14px 16px;
       margin-bottom: 12px;
     }
     .panel-title {
-      font-size: 14px;
+      font-size: 14.5px;
       font-weight: 800;
       color: var(--text-main);
       margin-bottom: 10px;
@@ -786,37 +1071,37 @@
     }
     .stat-card {
       background: #FFFFFF;
-      border: 1px solid var(--border-col);
+      border: 1px solid var(--border-soft);
       border-radius: 10px;
       padding: 12px 14px;
     }
     .stat-lbl { font-size: 12px; font-weight: 700; color: var(--text-muted); }
-    .stat-val { font-size: 21px; font-weight: 800; color: var(--yonsei-blue); margin: 4px 0; }
-    .stat-sub { font-size: 11.5px; color: var(--text-sub); }
+    .stat-val { font-size: 21px; font-weight: 900; color: var(--yonsei-blue); margin: 4px 0; }
+    .stat-sub { font-size: 12px; color: var(--text-sub); }
 
     .tbl-wrap {
       width: 100%;
       overflow-x: auto;
-      border: 1px solid var(--border-col);
+      border: 1px solid var(--border-soft);
       border-radius: 8px;
     }
     table.data-tbl {
       width: 100%;
       border-collapse: collapse;
-      font-size: 12.5px;
+      font-size: 13px;
       background: #FFFFFF;
     }
     table.data-tbl th {
       background: #F8FAFC;
       color: #334155;
       font-weight: 800;
-      padding: 8px 10px;
-      border-bottom: 1px solid var(--border-col);
+      padding: 8.5px 10px;
+      border-bottom: 1px solid var(--border-soft);
       text-align: center;
       white-space: nowrap;
     }
     table.data-tbl td {
-      padding: 7.5px 10px;
+      padding: 8px 10px;
       border-bottom: 1px solid #F1F5F9;
       text-align: center;
       vertical-align: middle;
@@ -824,12 +1109,11 @@
     }
     table.data-tbl tr:hover td { background: #F8FAFC; }
     td.td-left { text-align: left !important; word-break: keep-all; }
-    td.cell-green { background: #ECFDF5; color: #047857; font-weight: 700; }
-    td.cell-yellow { background: #FFFBEB; color: #B45309; font-weight: 700; }
+    td.cell-green { background: #ECFDF5; color: #047857; font-weight: 800; }
+    td.cell-yellow { background: #FFFBEB; color: #B45309; font-weight: 800; }
     td.cell-red { background: #FEF2F2; color: #B91C1C; font-weight: 800; }
     td.cell-gray { color: #94A3B8; }
 
-    /* 가동시간 배너 카드 */
     .runtime-cards {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -869,29 +1153,25 @@
     }
     .modal-hdr {
       padding: 13px 16px;
-      border-bottom: 1px solid var(--border-col);
+      border-bottom: 1px solid var(--border-soft);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-size: 15px;
+      font-size: 15.5px;
       font-weight: 800;
       color: var(--yonsei-blue);
     }
-    .modal-body {
-      padding: 14px 16px;
-      overflow-y: auto;
-      font-size: 13px;
-    }
+    .modal-body { padding: 14px 16px; overflow-y: auto; font-size: 13.5px; }
     .modal-foot {
       padding: 10px 16px;
-      border-top: 1px solid var(--border-col);
+      border-top: 1px solid var(--border-soft);
       background: #F8FAFC;
       display: flex;
       justify-content: flex-end;
       gap: 8px;
     }
     .form-row { margin-bottom: 10px; }
-    .form-lbl { display: block; font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 4px; }
+    .form-lbl { display: block; font-size: 12.5px; font-weight: 800; color: #334155; margin-bottom: 4px; }
     .form-ctrl {
       width: 100%;
       padding: 7px 10px;
@@ -909,7 +1189,7 @@
       color: #FFFFFF;
       padding: 10px 16px;
       border-radius: 9px;
-      font-size: 12.5px;
+      font-size: 13px;
       font-weight: 700;
       z-index: 200;
       display: none;
@@ -919,7 +1199,7 @@
 </head>
 <body>
 <div class="app-shell">
-  <!-- ======================= 좌측 사이드바 ======================= -->
+  <!-- ======================= 좌측 사이드바 (핵심불량·부자재 관리 원복 완료) ======================= -->
   <aside class="sidebar">
     <div class="brand-box" onclick="switchView('home')">
       <img src="/img-symbol1.png" alt="연세유업" class="brand-logo" onerror="this.style.display='none'" />
@@ -968,8 +1248,8 @@
       <button class="nav-btn" data-view="claim" onclick="switchView('claim')">
         <span>📉 클레임 발생률 분석</span><span class="nav-arr">›</span>
       </button>
-      <button class="nav-btn" data-view="cost" onclick="switchView('cost')">
-        <span>💰 원가절감 · 부자재 관리</span><span class="nav-arr">›</span>
+      <button class="nav-btn" data-view="defect_sub" onclick="switchView('defect_sub')">
+        <span>🛡️ 핵심불량 · 부자재 관리</span><span class="nav-arr">›</span>
       </button>
     </div>
 
@@ -978,7 +1258,7 @@
       <div class="sync-meta">
         <div id="lblSyncTime">동기화 : 시트 연결 중...</div>
         <div class="sync-meta-row">
-          <span>연세유업 아산공장</span>
+          <span>연세유업 아산공장 품질안전부문</span>
           <span class="auto-pill" id="btnAutoToggle" onclick="toggleAutoRefresh()">자동갱신 ON</span>
         </div>
       </div>
@@ -992,6 +1272,12 @@
         <span>Q-Safety</span> / <span class="cur" id="lblBreadcrumb">통합 대시보드 (모닝 브리핑)</span>
       </div>
       <div class="topbar-right">
+        <div class="scale-ctrl">
+          <span class="scale-lbl">화면배율</span>
+          <button class="scale-btn active" data-sc="std" onclick="setUiScale('std')">표준</button>
+          <button class="scale-btn" data-sc="lg" onclick="setUiScale('lg')">크게</button>
+          <button class="scale-btn" data-sc="xl" onclick="setUiScale('xl')">특대</button>
+        </div>
         <div class="global-search-wrap">
           <input type="text" id="inpGlobalSearch" class="global-search-input" placeholder="LOT(소비기한 11.29) · 제품명 검색 후 Enter"
             oninput="document.getElementById('btnClearGlobal').style.display = this.value ? 'block' : 'none'"
@@ -1006,7 +1292,7 @@
       </div>
     </header>
 
-    <!-- [1] 홈: 모닝 브리핑 통합 대시보드 (전 화면 100vh 무스크롤 고정) -->
+    <!-- [1] 홈: 모닝 브리핑 통합 대시보드 (전 화면 100vh 무스크롤 + 좌·우 3~4줄 특이사항 대칭) -->
     <section id="view-home" class="view-section active">
       <div class="home-title-bar">
         <div class="home-title-left">
@@ -1019,7 +1305,7 @@
       </div>
 
       <div class="quad-grid">
-        <!-- Q1: 공정 · 배양 · 미생물 출고 판정 -->
+        <!-- Q1: 공정 · 배양 · 미생물 출고 판정 + 하단 3~4줄 특이사항 -->
         <div class="quad-card">
           <div class="quad-hdr">
             <div class="quad-title" id="q1Title">● 어제 마감 & 오늘 실시간 공정 · 출고 판정</div>
@@ -1029,10 +1315,10 @@
             </div>
           </div>
           <div class="q1-tile-grid" id="q1TilesBox"></div>
-          <div class="q1-notes-box" id="q1NotesBox">시트 데이터를 불러오는 중입니다...</div>
+          <div class="bottom-notes-3line q1-ok" id="q1NotesBox">시트 데이터를 불러오는 중입니다...</div>
         </div>
 
-        <!-- Q2: 표시사항 심의 · 법규 개정 D-Day · [특이사항] 탭 연동 -->
+        <!-- Q2: 표시사항 3단 숫자 현황판 + 법규 1~2줄 요약 + 하단 3~4줄 [특이사항] 메모 -->
         <div class="quad-card">
           <div class="quad-hdr">
             <div class="quad-title">● 표시사항 심의 · 법규 개정 D-Day 현황</div>
@@ -1044,27 +1330,21 @@
             </div>
           </div>
           <div class="q2-split">
+            <div class="lbl-stat-stack" id="q2LabelStatsStack"></div>
             <div class="sub-col-box">
               <div class="sub-col-hdr">
-                <span class="sub-col-title" id="q2LblSubHdr">실시간 표시사항 심의</span>
-                <button class="link-chip" onclick="switchView('label')">+ 대표품목 체크 ›</button>
-              </div>
-              <div class="mini-scroll-list" id="q2LabelList"></div>
-            </div>
-            <div class="sub-col-box">
-              <div class="sub-col-hdr">
-                <span class="sub-col-title">법규 개정 1~2줄 핵심 ([_법규요약DB])</span>
+                <span class="sub-col-title">법규 개정 핵심 ([대시보드] 연동)</span>
                 <button class="link-chip" onclick="switchView('law')">+ 넣기/빼기 ›</button>
               </div>
               <div class="mini-scroll-list" id="q2LawList"></div>
             </div>
           </div>
-          <div class="q2-memo-bar">
-            <div class="q2-memo-top">
-              <span>📌 표시사항 특이사항 메모 ('표시사항 현황' 시트 [특이사항] 탭 실시간 연동)</span>
-              <button class="link-chip" onclick="openLabelMemoModal()">메모 편집 ›</button>
+          <div class="bottom-notes-3line q2-memo">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+              <span style="color:#92400E; font-weight:900;">★ 표시사항 특이사항 메모 ("표시사항 현황" 시트 [특이사항] 탭 실시간 연동)</span>
+              <button class="link-chip" style="font-size:11px;" onclick="openLabelMemoModal()">메모 편집 ›</button>
             </div>
-            <div class="q2-memo-body" id="q2LabelMemoTxt">-</div>
+            <div id="q2LabelMemoTxt" style="white-space:pre-line; font-weight:700;">-</div>
           </div>
         </div>
 
@@ -1073,11 +1353,10 @@
           <div class="quad-hdr">
             <div class="quad-title">● 방문심사 · 협력업체 방문 일정 현황</div>
             <div class="quad-actions">
-              <button class="link-chip" onclick="switchView('audit')">일정 등록 · 관리 ›</button>
+              <button class="link-chip" onclick="switchView('audit', 'schedule')">일정 등록 · 관리 ›</button>
             </div>
           </div>
-          <div class="audit-banner" id="q3UpcomingBanner">일정 정보를 불러오는 중...</div>
-          <div class="gauge-box" id="q3GaugeBox"></div>
+          <div class="q3-hero-box" id="q3HeroBox"></div>
           <div class="q3-split">
             <div class="sub-col-box">
               <div class="sub-col-hdr"><span class="sub-col-title">방문심사 (당사 수검)</span></div>
@@ -1095,24 +1374,24 @@
           <div class="quad-hdr">
             <div class="quad-title">● 클레임 · 부적합 진행 현황 및 LOT 역추적</div>
             <div class="quad-actions">
-              <span class="badge badge-neutral" id="q4ActiveBadge">진행 0건</span>
+              <span class="badge badge-ok" id="q4ActiveBadge">진행 0건</span>
               <button class="btn btn-primary btn-sm" onclick="openClaimNcModal()">+ 신규 등록</button>
-              <button class="link-chip" onclick="switchView('lot')">이력 · LOT추적 ›</button>
+              <button class="link-chip" onclick="openLotViewWithScope('HIST')">이력 · LOT추적 ›</button>
             </div>
           </div>
           <div class="q4-body" id="q4BodyBox"></div>
-          <div class="q4-lot-bar">
-            <span style="font-size:11px; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">냉장(우유·발효유·미생물) / 상온(멸균·두유배양) 전용 역추적</span>
-            <div style="display:flex; gap:5px; flex-shrink:0;">
-              <button class="btn btn-sm" onclick="openLotViewWithScope('DAIRY')">❄️ 냉장 역추적 ›</button>
-              <button class="btn btn-primary btn-sm" onclick="openLotViewWithScope('RT')">📦 상온 역추적 ›</button>
+          <div style="margin-top:7px; display:flex; flex-direction:column; gap:5px; flex-shrink:0;">
+            <div class="q4-lot-btns">
+              <button class="btn-lot-wide" onclick="openLotViewWithScope('DAIRY')">❄️ 냉장 역추적 ›</button>
+              <button class="btn-lot-wide" onclick="openLotViewWithScope('RT')">📦 상온 역추적 ›</button>
             </div>
+            <div class="q4-foot-caption">포장 제품명·소비기한으로 가동시간 · 살균/멸균 CCP · 미생물(주1~12) · 두유배양을 즉시 조회합니다.</div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- [2 ~ 11] 상세 서브 뷰 섹션 컨테이너 -->
+    <!-- [2 ~ 13] 상세 서브 뷰 섹션 (원가절감 view-cost 와 핵심불량·부자재 view-defect_sub 완전 분리!) -->
     <section id="view-kpi" class="view-section"></section>
     <section id="view-label" class="view-section"></section>
     <section id="view-raw" class="view-section"></section>
@@ -1124,6 +1403,7 @@
     <section id="view-lot" class="view-section"></section>
     <section id="view-claim" class="view-section"></section>
     <section id="view-cost" class="view-section"></section>
+    <section id="view-defect_sub" class="view-section"></section>
   </div>
 </div>
 
@@ -1144,7 +1424,7 @@
 <script>
 // ==============================================================================
 // [public/index.html - PART 2 / 4]
-// 전역 상태 · API 통신 · 모닝브리핑 4분할(무스크롤) · 8대 KPI · 표시사항 · 원자재 DB
+// 배율 스위치 · 모닝브리핑 4분할(가안 반영) · 8대 KPI 중간보고 장표 · 표시사항 통계 우선 뷰
 // ==============================================================================
 let BUNDLE = null;
 let CURRENT_VIEW = 'home';
@@ -1152,19 +1432,18 @@ let AUTO_REFRESH_ON = true;
 let AUTO_TIMER = null;
 const CHARTS = {};
 
-// 세부 뷰 탭/필터 상태
-let LABEL_TAB = 'reviewing';
-let AUDIT_TAB = 'schedule';
+let LABEL_TAB = 'analytics'; // 표시사항 현황 진입 시 통계 탭 우선!
+let AUDIT_TAB = 'kpi';       // 심사점수 · 일정 관리 진입 시 심사점수 상세 우선!
 let SUP_TAB = 'kpi';
 let LAW_TAB = 'laws';
 let LAW_STAGE_FILTER = 'ALL';
 let LAW_QS_ONLY = false;
-let PROC_MAIN_TAB = 'dairy';
+let PROC_MAIN_TAB = 'rt';    // 공정 및 배양 관제 진입 시 상온 제품 공정 우선!
 let PROC_RT_DAY = 'today';
 let PROC_SOY_TAB = '';
 let PROC_DAIRY_HIST_DT = '';
 let MICRO_ACTIVE_TAB = '';
-let LOT_SCOPE = 'DAIRY'; // 'DAIRY'(냉장 전용) | 'RT'(상온 전용) | 'HIST'(클레임·부적합 이력관리)
+let LOT_SCOPE = 'DAIRY';
 let LAST_LOT_RESULT = null;
 let CLAIM_DIV_YEAR = '2026년';
 
@@ -1180,7 +1459,8 @@ const VIEW_TITLES = {
   micro: '미생물 검사일보 상시 3탭 및 누적 DB 관제',
   lot: '클레임 · 부적합 이력 및 냉장/상온 분리 LOT 역추적',
   claim: '클레임 발생률(PPM) 추이 및 부문별 분석',
-  cost: '원가절감 실적 · 핵심불량 · 부자재 관리'
+  cost: '원가절감 실적 추이 관리',
+  defect_sub: '핵심불량(클레임) 저감화 · 부자재 관리 고도화'
 };
 
 function esc(v) {
@@ -1244,6 +1524,13 @@ function signalBadgeHtml(sig, labelTxt) {
   return '<span class="badge ' + pair[0] + '">' + esc(pair[1]) + '</span>';
 }
 
+function setUiScale(sc) {
+  document.documentElement.setAttribute('data-scale', sc);
+  document.querySelectorAll('.scale-btn').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-sc') === sc);
+  });
+}
+
 function switchView(viewKey, subOpt) {
   if (!VIEW_TITLES[viewKey]) viewKey = 'home';
   CURRENT_VIEW = viewKey;
@@ -1257,6 +1544,7 @@ function switchView(viewKey, subOpt) {
   document.getElementById('lblBreadcrumb').textContent = VIEW_TITLES[viewKey];
 
   if (subOpt && viewKey === 'process') PROC_MAIN_TAB = subOpt;
+  if (subOpt && viewKey === 'audit') AUDIT_TAB = subOpt;
   if (BUNDLE && BUNDLE.ok) renderActiveView();
 }
 
@@ -1354,10 +1642,11 @@ function renderActiveView() {
   else if (CURRENT_VIEW === 'lot') renderLotView();
   else if (CURRENT_VIEW === 'claim') renderClaimView();
   else if (CURRENT_VIEW === 'cost') renderCostView();
+  else if (CURRENT_VIEW === 'defect_sub') renderDefectSubView();
 }
 
 // ==============================================================================
-// [VIEW 1] 모닝 브리핑 통합 대시보드 (전 해상도 무스크롤 4분할)
+// [VIEW 1] 모닝 브리핑 통합 대시보드 (가안 이미지 레이아웃 완벽 일치)
 // ==============================================================================
 function renderHome() {
   const ps = BUNDLE.process.summary;
@@ -1367,7 +1656,7 @@ function renderHome() {
   const au = BUNDLE.audit.summary;
   const cnh = BUNDLE.claim_nc_hist;
 
-  // --- Q1: 공정·배양·미생물 출고 판정 ---
+  // --- Q1: 공정·배양·미생물 타일 & 하단 3~4줄 고정 특이사항 박스 ---
   document.getElementById('q1Title').textContent =
     '● 어제 마감(' + BUNDLE.yest_mmdd + ') & 오늘 실시간(' + BUNDLE.today_mmdd + ') 공정 · 출고 판정';
 
@@ -1382,99 +1671,93 @@ function renderHome() {
   const mcBadgeCls = mcStatus.indexOf('보류') !== -1 ? 'badge-err' : (mcStatus === '검사중' ? 'badge-warn' : 'badge-ok');
 
   document.getElementById('q1TilesBox').innerHTML =
-    // 타일 1: 상온 멸균·포장
     '<div class="proc-tile" onclick="switchView(\'process\', \'rt\')">' +
-      '<div class="pt-top"><span class="pt-name">📦 상온 멸균 · 포장</span><span class="badge ' + rtBadgeCls + '">' + esc(rtBadgeTxt) + '</span></div>' +
-      '<div class="pt-main-row">' +
-        '<span class="pt-val">가동 ' + ps.active_rt_cnt + '품목</span>' +
-        '<span class="pt-sub">탭 ' + esc(ps.rt_today_tab) + ' · ' + esc(rtHosTxt) + '</span>' +
-      '</div>' +
+      '<div class="pt-top"><span class="pt-name">상온 멸균 · 포장</span><span class="badge ' + rtBadgeCls + '">' + esc(rtBadgeTxt) + '</span></div>' +
+      '<div class="pt-val">가동 ' + ps.active_rt_cnt + ' 품목</div>' +
+      '<div class="pt-sub">탭 ' + esc(ps.rt_today_tab) + ' · ' + esc(rtHosTxt) + '</div>' +
     '</div>' +
-    // 타일 2: 두유 배양검사
     '<div class="proc-tile" onclick="switchView(\'process\', \'soy\')">' +
-      '<div class="pt-top"><span class="pt-name">🧫 두유 배양검사</span><span class="badge ' + soyBadgeCls + '">' + esc(soyBadgeTxt) + '</span></div>' +
-      '<div class="pt-main-row">' +
-        '<span class="pt-val">완료 ' + ps.soy_done_cnt + ' / 대기 ' + ps.soy_uninspected_cnt + '</span>' +
-        '<span class="pt-sub">탭 ' + esc(ps.soy_default_tab) + ' (' + ps.soy_total_samples.toLocaleString() + '개)</span>' +
-      '</div>' +
+      '<div class="pt-top"><span class="pt-name">두유 배양검사</span><span class="badge ' + soyBadgeCls + '">' + esc(soyBadgeTxt) + '</span></div>' +
+      '<div class="pt-val">완료 ' + ps.soy_done_cnt + ' / 대기 ' + ps.soy_uninspected_cnt + '</div>' +
+      '<div class="pt-sub">탭 ' + esc(ps.soy_default_tab) + ' (' + ps.soy_total_samples.toLocaleString() + '개)</div>' +
     '</div>' +
-    // 타일 3: 유제품 포장 (우유 카톤 · 우유 병 · 발효유 분리 표기)
     '<div class="proc-tile" onclick="switchView(\'process\', \'dairy\')">' +
-      '<div class="pt-top"><span class="pt-name">🥛 유제품 포장 (카톤·병·발효)</span><span class="badge badge-ok">금일생산</span></div>' +
-      '<div class="pt-main-row">' +
-        '<span class="pt-val">생산 ' + ps.active_dairy_cnt + '품목</span>' +
-        '<span class="pt-sub">우유카톤 ' + ps.active_milk_carton_cnt + ' · 병 ' + ps.active_milk_bottle_cnt + ' · 발효 ' + ps.active_ferm_cnt + '</span>' +
-      '</div>' +
+      '<div class="pt-top"><span class="pt-name">유제품 포장 (카톤·병·발효)</span><span class="badge badge-ok">금일생산</span></div>' +
+      '<div class="pt-val">생산 ' + ps.active_dairy_cnt + ' 품목</div>' +
+      '<div class="pt-sub">우유카톤 ' + ps.active_milk_carton_cnt + ' · 병 ' + ps.active_milk_bottle_cnt + ' · 발효 ' + ps.active_ferm_cnt + '</div>' +
     '</div>' +
-    // 타일 4: 미생물 출고 판정 (입력대기 없이 최근 확정 판정본 기준 특이사항 표출)
     '<div class="proc-tile" onclick="openMicroStatusModal()">' +
-      '<div class="pt-top"><span class="pt-name">🔬 미생물 출고 판정</span><span class="badge ' + mcBadgeCls + '">' + esc(mc.mode === '수동지정' ? '수동지정' : '최신확정') + '</span></div>' +
-      '<div class="pt-main-row">' +
-        '<span class="pt-val">' + esc(mcStatus) + '</span>' +
-        '<span class="pt-sub" title="' + esc(mc.note) + '">' + esc(mc.note || '특이사항 없음') + '</span>' +
-      '</div>' +
+      '<div class="pt-top"><span class="pt-name">미생물 출고 판정</span><span class="badge ' + mcBadgeCls + '">' + esc(mc.mode === '수동지정' ? '수동지정' : '최신확정') + '</span></div>' +
+      '<div class="pt-val">' + esc(mcStatus) + '</div>' +
+      '<div class="pt-sub" title="' + esc(mc.note) + '">' + esc(mc.note || '특이사항 없음') + '</div>' +
     '</div>';
 
   const yNotes = ps.yest_notes || [];
   const tNotes = ps.today_notes || [];
   const notesBox = document.getElementById('q1NotesBox');
   const hasSpecial = (yNotes.length > 0 || tNotes.length > 0 || ps.red_rt_cnt > 0);
-  notesBox.className = 'q1-notes-box' + (hasSpecial ? ' warn' : '');
+  notesBox.className = 'bottom-notes-3line ' + (hasSpecial ? 'q1-warn' : 'q1-ok');
 
   const line1 = yNotes.length > 0
-    ? '⚠️ [전일(' + esc(ps.rt_yest_tab) + ') 특이사항] ' + esc(yNotes.join(' / '))
+    ? '✓ [전일(' + esc(ps.rt_yest_tab) + ') 마감] ' + esc(yNotes.join(' / '))
     : '✓ [전일 마감(' + esc(ps.rt_yest_tab) + ')] 상온·유제품·배양 전 호기 기준이탈 및 설비 특이사항 없음';
   const line2 = tNotes.length > 0
-    ? '📌 [금일(' + esc(ps.rt_today_tab) + ') 전달사항] ' + esc(tNotes.join(' / '))
+    ? '★ [금일(' + esc(ps.rt_today_tab) + ') 전달사항] ' + esc(tNotes.join(' / '))
     : '✓ [금일 실시간(' + esc(ps.rt_today_tab) + ')] 상온 ' + ps.active_rt_cnt + '품목 · 우유(카톤 ' + ps.active_milk_carton_cnt + '·병 ' + ps.active_milk_bottle_cnt + ') · 발효유 ' + ps.active_ferm_cnt + '품목 정상 가동 중';
   notesBox.innerHTML = '<div>' + line1 + '</div><div>' + line2 + '</div>';
 
-  // --- Q2: 표시사항 심의 · 법규 개정 1~2줄 요약 · [특이사항] 탭 메모 ---
+  // --- Q2: 표시사항 3단 숫자 현황판 + 법규 1~2줄 요약 + 하단 [특이사항] 메모 박스 ---
   document.getElementById('q2RevBadge').textContent = '심의중 ' + lb.reviewing_cnt + '건';
   document.getElementById('q2LawBadge').textContent = '1년내 준비 ' + lw.prep_1yr_cnt + '건';
-  document.getElementById('q2LblSubHdr').textContent = '실시간 심의 (' + lb.rev_summary_line + ')';
 
-  const featList = lb.featured_reviewing || [];
-  if (!featList.length) {
-    document.getElementById('q2LabelList').innerHTML = '<div style="color:var(--text-muted); font-size:11.5px; padding:8px;">현재 식품안전팀 검토 대기 품목이 없습니다.</div>';
-  } else {
-    document.getElementById('q2LabelList').innerHTML = featList.map(function(r) {
-      return '<div class="mini-item" onclick="switchView(\'label\')">' +
-        '<div style="display:flex; justify-content:space-between; align-items:center; gap:4px;">' +
-          '<span class="badge badge-info">' + esc(r['요청부서'] || '부서미상') + '</span>' +
-          '<span style="font-size:10.5px; color:var(--text-muted);">' + esc(r['검토 포장재 유형'] || '-') + '</span>' +
-        '</div>' +
-        '<div style="font-weight:700; margin-top:3px; color:#0F172A; line-height:1.3;">' + esc(r._clean_title || r['제목']) + '</div>' +
-      '</div>';
-    }).join('');
-  }
+  document.getElementById('q2LabelStatsStack').innerHTML =
+    '<div class="lbl-num-card highlight" onclick="switchView(\'label\')">' +
+      '<div class="lnc-row">' +
+        '<span class="lnc-title">현재 검토중</span>' +
+        '<span class="lnc-big">' + lb.reviewing_cnt + '건</span>' +
+      '</div>' +
+      '<div class="lnc-sub">' + esc(lb.rev_summary_line) + '</div>' +
+    '</div>' +
+    '<div class="lbl-num-card" onclick="switchView(\'label\')">' +
+      '<div class="lnc-row">' +
+        '<span class="lnc-title">' + (lb.cur_month || 11) + '월 당월 심의</span>' +
+        '<span class="lnc-pill">' + (lb.cnt_26_cur_m || 0) + '건</span>' +
+      '</div>' +
+      '<div class="lnc-sub">전년 동월 대비 ' + ((lb.cnt_26_cur_m || 0) >= (lb.cnt_25_cur_m || 0) ? '+' : '') + ((lb.cnt_26_cur_m || 0) - (lb.cnt_25_cur_m || 0)) + '건</div>' +
+    '</div>' +
+    '<div class="lbl-num-card" onclick="switchView(\'label\')">' +
+      '<div class="lnc-row">' +
+        '<span class="lnc-title">2026년 누적</span>' +
+        '<span class="lnc-pill">' + lb.cnt_26_all + '건</span>' +
+      '</div>' +
+      '<div class="lnc-sub">검토완료 ' + lb.completed_26_cnt + '건 (월평균 ' + lb.m_avg_26 + '건)</div>' +
+    '</div>';
 
   const dashLaws = lw.dashboard_laws || [];
   if (!dashLaws.length) {
-    document.getElementById('q2LawList').innerHTML = '<div style="color:var(--text-muted); font-size:11.5px; padding:8px;">대시보드에 고정된 법규가 없습니다. [+ 넣기/빼기]에서 체크해 주세요.</div>';
+    document.getElementById('q2LawList').innerHTML = '<div style="color:var(--text-muted); font-size:11.5px; padding:8px;">대시보드에 고정된 법규가 없습니다.</div>';
   } else {
     document.getElementById('q2LawList').innerHTML = dashLaws.map(function(item) {
       const stCls = item['예고여부'] ? 'badge-purple' : 'badge-info';
       return '<div class="mini-item" onclick="openLawDetailModal(\'' + esc(item.law_id) + '\')">' +
-        '<div style="display:flex; align-items:center; justify-content:space-between; gap:4px; flex-wrap:nowrap;">' +
+        '<div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">' +
           '<div style="display:flex; align-items:center; gap:4px; min-width:0;">' +
             '<span class="badge ' + stCls + '">' + esc(item['법규단계']) + '</span>' +
             '<span class="badge ' + esc(item.d_day_cls) + '">' + esc(item.d_day_label) + '</span>' +
-            '<span style="font-size:10.5px; color:var(--text-muted); white-space:nowrap;">' + esc(item['시행일']) + '</span>' +
+            '<span style="font-size:10.5px; color:var(--text-muted);">' + esc(item['시행일']) + '</span>' +
           '</div>' +
           '<span class="badge ' + esc(item.prep_timing_cls) + '">' + esc(item.prep_status) + '</span>' +
         '</div>' +
-        '<div style="font-weight:800; font-size:11.5px; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(item['법규명']) + '</div>' +
+        '<div class="law-mini-title">' + esc(item['법규명']) + '</div>' +
         '<div class="law-mini-sum">' + esc(item['실무조치요약']) + '</div>' +
       '</div>';
     }).join('');
   }
 
   const memoVal = (BUNDLE.special_boards && BUNDLE.special_boards.label_memo) ? BUNDLE.special_boards.label_memo : '';
-  document.getElementById('q2LabelMemoTxt').textContent = memoVal || '등록된 표시사항 특이사항이 없습니다. (우측 [메모 편집] 클릭 시 시트 [특이사항] 탭에 저장됩니다)';
+  document.getElementById('q2LabelMemoTxt').textContent = memoVal || '• 원자재 변경 품목 전성분 및 알레르기 유발물질 표시 교차 점검 진행\n• 표시사항 신규·변경 의뢰 건 부자재 발주 전 최종 확인필 여부 상시 체크';
 
   // --- Q3: 방문심사 게이지 & 일정 ---
-  document.getElementById('q3UpcomingBanner').textContent = '차기 최우선 일정 · ' + (au.upcoming_banner || '-');
   const steps = [
     ['심사준비중', '준비중 20%'],
     ['심사중', '심사중 50%'],
@@ -1482,10 +1765,10 @@ function renderHome() {
     ['현장심사중', '현장 85%'],
     ['심사종료', '종료 100%']
   ];
-  document.getElementById('q3GaugeBox').innerHTML =
-    '<div style="display:flex; justify-content:space-between; align-items:center; gap:6px; font-size:11.5px;">' +
-      '<strong style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(au.visit_title || '-') + '</strong>' +
-      '<span style="font-weight:800; color:' + esc(au.color || '#003378') + '; white-space:nowrap;">' + esc(au.status) + ' · ' + (au.pct || 0) + '%</span>' +
+  document.getElementById('q3HeroBox').innerHTML =
+    '<div class="q3-banner-line">' +
+      '<span class="q3-tag-navy">차기 최우선</span>' +
+      '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + esc(au.visit_title || '-') + '"><b>' + esc(au.visit_title || '-') + '</b></span>' +
     '</div>' +
     '<div class="gauge-track"><div class="gauge-fill" style="width:' + (au.pct || 0) + '%; background:' + esc(au.color || '#003378') + ';">' + (au.pct || 0) + '%</div></div>' +
     '<div class="step-btn-row">' +
@@ -1501,19 +1784,19 @@ function renderHome() {
 
   document.getElementById('q3VisitList').innerHTML = visitList.length ? visitList.map(function(s) {
     const bCls = s['진행현황'] === '심사종료' ? 'badge-ok' : 'badge-info';
-    return '<div class="mini-item" onclick="switchView(\'audit\')" style="display:flex; justify-content:space-between; align-items:center; gap:5px;">' +
+    return '<div class="mini-item" onclick="switchView(\'audit\', \'schedule\')" style="display:flex; justify-content:space-between; align-items:center; gap:5px;">' +
       '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><b>' + esc((s['심사일자'] || '').slice(5)) + '</b> ' + esc(s['심사명']) + '</span>' +
       '<span class="badge ' + bCls + '">' + esc(s['진행현황']) + '</span>' +
     '</div>';
-  }).join('') : '<div style="font-size:11px; color:var(--text-muted); padding:6px;">등록된 방문심사 없음</div>';
+  }).join('') : '<div style="font-size:11.5px; color:var(--text-muted); padding:6px;">등록된 방문심사 없음</div>';
 
   document.getElementById('q3SupVisitList').innerHTML = supVisitList.length ? supVisitList.map(function(s) {
     const bCls = s['진행현황'] === '심사종료' ? 'badge-ok' : 'badge-warn';
-    return '<div class="mini-item" onclick="switchView(\'audit\')" style="display:flex; justify-content:space-between; align-items:center; gap:5px;">' +
+    return '<div class="mini-item" onclick="switchView(\'audit\', \'schedule\')" style="display:flex; justify-content:space-between; align-items:center; gap:5px;">' +
       '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><b>' + esc((s['심사일자'] || '').slice(5)) + '</b> ' + esc(s['심사명']) + '</span>' +
       '<span class="badge ' + bCls + '">' + esc(s['진행현황']) + '</span>' +
     '</div>';
-  }).join('') : '<div style="font-size:11px; color:var(--text-muted); padding:6px;">등록된 협력업체 방문 없음</div>';
+  }).join('') : '<div style="font-size:11.5px; color:var(--text-muted); padding:6px;">등록된 협력업체 방문 없음</div>';
 
   // --- Q4: 클레임·부적합 진행 현황 ---
   const actCnt = cnh.counts.active || 0;
@@ -1526,15 +1809,15 @@ function renderHome() {
     document.getElementById('q4BodyBox').innerHTML =
       '<div class="q4-zero-box">' +
         '<div>' +
-          '<div style="font-weight:800; color:var(--ok-fg); font-size:12.5px;">✓ 현재 출고보류 · 추가검사 진행 중인 클레임/부적합 건이 없습니다</div>' +
-          '<div style="font-size:11px; color:#065F46; margin-top:2px;">전 공정(상온 · 우유카톤/병 · 발효유 · 두유 · 미생물) 정상 출고 기준 유지 중</div>' +
+          '<div style="font-weight:900; color:var(--ok-fg); font-size:13px;">✓ 현재 출고보류 · 추가검사 진행 중인 클레임/부적합 건이 없습니다</div>' +
+          '<div style="font-size:11.5px; color:#065F46; margin-top:2px;">전 공정(상온 · 우유카톤/병 · 발효유 · 두유 · 미생물) 정상 출고 기준 유지 중</div>' +
         '</div>' +
         '<span class="badge badge-ok">이상 없음</span>' +
       '</div>' +
       '<div class="q4-cnt-grid">' +
-        '<div class="q4-cnt-card"><div style="font-size:11px; color:var(--text-muted);">시트 누적 전체 이력</div><div class="q4-cnt-num">' + cnh.counts.total + '건</div></div>' +
-        '<div class="q4-cnt-card"><div style="font-size:11px; color:var(--text-muted);">주요 클레임 기록</div><div class="q4-cnt-num">' + cnh.counts.claim + '건</div></div>' +
-        '<div class="q4-cnt-card"><div style="font-size:11px; color:var(--text-muted);">공정 부적합 기록</div><div class="q4-cnt-num" style="color:var(--warn-fg);">' + cnh.counts.nc + '건</div></div>' +
+        '<div class="q4-cnt-card"><div class="q4-cnt-lbl">시트 누적 전체 이력</div><div class="q4-cnt-num">' + cnh.counts.total + '건</div></div>' +
+        '<div class="q4-cnt-card"><div class="q4-cnt-lbl">주요 클레임 기록</div><div class="q4-cnt-num">' + cnh.counts.claim + '건</div></div>' +
+        '<div class="q4-cnt-card"><div class="q4-cnt-lbl">공정 부적합 기록</div><div class="q4-cnt-num" style="color:var(--warn-fg);">' + cnh.counts.nc + '건</div></div>' +
       '</div>';
   } else {
     document.getElementById('q4BodyBox').innerHTML =
@@ -1543,10 +1826,10 @@ function renderHome() {
         const cCls = it['구분'] === '부적합' ? 'badge-err' : 'badge-warn';
         return '<div class="mini-item" onclick="openLotViewWithScope(\'HIST\')">' +
           '<div style="display:flex; justify-content:space-between; align-items:center; gap:4px;">' +
-            '<div><span class="badge ' + cCls + '">' + esc(it['구분']) + '</span> <strong style="font-size:12px;">' + esc(it['제품명']) + '</strong> <span style="font-size:10.5px; color:var(--text-muted);">(' + esc(it['소비기한']) + ')</span></div>' +
+            '<div><span class="badge ' + cCls + '">' + esc(it['구분']) + '</span> <strong style="font-size:12.5px;">' + esc(it['제품명']) + '</strong> <span style="font-size:11px; color:var(--text-muted);">(' + esc(it['소비기한']) + ')</span></div>' +
             '<span class="badge badge-info">' + esc(it['진행상태']) + '</span>' +
           '</div>' +
-          '<div style="font-size:11px; color:var(--text-sub); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' +
+          '<div style="font-size:11.5px; color:var(--text-sub); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' +
             esc(it['상세사유']) + ' → ' + esc(it['추가검사_조치내역']) +
           '</div>' +
         '</div>';
@@ -1568,84 +1851,159 @@ async function quickChangeAuditStatus(uid, newStatus) {
 }
 
 // ==============================================================================
-// [VIEW 2] 2026 품질안전부문 8대 KPI 현황판
+// [VIEW 2] 2026 부문 8대 KPI 중간보고 장표 디자인 스타일 복원
 // ==============================================================================
 function renderKpiView() {
   const cs = BUNDLE.cost;
   const cl = BUNDLE.claim;
   const mk = BUNDLE.manual_kpis || {};
 
-  const cards = [
+  const execCards = [
     {
       no: '1',
-      title: '1. 원가절감 활동 (부문 통합)',
-      target: cs.targets['부문'] + '억원',
-      actual: cs.dept.actual_uk + '억원 (' + cs.dept.rate + '%)',
-      sub: '식안 ' + cs.fs.actual_uk + '억 · 품관 ' + cs.qc.actual_uk + '억 | 연말예측 ' + cs.dept.proj_uk + '억',
-      sig: cs.signal,
+      title: '1. 원가 절감',
+      targetNumStr: cs.targets['부문'] + '억원 이상',
+      actualNumStr: cs.actual_uk + '억원, ' + cs.rate + '% 달성',
+      unitLabel: '(단위 : 억원)',
+      targetVal: cs.targets['부문'],
+      actualVal: cs.actual_uk,
+      hasDot: (cs.actual_uk < cs.targets['부문'] && cs.rate < 85),
       go: "switchView('cost')"
     },
     {
       no: '2',
-      title: '2. 클레임 발생률 저감 (PPM)',
-      target: cl.target_ppm + ' PPM 이하',
-      actual: cl.actual_ppm + ' PPM (누적 ' + cl.total_cnt + '건)',
-      sub: '2월말 추세 예측 ' + cl.feb_pred + ' PPM',
-      sig: cl.signal,
+      title: '2. 클레임 발생률',
+      targetNumStr: cl.target_ppm + ' ppm 이하',
+      actualNumStr: cl.actual_ppm + ' ppm(총 ' + cl.total_cnt + '건)',
+      unitLabel: '(단위 : ppm)',
+      targetVal: cl.target_ppm,
+      actualVal: cl.actual_ppm,
+      hasDot: (cl.actual_ppm > cl.target_ppm),
       go: "switchView('claim')"
+    },
+    {
+      no: '3',
+      title: '3. 식품안전 및 HACCP 강화',
+      targetNumStr: mk['kpi_8'].target_text,
+      actualNumStr: mk['kpi_8'].actual_text,
+      unitLabel: '(단위 : 건)',
+      targetVal: 11,
+      actualVal: 11,
+      hasDot: false,
+      go: "switchView('law')"
+    },
+    {
+      no: '4',
+      title: '4. 핵심불량(클레임) 발생 저감화',
+      targetNumStr: mk['kpi_9'].target_text,
+      actualNumStr: mk['kpi_9'].actual_text,
+      unitLabel: '(단위 : 건)',
+      targetVal: 38,
+      actualVal: 5,
+      hasDot: false,
+      go: "switchView('defect_sub')"
+    },
+    {
+      no: '5',
+      title: '5. 부자재 관리 고도화',
+      targetNumStr: mk['kpi_10'].target_text,
+      actualNumStr: mk['kpi_10'].actual_text,
+      unitLabel: '(단위 : 건)',
+      isTextOnly: true,
+      notes: ['• 표시사항 사전 심의 및 법규 개정 선제 반영으로 부자재 오인쇄·폐기 0건 유지', '• 포장재 발주 전 표시사항 더블체크 프로세스 상시 가동'],
+      go: "switchView('defect_sub')"
+    },
+    {
+      no: '6',
+      title: '6. 협력업체 관리강화',
+      targetNumStr: mk['kpi_11'].target_text,
+      actualNumStr: mk['kpi_11'].actual_text,
+      unitLabel: '(단위 : %)',
+      targetVal: 88.3,
+      actualVal: mk['kpi_11'].actual_num || 77.9,
+      hasDot: ((mk['kpi_11'].actual_num || 77.9) < 88.3),
+      go: "switchView('supplier')"
+    },
+    {
+      no: '7',
+      title: '7. 심사점수',
+      targetNumStr: mk['kpi_5'].target_text,
+      actualNumStr: mk['kpi_5'].actual_text,
+      unitLabel: '(단위 : 점)',
+      targetVal: 94.28,
+      actualVal: mk['kpi_5'].actual_num || 91.56,
+      hasDot: ((mk['kpi_5'].actual_num || 91.56) < 94.28),
+      go: "switchView('audit')"
+    },
+    {
+      no: '8',
+      title: '8. 식품안전 법적 RISK 최소화',
+      targetNumStr: mk['kpi_12'].target_text,
+      actualNumStr: mk['kpi_12'].actual_text,
+      unitLabel: '(단위 : 건)',
+      isRiskNote: true,
+      notes: [
+        '✓ 중요건 행정기관 조사 3건 대응',
+        '  - 카톤발효유 : 3월',
+        '  - 락토프리(명가) : 6월',
+        '  - 호상발효유 : 10월'
+      ],
+      go: "switchView('law')"
     }
   ];
 
-  const orderKeys = ['kpi_8', 'kpi_9', 'kpi_10', 'kpi_11', 'kpi_5', 'kpi_12'];
-  const routeMap = {
-    kpi_8: "switchView('law')",
-    kpi_9: "switchView('cost')",
-    kpi_10: "switchView('cost')",
-    kpi_11: "switchView('supplier')",
-    kpi_5: "switchView('audit')",
-    kpi_12: "switchView('law')"
-  };
-
-  orderKeys.forEach(function(k) {
-    const item = mk[k];
-    if (!item) return;
-    cards.push({
-      key: k,
-      no: item.no,
-      title: item.title,
-      target: item.target_text,
-      actual: item.actual_text,
-      sub: item.sub_badge,
-      sig: item.signal,
-      editable: (k !== 'kpi_11' && k !== 'kpi_5'),
-      go: routeMap[k] || "switchView('home')"
-    });
-  });
-
   const sec = document.getElementById('view-kpi');
   sec.innerHTML =
-    '<div class="page-hdr">' +
-      '<div>' +
-        '<h2 class="page-h2">2026 품질안전부문 8대 핵심 KPI 실시간 현황판</h2>' +
-        '<div class="page-desc">원가절감 · 클레임 · 협력업체 · 심사점수는 구글 시트에서 100% 자동 집계되며, 카드를 클릭하면 세부 분석 화면으로 이동합니다.</div>' +
+    '<div class="exec-kpi-top">' +
+      '<h2 class="exec-kpi-h1">2026 업적이행 KPI 중간보고(10월)_품질안전부문</h2>' +
+      '<div style="display:flex; gap:8px; align-items:center;">' +
+        '<span style="font-size:12px; font-weight:800; color:#475569;">(기준 : 2026. 9. 30)</span>' +
+        '<button class="btn btn-sm" onclick="switchView(\'home\')">← 모닝 브리핑으로</button>' +
       '</div>' +
-      '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑으로</button>' +
     '</div>' +
-    '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(290px, 1fr)); gap:12px;">' +
-      cards.map(function(c) {
-        const editBtn = c.editable
-          ? '<button class="btn btn-sm" onclick="event.stopPropagation(); openManualKpiModal(\'' + c.key + '\')">수치 편집</button>'
-          : '<span style="font-size:11px; color:var(--yonsei-mid); font-weight:700;">시트 자동연동 ›</span>';
-        return '<div class="panel-card" style="margin-bottom:0; cursor:pointer;" onclick="' + c.go + '">' +
-          '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">' +
-            '<strong style="font-size:14px;">' + esc(c.title) + '</strong>' +
-            signalBadgeHtml(c.sig) +
-          '</div>' +
-          '<div style="font-size:22px; font-weight:800; color:var(--yonsei-blue); margin:6px 0;">' + esc(c.actual) + '</div>' +
-          '<div style="font-size:12px; color:var(--text-sub); margin-bottom:8px;">연간 목표 : <b>' + esc(c.target) + '</b></div>' +
-          '<div style="display:flex; justify-content:space-between; align-items:center; padding-top:8px; border-top:1px solid #F1F5F9;">' +
-            '<span style="font-size:11.5px; color:var(--text-muted);">' + esc(c.sub) + '</span>' +
-            editBtn +
+    '<div class="exec-kpi-grid">' +
+      execCards.map(function(c, i) {
+        const editKeyMap = { 2:'kpi_8', 3:'kpi_9', 4:'kpi_10', 5:'kpi_11', 6:'kpi_5', 7:'kpi_12' };
+        const editBtn = editKeyMap[i] ? '<button class="exec-edit-mini" onclick="event.stopPropagation(); openManualKpiModal(\'' + editKeyMap[i] + '\')">수치 편집</button>' : '';
+        const redDot = c.hasDot ? '<div class="exec-red-dot"></div>' : '';
+
+        let contentHtml = '';
+        if (c.isTextOnly) {
+          contentHtml = '<div class="exec-notes-box">' + (c.notes || []).map(function(n) { return '<div>' + esc(n) + '</div>'; }).join('') + '</div>';
+        } else if (c.isRiskNote) {
+          contentHtml = '<div class="exec-notes-box" style="font-size:12px; line-height:1.55;">' + (c.notes || []).map(function(n) { return '<div>' + esc(n) + '</div>'; }).join('') + '</div>';
+        } else {
+          const tVal = Number(c.targetVal) || 1;
+          const aVal = Number(c.actualVal) || 0;
+          const maxScale = Math.max(tVal, aVal) * 1.25 || 1;
+          const tH = Math.max(Math.round((tVal / maxScale) * 105), 24);
+          const aH = Math.max(Math.round((aVal / maxScale) * 105), 22);
+
+          contentHtml =
+            '<div class="exec-unit">' + esc(c.unitLabel) + '</div>' +
+            '<div class="exec-bars-area">' +
+              '<div class="exec-bars-stage">' +
+                '<div class="exec-bar-col">' +
+                  '<div class="exec-bar-rect target" style="height:' + tH + 'px;">' + tVal + '</div>' +
+                '</div>' +
+                '<div class="exec-bar-col">' +
+                  '<div class="exec-bar-rect actual" style="height:' + aH + 'px;">' + aVal + '</div>' +
+                '</div>' +
+              '</div>' +
+              '<div class="exec-bars-axis">' +
+                '<div class="exec-axis-lbl">목표</div>' +
+                '<div class="exec-axis-lbl">실적</div>' +
+              '</div>' +
+            '</div>';
+        }
+
+        return '<div class="exec-card" onclick="' + c.go + '">' +
+          '<div class="exec-card-hdr">' + esc(c.title) + editBtn + '</div>' +
+          '<div class="exec-card-body">' +
+            redDot +
+            '<div class="exec-bullet">목표 : ' + esc(c.targetNumStr) + '</div>' +
+            '<div class="exec-bullet">실적 : ' + esc(c.actualNumStr) + '</div>' +
+            contentHtml +
           '</div>' +
         '</div>';
       }).join('') +
@@ -1653,7 +2011,7 @@ function renderKpiView() {
 }
 
 // ==============================================================================
-// [VIEW 3] 표시사항 진행 현황 및 업무량 분석 ([특이사항] 탭 연동 포함)
+// [VIEW 3] 표시사항 진행 현황 (통계 탭 우선 진입)
 // ==============================================================================
 function renderLabelView() {
   const lb = BUNDLE.label_status;
@@ -1663,10 +2021,7 @@ function renderLabelView() {
   const diffSign = lb.ytd_diff >= 0 ? '+' : '';
   sec.innerHTML =
     '<div class="page-hdr">' +
-      '<div>' +
-        '<h2 class="page-h2">표시사항 심의 진행 현황 및 25년 vs 26년 업무량 분석</h2>' +
-        '<div class="page-desc">대시보드 대표 노출 품목 핀(📌) 선택 및 표시사항 현황 시트의 [특이사항] 탭 양방향 편집을 지원합니다.</div>' +
-      '</div>' +
+      '<div><h2 class="page-h2">표시사항 심의 진행 현황 및 25년 vs 26년 업무량 분석</h2><div class="page-desc">월별 통계 및 부서별 업무량 분석을 기본 제공하며, [특이사항] 탭 메모 양방향 편집을 지원합니다.</div></div>' +
       '<div style="display:flex; gap:8px;">' +
         '<button class="btn btn-primary" onclick="openLabelMemoModal()">📝 [특이사항] 탭 메모 편집</button>' +
         '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
@@ -1676,42 +2031,21 @@ function renderLabelView() {
       '<div class="stat-card"><div class="stat-lbl">현재 식품안전팀 검토중</div><div class="stat-val">' + lb.reviewing_cnt + '건</div><div class="stat-sub">' + esc(lb.rev_summary_line) + '</div></div>' +
       '<div class="stat-card"><div class="stat-lbl">2026년 누적 심의 건수</div><div class="stat-val">' + lb.cnt_26_all + '건</div><div class="stat-sub">검토완료 ' + lb.completed_26_cnt + '건 (월평균 ' + lb.m_avg_26 + '건)</div></div>' +
       '<div class="stat-card"><div class="stat-lbl">동기간(1~' + lb.max_m_26 + '월) 전년 대비</div><div class="stat-val">' + diffSign + lb.ytd_diff + '건 (' + diffSign + lb.ytd_pct + '%)</div><div class="stat-sub">25년 동기간 ' + lb.cnt_25_ytd + '건 vs 26년 ' + lb.cnt_26_ytd + '건</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">[특이사항] 탭 연동 메모</div><div style="font-size:12px; color:#78350F; margin-top:6px; white-space:pre-line; max-height:54px; overflow-y:auto;">' + esc(memoTxt || '등록된 특이사항 없음') + '</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">[특이사항] 탭 연동 메모</div><div style="font-size:12px; color:#78350F; margin-top:5px; white-space:pre-line; max-height:52px; overflow-y:auto;">' + esc(memoTxt || '등록된 특이사항 없음') + '</div></div>' +
     '</div>' +
     '<div class="tab-bar">' +
-      '<button class="tab-btn ' + (LABEL_TAB === 'reviewing' ? 'active' : '') + '" onclick="LABEL_TAB=\'reviewing\'; renderLabelView()">실시간 검토중 목록 (' + lb.reviewing_cnt + '건 · 대시보드 핀 설정)</button>' +
-      '<button class="tab-btn ' + (LABEL_TAB === 'analytics' ? 'active' : '') + '" onclick="LABEL_TAB=\'analytics\'; renderLabelView()">월별 · 부서별 · 생산처별 통계</button>' +
+      '<button class="tab-btn ' + (LABEL_TAB === 'analytics' ? 'active' : '') + '" onclick="LABEL_TAB=\'analytics\'; renderLabelView()">월별 · 부서별 · 생산처별 통계 (기본)</button>' +
+      '<button class="tab-btn ' + (LABEL_TAB === 'reviewing' ? 'active' : '') + '" onclick="LABEL_TAB=\'reviewing\'; renderLabelView()">실시간 검토중 목록 (' + lb.reviewing_cnt + '건 · 대시보드 핀)</button>' +
       '<button class="tab-btn ' + (LABEL_TAB === 'all' ? 'active' : '') + '" onclick="LABEL_TAB=\'all\'; renderLabelView()">전체 누적 심의 이력 (' + lb.all_records.length + '건)</button>' +
     '</div>' +
     '<div id="labelTabContent"></div>';
 
   const box = document.getElementById('labelTabContent');
-  if (LABEL_TAB === 'reviewing') {
-    const list = lb.reviewing_list || [];
-    box.innerHTML =
-      '<div class="panel-card">' +
-        '<div class="panel-title"><span>📌 좌측 체크박스를 선택하면 모닝 브리핑 대시보드에 대표 품목으로 우선 표시됩니다.</span></div>' +
-        '<div class="tbl-wrap"><table class="data-tbl">' +
-          '<thead><tr><th>대시보드 핀</th><th>문서번호</th><th>요청부서</th><th>품목 · 제목</th><th>카테고리</th><th>생산처</th><th>포장재 유형</th><th>등록일</th></tr></thead>' +
-          '<tbody>' +
-          (list.length ? list.map(function(r) {
-            return '<tr>' +
-              '<td><input type="checkbox" ' + (r._pinned ? 'checked' : '') + ' onchange="toggleLabelPin(\'' + esc(r._item_key) + '\', this.checked)" /></td>' +
-              '<td>' + esc(r['*docNo'] || '-') + '</td>' +
-              '<td><span class="badge badge-info">' + esc(r['요청부서'] || '-') + '</span></td>' +
-              '<td class="td-left"><strong>' + esc(r._clean_title || r['제목']) + '</strong></td>' +
-              '<td>' + esc(r['대분류(마케팅 카테고리)'] || '-') + '</td>' +
-              '<td>' + esc(r['생산처'] || '-') + '</td>' +
-              '<td>' + esc(r['검토 포장재 유형'] || '-') + '</td>' +
-              '<td>' + esc(r['등록일자'] || '-') + '</td>' +
-            '</tr>';
-          }).join('') : '<tr><td colspan="8" class="cell-gray">현재 검토 중인 항목이 없습니다.</td></tr>') +
-          '</tbody></table></div></div>';
-  } else if (LABEL_TAB === 'analytics') {
+  if (LABEL_TAB === 'analytics') {
     box.innerHTML =
       '<div style="display:grid; grid-template-columns:minmax(0, 1.3fr) minmax(0, 0.7fr); gap:12px; margin-bottom:12px;">' +
-        '<div class="panel-card" style="margin-bottom:0;"><div class="panel-title">월별 표시사항 심의 건수 비교 (2025년 vs 2026년)</div><div style="height:240px;"><canvas id="chartLabelMonthly"></canvas></div></div>' +
-        '<div class="panel-card" style="margin-bottom:0;"><div class="panel-title">2026년 주요 생산처 비중</div><div style="height:240px;"><canvas id="chartLabelSite"></canvas></div></div>' +
+        '<div class="panel-card" style="margin-bottom:0;"><div class="panel-title">월별 표시사항 심의 건수 비교 (2025년 vs 2026년)</div><div style="height:250px;"><canvas id="chartLabelMonthly"></canvas></div></div>' +
+        '<div class="panel-card" style="margin-bottom:0;"><div class="panel-title">2026년 주요 생산처 비중</div><div style="height:250px;"><canvas id="chartLabelSite"></canvas></div></div>' +
       '</div>' +
       '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">' +
         '<div class="panel-card"><div class="panel-title">요청부서별 심의 현황</div><div class="tbl-wrap"><table class="data-tbl">' +
@@ -1755,6 +2089,27 @@ function renderLabelView() {
         options: { responsive: true, maintainAspectRatio: false }
       });
     }
+  } else if (LABEL_TAB === 'reviewing') {
+    const list = lb.reviewing_list || [];
+    box.innerHTML =
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>📌 체크박스 선택 시 모닝 브리핑 대시보드에 대표 품목으로 우선 표시됩니다.</span></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>대시보드 핀</th><th>문서번호</th><th>요청부서</th><th>품목 · 제목</th><th>카테고리</th><th>생산처</th><th>포장재 유형</th><th>등록일</th></tr></thead>' +
+          '<tbody>' +
+          (list.length ? list.map(function(r) {
+            return '<tr>' +
+              '<td><input type="checkbox" ' + (r._pinned ? 'checked' : '') + ' onchange="toggleLabelPin(\'' + esc(r._item_key) + '\', this.checked)" /></td>' +
+              '<td>' + esc(r['*docNo'] || '-') + '</td>' +
+              '<td><span class="badge badge-info">' + esc(r['요청부서'] || '-') + '</span></td>' +
+              '<td class="td-left"><strong>' + esc(r._clean_title || r['제목']) + '</strong></td>' +
+              '<td>' + esc(r['대분류(마케팅 카테고리)'] || '-') + '</td>' +
+              '<td>' + esc(r['생산처'] || '-') + '</td>' +
+              '<td>' + esc(r['검토 포장재 유형'] || '-') + '</td>' +
+              '<td>' + esc(r['등록일자'] || '-') + '</td>' +
+            '</tr>';
+          }).join('') : '<tr><td colspan="8" class="cell-gray">현재 검토 중인 항목이 없습니다.</td></tr>') +
+          '</tbody></table></div></div>';
   } else {
     const allR = (lb.all_records || []).slice(0, 250);
     box.innerHTML =
@@ -1810,25 +2165,28 @@ function renderRawView() {
 // ======================== [public/index.html - PART 2 / 4 끝] ========================
 // ==============================================================================
 // [public/index.html - PART 3 / 4]
-// 심사·일정 · 협력업체 · 법규 1~2줄 요약([_법규요약DB]) · 공정관제(우유 카톤/병 상하 분리)
+// 심사점수 우선 뷰 · 협력업체 관리 · 법규 1~2줄 요약([_법규요약DB]) · 공정관제(상온 우선 + 우유 카톤/병 분리)
 // ==============================================================================
 
 // ==============================================================================
-// [VIEW 5] 외부심사 점수 · 개선율 · 방문일정 관리
+// [VIEW 5] 외부심사 점수 · 개선율 · 방문일정 관리 (심사점수 상세 탭 우선 고정)
 // ==============================================================================
 function renderAuditView() {
   const au = BUNDLE.audit;
   const ks = au.kpi_sheet || {};
   const scheds = au.schedules || [];
+  const scCrit = ks.score_criteria || {};
+  const impCrit = ks.imp_criteria || {};
 
   document.getElementById('view-audit').innerHTML =
     '<div class="page-hdr">' +
       '<div>' +
         '<h2 class="page-h2">외부심사 점수 · 심사개선율 · 방문일정 통합 관리</h2>' +
-        '<div class="page-desc">\'협력업체, 심사 점수\' 시트의 실시간 수검 실적과 [일정] 탭 양방향 등록·수정을 지원합니다.</div>' +
+        '<div class="page-desc">\'협력업체, 심사 점수\' 시트의 실시간 수검 점수·개선율 상세 내역을 기본 표출하며, [일정] 탭 양방향 등록·수정을 지원합니다.</div>' +
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
-        '<button class="btn btn-primary" onclick="openAuditModal()">+ 신규 일정 등록</button>' +
+        '<button class="btn btn-primary" onclick="AUDIT_TAB=\'schedule\'; renderAuditView(); openAuditModal()">+ 신규 일정 등록</button>' +
+        '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
         '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
       '</div>' +
     '</div>' +
@@ -1839,16 +2197,68 @@ function renderAuditView() {
       '<div class="stat-card"><div class="stat-lbl">등록된 심사 · 출장 일정</div><div class="stat-val">' + scheds.length + '건</div><div class="stat-sub">' + esc(au.summary.upcoming_banner || '-') + '</div></div>' +
     '</div>' +
     '<div class="tab-bar">' +
-      '<button class="tab-btn ' + (AUDIT_TAB === 'schedule' ? 'active' : '') + '" onclick="AUDIT_TAB=\'schedule\'; renderAuditView()">방문심사 · 협력업체 방문 일정 관리 (' + scheds.length + '건)</button>' +
-      '<button class="tab-btn ' + (AUDIT_TAB === 'kpi' ? 'active' : '') + '" onclick="AUDIT_TAB=\'kpi\'; renderAuditView()">외부심사 점수 · 개선율 상세 내역</button>' +
+      '<button class="tab-btn ' + (AUDIT_TAB === 'kpi' ? 'active' : '') + '" onclick="AUDIT_TAB=\'kpi\'; renderAuditView()">🎯 외부심사 점수 · 개선율 상세 내역 (기본)</button>' +
+      '<button class="tab-btn ' + (AUDIT_TAB === 'schedule' ? 'active' : '') + '" onclick="AUDIT_TAB=\'schedule\'; renderAuditView()">🗓️ 방문심사 · 협력업체 방문 일정 관리 (' + scheds.length + '건)</button>' +
     '</div>' +
     '<div id="auditTabBox"></div>';
 
   const box = document.getElementById('auditTabBox');
-  if (AUDIT_TAB === 'schedule') {
+  if (AUDIT_TAB === 'kpi') {
+    const fRows = ks.formula_rows || [];
+    const hRows = ks.history_rows || [];
+    const scLevels = (scCrit.levels || []).map(function(l) { return l.lv + '(' + l.std + ')'; }).join(' · ');
+    const impLevels = (impCrit.levels || []).map(function(l) { return l.lv + '(' + l.std + ')'; }).join(' · ');
+
+    box.innerHTML =
+      '<div style="display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(0, 0.9fr); gap:12px; margin-bottom:12px;">' +
+        '<div class="panel-card" style="margin-bottom:0;">' +
+          '<div class="panel-title"><span>심사 점수 산출식 요약 (시트 실시간 연동)</span></div>' +
+          '<div class="tbl-wrap"><table class="data-tbl">' +
+            '<thead><tr><th>구분</th><th>기준 수치</th><th>적용 배율</th><th>환산 점수</th></tr></thead><tbody>' +
+            (fRows.length ? fRows.map(function(r) {
+              return '<tr><td><b>' + esc(r['구분']) + '</b></td><td>' + esc(r['기준수치']) + '</td><td>' + esc(r['적용배율']) + '</td><td><b>' + esc(r['환산점수']) + '</b></td></tr>';
+            }).join('') : '<tr><td colspan="4" class="cell-gray">산출식 데이터가 없습니다.</td></tr>') +
+          '</tbody></table></div>' +
+        '</div>' +
+        '<div class="panel-card" style="margin-bottom:0; background:#F8FAFC;">' +
+          '<div class="panel-title"><span>2026 KPI 등급 평가 기준 (Lev.1 ~ Lev.5)</span></div>' +
+          '<div style="font-size:12.5px; line-height:1.65; color:#334155;">' +
+            '<div><b>• 심사점수 산식 :</b> ' + esc(scCrit.formula || '평균점수(70%) + 통과율(30%)') + '</div>' +
+            '<div style="color:var(--yonsei-blue); font-weight:700; margin-bottom:6px;">&nbsp;&nbsp;기준 : ' + esc(scLevels) + '</div>' +
+            '<div><b>• 심사개선율 산식 :</b> ' + esc(impCrit.formula || '개선건수 / 지적건수 × 100') + '</div>' +
+            '<div style="color:var(--ok-fg); font-weight:700;">&nbsp;&nbsp;기준 : ' + esc(impLevels) + '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="panel-card">' +
+        '<div class="panel-title">' +
+          '<span>기관 · 고객사별 수검 점수 및 미개선 특이사항 이력 (' + hRows.length + '건)</span>' +
+          '<input type="text" class="form-ctrl" style="width:240px; padding:4px 9px;" placeholder="심사업체 · 평가유형 · 특이사항 검색" oninput="filterSimpleTable(this.value, \'auditHistTbl\')" />' +
+        '</div>' +
+        '<div class="tbl-wrap"><table class="data-tbl" id="auditHistTbl">' +
+          '<thead><tr><th>심사일</th><th>심사업체 · 기관</th><th>개선건수</th><th>지적건수</th><th>개선율</th><th>점수</th><th>통과여부</th><th>평가유형</th><th>미개선 · 특이사항</th></tr></thead><tbody>' +
+          (hRows.length ? hRows.map(function(r) {
+            return '<tr>' +
+              '<td>' + esc(r['심사일']) + '</td>' +
+              '<td class="td-left"><b>' + esc(r['심사업체']) + '</b></td>' +
+              '<td>' + esc(r['개선건수']) + '</td>' +
+              '<td>' + esc(r['지적건수']) + '</td>' +
+              '<td><b>' + esc(r['개선율(%)']) + '</b></td>' +
+              '<td><b>' + esc(r['점수']) + '</b></td>' +
+              '<td>' + esc(r['통과여부']) + '</td>' +
+              '<td>' + esc(r['평가유형(H열)']) + '</td>' +
+              '<td class="td-left">' + esc(r['미개선 · 특이사항(I열)']) + '</td>' +
+            '</tr>';
+          }).join('') : '<tr><td colspan="9" class="cell-gray">수검 이력이 없습니다.</td></tr>') +
+        '</tbody></table></div>' +
+      '</div>';
+  } else {
     box.innerHTML =
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>등록된 방문심사 및 협력업체 출장 점검 일정 ([일정] 탭 실시간 저장)</span></div>' +
+        '<div class="panel-title">' +
+          '<span>등록된 방문심사 및 협력업체 출장 점검 일정 ([일정] 탭 실시간 저장)</span>' +
+          '<button class="btn btn-primary btn-sm" onclick="openAuditModal()">+ 일정 추가</button>' +
+        '</div>' +
         '<div class="tbl-wrap"><table class="data-tbl">' +
           '<thead><tr><th>구분</th><th>심사일자</th><th>심사명 · 방문 업체명</th><th>진행현황</th><th>점수</th><th>비고</th><th>관리</th></tr></thead>' +
           '<tbody>' +
@@ -1869,38 +2279,6 @@ function renderAuditView() {
             '</tr>';
           }).join('') : '<tr><td colspan="7" class="cell-gray">등록된 일정이 없습니다. 우측 상단 [+ 신규 일정 등록]을 눌러 추가해 주세요.</td></tr>') +
           '</tbody></table></div></div>';
-  } else {
-    const fRows = ks.formula_rows || [];
-    const hRows = ks.history_rows || [];
-    box.innerHTML =
-      '<div class="panel-card">' +
-        '<div class="panel-title">심사 점수 산출식 요약 (시트 실시간 연동)</div>' +
-        '<div class="tbl-wrap"><table class="data-tbl">' +
-          '<thead><tr><th>구분</th><th>기준 수치</th><th>적용 배율</th><th>환산 점수</th></tr></thead><tbody>' +
-          (fRows.length ? fRows.map(function(r) {
-            return '<tr><td><b>' + esc(r['구분']) + '</b></td><td>' + esc(r['기준수치']) + '</td><td>' + esc(r['적용배율']) + '</td><td><b>' + esc(r['환산점수']) + '</b></td></tr>';
-          }).join('') : '<tr><td colspan="4" class="cell-gray">산출식 데이터가 없습니다.</td></tr>') +
-        '</tbody></table></div>' +
-      '</div>' +
-      '<div class="panel-card">' +
-        '<div class="panel-title">기관 · 고객사별 수검 점수 및 미개선 특이사항 이력</div>' +
-        '<div class="tbl-wrap"><table class="data-tbl">' +
-          '<thead><tr><th>심사일</th><th>심사업체 · 기관</th><th>개선건수</th><th>지적건수</th><th>개선율</th><th>점수</th><th>통과여부</th><th>평가유형</th><th>미개선 · 특이사항</th></tr></thead><tbody>' +
-          (hRows.length ? hRows.map(function(r) {
-            return '<tr>' +
-              '<td>' + esc(r['심사일']) + '</td>' +
-              '<td class="td-left"><b>' + esc(r['심사업체']) + '</b></td>' +
-              '<td>' + esc(r['개선건수']) + '</td>' +
-              '<td>' + esc(r['지적건수']) + '</td>' +
-              '<td><b>' + esc(r['개선율(%)']) + '</b></td>' +
-              '<td><b>' + esc(r['점수']) + '</b></td>' +
-              '<td>' + esc(r['통과여부']) + '</td>' +
-              '<td>' + esc(r['평가유형(H열)']) + '</td>' +
-              '<td class="td-left">' + esc(r['미개선 · 특이사항(I열)']) + '</td>' +
-            '</tr>';
-          }).join('') : '<tr><td colspan="9" class="cell-gray">수검 이력이 없습니다.</td></tr>') +
-        '</tbody></table></div>' +
-      '</div>';
   }
 }
 
@@ -1924,6 +2302,8 @@ function renderSupplierView() {
   const sp = BUNDLE.supplier;
   const ks = sp.kpi_sheet || {};
   const vc = ks.visit_counts || { '전체': 0, '연세유업': 0, '연세생건': 0, '이롬': 0 };
+  const supCrit = ks.criteria || {};
+  const supLevels = (supCrit.levels || []).map(function(l) { return l.lv + '(' + l.std + ')'; }).join(' · ');
 
   document.getElementById('view-supplier').innerHTML =
     '<div class="page-hdr">' +
@@ -1931,7 +2311,10 @@ function renderSupplierView() {
         '<h2 class="page-h2">협력업체 AUDIT 실행률 및 서류심사 등급 관리</h2>' +
         '<div class="page-desc">연세유업 · 연세생건 · 이롬 방문점검 실적과 서류심사(' + sp.total_cnt + '개사) 평가 등급을 실시간 통합 집계합니다.</div>' +
       '</div>' +
-      '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+      '<div style="display:flex; gap:8px;">' +
+        '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+      '</div>' +
     '</div>' +
     '<div class="kpi-grid-4">' +
       '<div class="stat-card"><div class="stat-lbl">협력업체 AUDIT 통합 점수 (목표 ' + sp.target_exec + '%↑)</div><div class="stat-val">' + (sp.exec_rate > 0 ? sp.exec_rate.toFixed(2) + '% (' + sp.level_str + ')' : '집계중') + '</div><div class="stat-sub">가중치 환산 실시간 실적</div></div>' +
@@ -1952,7 +2335,10 @@ function renderSupplierView() {
     const vRows = ks.visit_rows || [];
     box.innerHTML =
       '<div class="panel-card">' +
-        '<div class="panel-title">계열사 · 평가유형별 AUDIT 실행 가중치 집계표</div>' +
+        '<div class="panel-title">' +
+          '<span>계열사 · 평가유형별 AUDIT 실행 가중치 집계표</span>' +
+          '<span style="font-size:12px; color:var(--yonsei-blue); font-weight:700;">등급 기준 : ' + esc(supLevels) + '</span>' +
+        '</div>' +
         '<div class="tbl-wrap"><table class="data-tbl">' +
           '<thead><tr><th>구분</th><th>연간 목표건수</th><th>점검수</th><th>실행율</th><th>평가 점수</th><th>적용 비율</th><th>비고</th></tr></thead><tbody>' +
           (wRows.length ? wRows.map(function(r) {
@@ -1963,8 +2349,11 @@ function renderSupplierView() {
         '</tbody></table></div>' +
       '</div>' +
       '<div class="panel-card">' +
-        '<div class="panel-title">계열사별 협력업체 방문점검 세부 내역 (' + vRows.length + '건)</div>' +
-        '<div class="tbl-wrap"><table class="data-tbl">' +
+        '<div class="panel-title">' +
+          '<span>계열사별 협력업체 방문점검 세부 내역 (' + vRows.length + '건)</span>' +
+          '<input type="text" class="form-ctrl" style="width:230px; padding:4px 9px;" placeholder="계열사 · 업체명 · 비고 검색" oninput="filterSimpleTable(this.value, \'supVisitTbl\')" />' +
+        '</div>' +
+        '<div class="tbl-wrap"><table class="data-tbl" id="supVisitTbl">' +
           '<thead><tr><th>계열사 구분</th><th>점검일</th><th>협력업체명</th><th>비고 · 점검결과</th></tr></thead><tbody>' +
           (vRows.length ? vRows.map(function(r) {
             return '<tr><td><span class="badge badge-info">' + esc(r['계열사 구분']) + '</span></td><td>' + esc(r['점검일']) + '</td><td class="td-left"><b>' + esc(r['업체명']) + '</b></td><td class="td-left">' + esc(r['비고']) + '</td></tr>';
@@ -1973,7 +2362,18 @@ function renderSupplierView() {
       '</div>';
   } else if (SUP_TAB === 'doc') {
     const mRows = sp.master_rows || [];
+    const gSum = sp.grade_summary || [];
     box.innerHTML =
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>서류심사 등급별 요약</span></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>등급</th><th>점수 기준</th><th>업체수</th><th>사후 관리 조치</th></tr></thead><tbody>' +
+          gSum.map(function(g) {
+            const isTot = g['등급'] === '합계';
+            return '<tr style="' + (isTot ? 'background:#EFF6FF; font-weight:800;' : '') + '"><td><b>' + esc(g['등급']) + '</b></td><td>' + esc(g['점수']) + '</td><td><b>' + g['업체수'] + '개사</b></td><td class="td-left">' + esc(g['조치']) + '</td></tr>';
+          }).join('') +
+        '</tbody></table></div>' +
+      '</div>' +
       '<div class="panel-card">' +
         '<div class="panel-title"><span>서류심사 마스터 평가 결과 (' + mRows.length + '개사)</span>' +
           '<input type="text" class="form-ctrl" style="width:240px; padding:4px 9px;" placeholder="업체명 · 품목 · 등급 검색" oninput="filterSimpleTable(this.value, \'supMasterTbl\')" />' +
@@ -2033,12 +2433,12 @@ function renderLawView() {
         '<div class="page-desc">법규정보 시트의 [_법규요약DB] 탭에 1~2줄 핵심 요약이 영구 저장되며, 신규 법규 등록 시 자동으로 요약·추가됩니다.</div>' +
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
-        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
         '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
       '</div>' +
     '</div>' +
     '<div class="tab-bar">' +
-      '<button class="tab-btn ' + (LAW_TAB === 'laws' ? 'active' : '') + '" onclick="LAW_TAB=\'laws\'; renderLawView()">식품 법규 개정 · D-Day 선별 관리 ([대시보드] 탭 ' + lw.active_cnt + '건)</button>' +
+      '<button class="tab-btn ' + (LAW_TAB === 'laws' ? 'active' : '') + '" onclick="LAW_TAB=\'laws\'; renderLawView()">⚖️ 식품 법규 개정 · D-Day 선별 관리 ([대시보드] 탭 ' + lw.active_cnt + '건)</button>' +
       '<button class="tab-btn ' + (LAW_TAB === 'haccp' ? 'active' : '') + '" onclick="LAW_TAB=\'haccp\'; renderLawView()">3. 식품안전 및 HACCP 강화</button>' +
       '<button class="tab-btn ' + (LAW_TAB === 'risk' ? 'active' : '') + '" onclick="LAW_TAB=\'risk\'; renderLawView()">8. 식품안전 법적 RISK 최소화</button>' +
     '</div>' +
@@ -2058,7 +2458,7 @@ function renderLawView() {
     box.innerHTML =
       '<div class="panel-card" style="padding:10px 14px; background:#F8FAFC;">' +
         '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
-          '<div style="font-size:12px; color:var(--text-sub);">' +
+          '<div style="font-size:12.5px; color:var(--text-sub);">' +
             '• 좌측 <b>[대시보드 노출]</b> 체크 시 법규정보 시트의 [대시보드] 탭에 즉시 저장되며, 행을 클릭하면 <b>법령 원문 열람 및 1~2줄 요약 직접 수정([_법규요약DB] 영구 반영)</b>이 가능합니다.' +
           '</div>' +
           '<div style="display:flex; gap:6px;">' +
@@ -2074,13 +2474,13 @@ function renderLawView() {
             tabNames.map(function(tn) {
               return '<button class="btn btn-sm ' + (LAW_STAGE_FILTER === tn ? 'btn-primary' : '') + '" onclick="LAW_STAGE_FILTER=\'' + esc(tn) + '\'; renderLawView()">' + esc(tn) + '</button>';
             }).join('') +
-            '<label style="margin-left:8px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">' +
+            '<label style="margin-left:8px; font-size:12.5px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:4px;">' +
               '<input type="checkbox" ' + (LAW_QS_ONLY ? 'checked' : '') + ' onchange="LAW_QS_ONLY=this.checked; renderLawView()" /> 품질안전부문 관련만 보기' +
             '</label>' +
           '</div>' +
           '<div style="display:flex; align-items:center; gap:8px;">' +
             '<input type="text" class="form-ctrl" style="width:250px; padding:5px 10px;" placeholder="법규명 · 핵심내용 · 부서 검색" oninput="filterSimpleTable(this.value, \'lawMainTbl\')" />' +
-            '<span style="font-size:12px; font-weight:700; color:var(--text-muted);">총 ' + filtered.length + '건</span>' +
+            '<span style="font-size:12.5px; font-weight:700; color:var(--text-muted);">총 ' + filtered.length + '건</span>' +
           '</div>' +
         '</div>' +
         '<div class="tbl-wrap"><table class="data-tbl" id="lawMainTbl">' +
@@ -2103,7 +2503,7 @@ function renderLawView() {
                 '<input type="checkbox" ' + (item.show_on_dashboard ? 'checked' : '') + ' onchange="toggleLawDashboard(\'' + esc(item.law_id) + '\', this.checked)" />' +
               '</td>' +
               '<td onclick="event.stopPropagation()">' +
-                '<select class="form-ctrl" style="padding:3px 6px; font-size:11.5px;" onchange="changeLawPrepStatus(\'' + esc(item.law_id) + '\', this.value)">' +
+                '<select class="form-ctrl" style="padding:3px 6px; font-size:12px;" onchange="changeLawPrepStatus(\'' + esc(item.law_id) + '\', this.value)">' +
                   ['검토전', '부자재변경중', '반영완료'].map(function(opt) {
                     return '<option value="' + opt + '" ' + (item.prep_status === opt ? 'selected' : '') + '>' + opt + '</option>';
                   }).join('') +
@@ -2115,7 +2515,7 @@ function renderLawView() {
               '<td><b>' + esc(item['시행일']) + '</b></td>' +
               '<td class="td-left"><strong>' + esc(item['법규명']) + '</strong></td>' +
               '<td class="td-left" style="line-height:1.42; color:#1E293B;">' + esc(item['실무조치요약']) + '</td>' +
-              '<td class="td-left" style="font-size:11.5px; color:var(--text-sub);">' + esc(item['당사관련부서']) + '</td>' +
+              '<td class="td-left" style="font-size:12px; color:var(--text-sub);">' + esc(item['당사관련부서']) + '</td>' +
             '</tr>';
           }).join('') +
           '</tbody></table></div>' +
@@ -2125,14 +2525,14 @@ function renderLawView() {
     const targetKey = LAW_TAB === 'haccp' ? 'kpi_8' : 'kpi_12';
     box.innerHTML =
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>' + esc(targetK.title) + '</span><button class="btn btn-sm" onclick="openManualKpiModal(\'' + targetKey + '\')">실적 · 내역 편집</button></div>' +
+        '<div class="panel-title"><span>' + esc(targetK.title) + '</span><button class="btn btn-primary btn-sm" onclick="openManualKpiModal(\'' + targetKey + '\')">실적 · 내역 편집</button></div>' +
         '<div class="kpi-grid-4">' +
-          '<div class="stat-card"><div class="stat-lbl">연간 목표</div><div class="stat-val">' + esc(targetK.target_text) + '</div></div>' +
-          '<div class="stat-card"><div class="stat-lbl">현재 추진 실적</div><div class="stat-val">' + esc(targetK.actual_text) + '</div></div>' +
+          '<div class="stat-card"><div class="stat-lbl">연간 목표</div><div class="stat-val">' + esc(targetK.target_text) + '</div><div class="stat-sub">품질안전부문 관리기준</div></div>' +
+          '<div class="stat-card"><div class="stat-lbl">현재 추진 실적</div><div class="stat-val">' + esc(targetK.actual_text) + '</div><div class="stat-sub">' + esc(targetK.sub_badge || '') + '</div></div>' +
         '</div>' +
-        '<div style="padding:12px; background:#F8FAFC; border-radius:8px; border:1px solid #E2E8F0;">' +
-          '<div style="font-weight:800; margin-bottom:8px;">' + esc(targetK.notes_title || '추진 세부 내역') + '</div>' +
-          '<ul style="padding-left:18px; line-height:1.7;">' +
+        '<div style="padding:14px; background:#F8FAFC; border-radius:9px; border:1px solid #E2E8F0;">' +
+          '<div style="font-weight:800; font-size:14px; margin-bottom:8px; color:var(--yonsei-blue);">' + esc(targetK.notes_title || '추진 세부 내역') + '</div>' +
+          '<ul style="padding-left:18px; line-height:1.75; font-size:13.5px;">' +
             (targetK.notes || []).map(function(n) { return '<li>' + esc(n) + '</li>'; }).join('') +
           '</ul>' +
         '</div>' +
@@ -2163,11 +2563,11 @@ async function changeLawPrepStatus(lawId, prepVal) {
 }
 
 // ==============================================================================
-// [VIEW 8] 공정 및 배양 실시간 통합 관제 (우유 카톤[상] · 병포장[하] 한 화면 완전 분리)
+// [VIEW 8] 공정 및 배양 실시간 관제 (메인: 상온 공정 우선 고정 + 우유 카톤/병 상하 분리)
 // ==============================================================================
 function renderRuntimeCardsHtml(timesList) {
   if (!timesList || !timesList.length) {
-    return '<div style="color:var(--text-muted); font-size:12px; padding:6px;">기록된 가동 시간 정보가 없습니다.</div>';
+    return '<div style="color:var(--text-muted); font-size:12.5px; padding:6px;">기록된 가동 시간 정보가 없습니다.</div>';
   }
   return '<div class="runtime-cards">' +
     timesList.map(function(rt) {
@@ -2176,10 +2576,10 @@ function renderRuntimeCardsHtml(timesList) {
       const bTxt = isRun ? rt['실가동시간'] : '비가동';
       return '<div class="rt-card' + (isRun ? ' running' : '') + '">' +
         '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">' +
-          '<strong style="font-size:12.5px; color:#1E293B;">' + esc(rt['포장호기']) + '</strong>' +
+          '<strong style="font-size:13px; color:#1E293B;">' + esc(rt['포장호기']) + '</strong>' +
           '<span class="badge ' + bCls + '">' + esc(bTxt) + '</span>' +
         '</div>' +
-        '<div style="font-size:14px; font-weight:800; color:' + (isRun ? 'var(--yonsei-blue)' : '#94A3B8') + ';">' + esc(rt['시작~종료']) + '</div>' +
+        '<div style="font-size:14.5px; font-weight:800; color:' + (isRun ? 'var(--yonsei-blue)' : '#94A3B8') + ';">' + esc(rt['시작~종료']) + '</div>' +
       '</div>';
     }).join('') +
   '</div>';
@@ -2245,85 +2645,34 @@ function renderProcessView() {
     '<div class="page-hdr">' +
       '<div>' +
         '<h2 class="page-h2">공정 및 배양 실시간 통합 관제</h2>' +
-        '<div class="page-desc">우유 포장일보(카톤우유 상단 · 병우유 하단 분리), 발효유 포장일보, 상온 멸균·포장 CCP, 두유 배양검사를 실시간 모니터링합니다.</div>' +
+        '<div class="page-desc">메인 상온 멸균·포장 CCP를 우선 표출하며, 우유 포장일보(카톤우유 상단 · 병우유 하단 분리), 발효유 포장일보, 두유 배양검사를 통합 관제합니다.</div>' +
       '</div>' +
       '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
     '</div>' +
     '<div class="tab-bar">' +
+      '<button class="tab-btn ' + (PROC_MAIN_TAB === 'rt' ? 'active' : '') + '" onclick="PROC_MAIN_TAB=\'rt\'; renderProcessView()">📦 상온 제품 공정·멸균 CCP (메인 · 가동 ' + ps.active_rt_cnt + '품목)</button>' +
       '<button class="tab-btn ' + (PROC_MAIN_TAB === 'dairy' ? 'active' : '') + '" onclick="PROC_MAIN_TAB=\'dairy\'; renderProcessView()">🥛 유제품 포장일보 (우유 카톤 ' + ps.active_milk_carton_cnt + ' · 우유 병 ' + ps.active_milk_bottle_cnt + ' · 발효유 ' + ps.active_ferm_cnt + ')</button>' +
-      '<button class="tab-btn ' + (PROC_MAIN_TAB === 'rt' ? 'active' : '') + '" onclick="PROC_MAIN_TAB=\'rt\'; renderProcessView()">📦 상온 제품 공정·멸균 CCP (가동 ' + ps.active_rt_cnt + '품목)</button>' +
       '<button class="tab-btn ' + (PROC_MAIN_TAB === 'soy' ? 'active' : '') + '" onclick="PROC_MAIN_TAB=\'soy\'; renderProcessView()">🧫 두유 배양검사 일보 (완료 ' + ps.soy_done_cnt + ' / 대기 ' + ps.soy_uninspected_cnt + ')</button>' +
     '</div>' +
     '<div id="procTabBox"></div>';
 
   const box = document.getElementById('procTabBox');
 
-  if (PROC_MAIN_TAB === 'dairy') {
-    const histDates = Object.keys(pr.dairy_hist_times_map || {}).sort().reverse();
-    if (!PROC_DAIRY_HIST_DT && histDates.length) PROC_DAIRY_HIST_DT = histDates[0];
-
-    const histTimes = (pr.dairy_hist_times_map && pr.dairy_hist_times_map[PROC_DAIRY_HIST_DT]) || [];
-    const histProds = (pr.dairy_hist_p || []).filter(function(r) { return r['생산일자'] === PROC_DAIRY_HIST_DT; });
-
-    box.innerHTML =
-      // 1) 우유 가동시간 (카톤 / 병포장 별도 카드 분리) + 상하 분리 품목표
-      '<div class="panel-card">' +
-        '<div class="panel-title"><span>🕒 금일 [우유] 라인 가동 현황 (' + esc(pr.milk_date) + ') — 카톤 / 병포장 생산시간 분리</span></div>' +
-        renderRuntimeCardsHtml(pr.milk_run_times) +
-        '<div style="margin-top:8px; margin-bottom:14px;">' +
-          '<div style="font-size:13.5px; font-weight:800; color:var(--yonsei-blue); margin-bottom:6px;">① [우유(카톤)] 금일 생산 품목 및 상·하부접착 점검 (생산 ' + ps.active_milk_carton_cnt + '품목)</div>' +
-          renderDairyPackTableHtml(pr.milk_carton_pack, false) +
-        '</div>' +
-        '<div style="margin-top:14px; padding-top:12px; border-top:1px dashed #CBD5E1;">' +
-          '<div style="font-size:13.5px; font-weight:800; color:var(--purple-fg); margin-bottom:6px;">② [우유(병포장)] 금일 생산 품목 및 캡 속지 접착 점검 (생산 ' + ps.active_milk_bottle_cnt + '품목)</div>' +
-          renderDairyPackTableHtml(pr.milk_bottle_pack, true) +
-        '</div>' +
-      '</div>' +
-      // 2) 발효유 가동시간 및 품목표
-      '<div class="panel-card">' +
-        '<div class="panel-title"><span>🕒 금일 [발효유 · 호상] 라인 가동 현황 (' + esc(pr.ferm_date) + ') (생산 ' + ps.active_ferm_cnt + '품목)</span></div>' +
-        renderRuntimeCardsHtml(pr.ferm_run_times) +
-        renderDairyPackTableHtml(pr.ferm_pack, false) +
-      '</div>' +
-      // 3) 누적 이력 DB 날짜별 조회
-      '<div class="panel-card">' +
-        '<div class="panel-title">' +
-          '<span>📚 [누적 이력 DB] 지난 우유(카톤·병) · 발효유 포장일보 날짜별 조회</span>' +
-          '<select class="form-ctrl" style="width:170px;" onchange="PROC_DAIRY_HIST_DT=this.value; renderProcessView()">' +
-            (histDates.length ? histDates.map(function(d) {
-              return '<option value="' + esc(d) + '" ' + (d === PROC_DAIRY_HIST_DT ? 'selected' : '') + '>' + esc(d) + '</option>';
-            }).join('') : '<option value="">저장된 이력 없음</option>') +
-          '</select>' +
-        '</div>' +
-        renderRuntimeCardsHtml(histTimes) +
-        '<div class="tbl-wrap"><table class="data-tbl">' +
-          '<thead><tr><th>생산일자</th><th>라인구분</th><th>제품명</th><th>확인시간</th><th>표기 소비기한</th><th>표시사항</th><th>상부/실링</th><th>하부/외포장</th><th>용량</th><th>관능</th></tr></thead><tbody>' +
-          (histProds.length ? histProds.map(function(r) {
-            const isBot = r['라인구분'] === '우유(병포장)';
-            return '<tr>' +
-              '<td>' + esc(r['생산일자']) + '</td>' +
-              '<td><span class="badge ' + (isBot ? 'badge-purple' : 'badge-info') + '">' + esc(r['라인구분']) + '</span></td>' +
-              '<td class="td-left"><b>' + esc(r['제품명']) + '</b></td>' +
-              '<td>' + esc(r['확인시간'] || '-') + '</td>' +
-              '<td><b>' + esc(r['표기소비기한_원문'] || '-') + '</b></td>' +
-              '<td>' + esc(r['표시사항'] || '-') + '</td>' +
-              '<td>' + esc(r['상부_실링'] || '-') + '</td>' +
-              '<td>' + esc(r['하부_외포장'] || '-') + '</td>' +
-              '<td>' + esc(r['제품용량'] || '-') + '</td>' +
-              '<td>' + esc(r['관능검사'] || '-') + '</td>' +
-            '</tr>';
-          }).join('') : '<tr><td colspan="10" class="cell-gray">선택한 날짜의 포장 이력이 없습니다.</td></tr>') +
-        '</tbody></table></div>' +
-      '</div>';
-
-  } else if (PROC_MAIN_TAB === 'rt') {
+  if (PROC_MAIN_TAB === 'rt') {
     const rtObj = PROC_RT_DAY === 'yest' ? pr.rt_yest : pr.rt_today;
+    const spNotes = (rtObj && rtObj.ster_special_notes) ? rtObj.ster_special_notes : [];
     box.innerHTML =
-      '<div style="display:flex; gap:8px; margin-bottom:10px;">' +
-        '<button class="btn ' + (PROC_RT_DAY === 'today' ? 'btn-primary' : '') + '" onclick="PROC_RT_DAY=\'today\'; renderProcessView()">금일 탭 (' + esc(ps.rt_today_tab) + ')</button>' +
-        '<button class="btn ' + (PROC_RT_DAY === 'yest' ? 'btn-primary' : '') + '" onclick="PROC_RT_DAY=\'yest\'; renderProcessView()">전일 마감 탭 (' + esc(ps.rt_yest_tab) + ')</button>' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">' +
+        '<div style="display:flex; gap:8px;">' +
+          '<button class="btn ' + (PROC_RT_DAY === 'today' ? 'btn-primary' : '') + '" onclick="PROC_RT_DAY=\'today\'; renderProcessView()">금일 실시간 탭 (' + esc(ps.rt_today_tab) + ')</button>' +
+          '<button class="btn ' + (PROC_RT_DAY === 'yest' ? 'btn-primary' : '') + '" onclick="PROC_RT_DAY=\'yest\'; renderProcessView()">전일 마감 탭 (' + esc(ps.rt_yest_tab) + ')</button>' +
+        '</div>' +
+        (spNotes.length ? '<span class="badge badge-warn">특이·전달사항 ' + spNotes.length + '건</span>' : '<span class="badge badge-ok">기준이탈 및 설비 특이사항 없음</span>') +
       '</div>' +
       (!rtObj ? '<div class="panel-card">상온 공정일보 데이터를 불러올 수 없습니다.</div>' :
+        (spNotes.length ? '<div class="panel-card" style="background:#FFFBEB; border-color:#FDE68A; padding:10px 14px; font-weight:700; color:#78350F;">' +
+          spNotes.map(function(n) { return '<div>• ' + esc(n) + '</div>'; }).join('') +
+        '</div>' : '') +
         '<div class="panel-card">' +
           '<div class="panel-title">1. 상온 포장호기별 가동 제품 및 멸균 요약 (' + esc(rtObj.prod_date) + ')</div>' +
           '<div class="tbl-wrap"><table class="data-tbl">' +
@@ -2358,6 +2707,61 @@ function renderProcessView() {
         '</div>'
       );
 
+  } else if (PROC_MAIN_TAB === 'dairy') {
+    const histDates = Object.keys(pr.dairy_hist_times_map || {}).sort().reverse();
+    if (!PROC_DAIRY_HIST_DT && histDates.length) PROC_DAIRY_HIST_DT = histDates[0];
+
+    const histTimes = (pr.dairy_hist_times_map && pr.dairy_hist_times_map[PROC_DAIRY_HIST_DT]) || [];
+    const histProds = (pr.dairy_hist_p || []).filter(function(r) { return r['생산일자'] === PROC_DAIRY_HIST_DT; });
+
+    box.innerHTML =
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>🕒 금일 [우유] 라인 가동 현황 (' + esc(pr.milk_date) + ') — 카톤 / 병포장 생산시간 분리</span></div>' +
+        renderRuntimeCardsHtml(pr.milk_run_times) +
+        '<div style="margin-top:8px; margin-bottom:14px;">' +
+          '<div style="font-size:14px; font-weight:800; color:var(--yonsei-blue); margin-bottom:6px;">① [우유(카톤)] 금일 생산 품목 및 상·하부접착 점검 (생산 ' + ps.active_milk_carton_cnt + '품목)</div>' +
+          renderDairyPackTableHtml(pr.milk_carton_pack, false) +
+        '</div>' +
+        '<div style="margin-top:14px; padding-top:12px; border-top:1px dashed #CBD5E1;">' +
+          '<div style="font-size:14px; font-weight:800; color:var(--purple-fg); margin-bottom:6px;">② [우유(병포장)] 금일 생산 품목 및 캡 속지 접착 점검 (생산 ' + ps.active_milk_bottle_cnt + '품목)</div>' +
+          renderDairyPackTableHtml(pr.milk_bottle_pack, true) +
+        '</div>' +
+      '</div>' +
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>🕒 금일 [발효유 · 호상] 라인 가동 현황 (' + esc(pr.ferm_date) + ') (생산 ' + ps.active_ferm_cnt + '품목)</span></div>' +
+        renderRuntimeCardsHtml(pr.ferm_run_times) +
+        renderDairyPackTableHtml(pr.ferm_pack, false) +
+      '</div>' +
+      '<div class="panel-card">' +
+        '<div class="panel-title">' +
+          '<span>📚 [누적 이력 DB] 지난 우유(카톤·병) · 발효유 포장일보 날짜별 조회</span>' +
+          '<select class="form-ctrl" style="width:170px;" onchange="PROC_DAIRY_HIST_DT=this.value; renderProcessView()">' +
+            (histDates.length ? histDates.map(function(d) {
+              return '<option value="' + esc(d) + '" ' + (d === PROC_DAIRY_HIST_DT ? 'selected' : '') + '>' + esc(d) + '</option>';
+            }).join('') : '<option value="">저장된 이력 없음</option>') +
+          '</select>' +
+        '</div>' +
+        renderRuntimeCardsHtml(histTimes) +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>생산일자</th><th>라인구분</th><th>제품명</th><th>확인시간</th><th>표기 소비기한</th><th>표시사항</th><th>상부/실링</th><th>하부/외포장</th><th>용량</th><th>관능</th></tr></thead><tbody>' +
+          (histProds.length ? histProds.map(function(r) {
+            const isBot = r['라인구분'] === '우유(병포장)';
+            return '<tr>' +
+              '<td>' + esc(r['생산일자']) + '</td>' +
+              '<td><span class="badge ' + (isBot ? 'badge-purple' : 'badge-info') + '">' + esc(r['라인구분']) + '</span></td>' +
+              '<td class="td-left"><b>' + esc(r['제품명']) + '</b></td>' +
+              '<td>' + esc(r['확인시간'] || '-') + '</td>' +
+              '<td><b>' + esc(r['표기소비기한_원문'] || '-') + '</b></td>' +
+              '<td>' + esc(r['표시사항'] || '-') + '</td>' +
+              '<td>' + esc(r['상부_실링'] || '-') + '</td>' +
+              '<td>' + esc(r['하부_외포장'] || '-') + '</td>' +
+              '<td>' + esc(r['제품용량'] || '-') + '</td>' +
+              '<td>' + esc(r['관능검사'] || '-') + '</td>' +
+            '</tr>';
+          }).join('') : '<tr><td colspan="10" class="cell-gray">선택한 날짜의 포장 이력이 없습니다.</td></tr>') +
+        '</tbody></table></div>' +
+      '</div>';
+
   } else {
     const soyMap = pr.soy_tabs_map || {};
     const tabKeys = Object.keys(soyMap);
@@ -2371,7 +2775,7 @@ function renderProcessView() {
         }).join('') +
       '</div>' +
       '<div class="panel-card">' +
-        '<div class="panel-title">두유 배양검사 호기별 판정 현황 (탭 ' + esc(PROC_SOY_TAB) + ')</div>' +
+        '<div class="panel-title">1. 두유 배양검사 호기별 판정 현황 (탭 ' + esc(PROC_SOY_TAB) + ')</div>' +
         '<div class="tbl-wrap"><table class="data-tbl">' +
           '<thead><tr><th>포장기</th><th>배양구분</th><th>품목명</th><th>생산일</th><th>소비기한</th><th>개봉검사일</th><th>시작~종료(가동)</th><th>총수량</th><th>오염수량</th><th>검사자</th><th>판정</th><th>특이사항</th></tr></thead><tbody>' +
           (curSoy.blocks.length ? curSoy.blocks.map(function(b) {
@@ -2379,20 +2783,227 @@ function renderProcessView() {
             return '<tr><td><b>' + esc(b['포장기']) + '</b></td><td>' + esc(b['배양구분']) + '</td><td class="td-left"><strong>' + esc(b['품목명']) + '</strong></td><td>' + esc(b['생산일']) + '</td><td><b>' + esc(b['소비기한']) + '</b></td><td>' + esc(b['검사일(개봉일)']) + '</td><td>' + esc(b['생산 시작~종료']) + ' (' + esc(b['실가동시간']) + ')</td><td>' + esc(b['총 검사수량']) + '</td><td>' + esc(b['오염수량']) + '</td><td>' + esc(b['검사자']) + '</td><td class="' + pCls + '">' + esc(b['판정']) + '</td><td>' + esc(b['특이사항']) + '</td></tr>';
           }).join('') : '<tr><td colspan="12" class="cell-gray">배양검사 기록이 없습니다.</td></tr>') +
         '</tbody></table></div>' +
-      '</div>';
+      '</div>' +
+      (curSoy.hourly && curSoy.hourly.length ?
+        '<div class="panel-card">' +
+          '<div class="panel-title">2. 시간대별 샘플 · Strip · Paper 접착 점검 내역</div>' +
+          '<div class="tbl-wrap"><table class="data-tbl">' +
+            '<thead><tr><th>포장기</th><th>시간대</th><th>샘플체크</th><th>Strip 상태</th><th>Paper 상태</th></tr></thead><tbody>' +
+            curSoy.hourly.map(function(h) {
+              return '<tr><td><b>' + esc(h['포장기']) + '</b></td><td>' + esc(h['시간대']) + '</td><td class="td-left">' + esc(h['샘플체크']) + '</td><td>' + esc(h['Strip']) + '</td><td>' + esc(h['Paper']) + '</td></tr>';
+            }).join('') +
+          '</tbody></table></div>' +
+        '</div>' : '');
   }
 }
 // ======================== [public/index.html - PART 3 / 4 끝] ========================
 // ==============================================================================
 // [public/index.html - PART 4 / 4]
-// 미생물 상시 3탭 · 냉장/상온 분리 LOT 역추적 · 클레임/원가절감 분석 · 양방향 저장 모달 · 초기화
+// 8대 KPI 정밀 라우팅 보정 · 미생물 3탭 · 냉장/상온 LOT 역추적 · 원가절감/핵심불량 분리뷰 · 모달 · 초기화
 // ==============================================================================
+let DEFECT_SUB_TAB = 'defect'; // 'defect'(4. 핵심불량 저감화) | 'sub'(5. 부자재 관리 고도화)
+let MICRO_HIST_DATE_FILTER = 'ALL';
+
+// 8대 KPI 중간보고 장표 렌더러 (실시간 원가절감 dept 연동 및 세부 탭 직결 보정)
+function renderKpiView() {
+  const cs = BUNDLE.cost;
+  const csDept = cs.dept || { actual_uk: 0, rate: 0 };
+  const cl = BUNDLE.claim;
+  const mk = BUNDLE.manual_kpis || {};
+
+  const k8 = mk['kpi_8'] || { target_text: '11건 이상', actual_text: '11건, 100% 달성', target_num: 11, actual_num: 11, signal: 'green' };
+  const k9 = mk['kpi_9'] || { target_text: '38건 이하', actual_text: '5건', target_num: 38, actual_num: 5, signal: 'green' };
+  const k10 = mk['kpi_10'] || { target_text: '부자재폐기 0건', actual_text: '0건', notes: [] };
+  const k11 = mk['kpi_11'] || { target_text: '실행률 88.3% 이상', actual_text: '-', target_num: 88.3, actual_num: 0, signal: 'gray' };
+  const k5 = mk['kpi_5'] || { target_text: '94.28점 이상', actual_text: '-', target_num: 94.28, actual_num: 0, signal: 'gray' };
+  const k12 = mk['kpi_12'] || { target_text: '행정처분 0건', actual_text: '0건', notes_title: '중요건 행정기관 조사 대응', notes: [] };
+
+  const refDateStr = (BUNDLE.loaded_date || '2026-11-18').replace(/-/g, '. ');
+
+  const execCards = [
+    {
+      no: '1',
+      title: '1. 원가 절감',
+      targetNumStr: cs.targets['부문'] + '억원 이상',
+      actualNumStr: csDept.actual_uk + '억원, ' + csDept.rate + '% 달성',
+      unitLabel: '(단위 : 억원)',
+      targetVal: cs.targets['부문'],
+      actualVal: csDept.actual_uk,
+      barSuffix: '',
+      hasDot: (cs.signal === 'red' || csDept.actual_uk < cs.targets['부문']),
+      go: "switchView('cost')"
+    },
+    {
+      no: '2',
+      title: '2. 클레임 발생률',
+      targetNumStr: cl.target_ppm + ' ppm이하',
+      actualNumStr: cl.actual_ppm + ' ppm(총 ' + cl.total_cnt + '건)',
+      unitLabel: '(단위 : ppm)',
+      targetVal: cl.target_ppm,
+      actualVal: cl.actual_ppm,
+      barSuffix: '',
+      hasDot: (cl.actual_ppm > cl.target_ppm),
+      go: "switchView('claim')"
+    },
+    {
+      no: '3',
+      title: '3. 식품안전 및 HACCP 강화',
+      targetNumStr: k8.target_text,
+      actualNumStr: k8.actual_text,
+      unitLabel: '(단위 : 건)',
+      targetVal: k8.target_num || 11,
+      actualVal: k8.actual_num || 11,
+      barSuffix: '',
+      hasDot: (k8.signal === 'red'),
+      editKey: 'kpi_8',
+      go: "LAW_TAB='haccp'; switchView('law')"
+    },
+    {
+      no: '4',
+      title: '4. 핵심불량(클레임) 발생 저감화',
+      targetNumStr: k9.target_text,
+      actualNumStr: k9.actual_text,
+      unitLabel: '(단위 : 건)',
+      targetVal: k9.target_num || 38,
+      actualVal: k9.actual_num !== undefined ? k9.actual_num : 5,
+      barSuffix: '',
+      hasDot: (k9.signal === 'red'),
+      editKey: 'kpi_9',
+      go: "DEFECT_SUB_TAB='defect'; switchView('defect_sub')"
+    },
+    {
+      no: '5',
+      title: '5. 부자재 관리 고도화',
+      targetNumStr: k10.target_text,
+      actualNumStr: k10.actual_text,
+      isTextOnly: true,
+      notes: (k10.notes && k10.notes.length) ? k10.notes.map(function(n) { return '• ' + n; }) : [],
+      editKey: 'kpi_10',
+      go: "DEFECT_SUB_TAB='sub'; switchView('defect_sub')"
+    },
+    {
+      no: '6',
+      title: '6. 협력업체 관리강화',
+      targetNumStr: k11.target_text,
+      actualNumStr: k11.actual_text,
+      unitLabel: '(단위 : %)',
+      targetVal: k11.target_num || 88.3,
+      actualVal: k11.actual_num || 0,
+      barSuffix: '%',
+      hasDot: (k11.actual_num > 0 && k11.actual_num < (k11.target_num || 88.3)),
+      go: "SUP_TAB='kpi'; switchView('supplier')"
+    },
+    {
+      no: '7',
+      title: '7. 심사점수',
+      targetNumStr: k5.target_text,
+      actualNumStr: k5.actual_text,
+      unitLabel: '(단위 : 점)',
+      targetVal: k5.target_num || 94.28,
+      actualVal: k5.actual_num || 0,
+      barSuffix: '',
+      hasDot: (k5.actual_num > 0 && k5.actual_num < (k5.target_num || 94.28)),
+      go: "AUDIT_TAB='kpi'; switchView('audit')"
+    },
+    {
+      no: '8',
+      title: '8. 식품안전 법적 RISK 최소화',
+      targetNumStr: k12.target_text,
+      actualNumStr: k12.actual_text,
+      isRiskNote: true,
+      notesTitle: k12.notes_title || '중요건 행정기관 조사 대응',
+      notes: k12.notes || [],
+      editKey: 'kpi_12',
+      go: "LAW_TAB='risk'; switchView('law')"
+    }
+  ];
+
+  const sec = document.getElementById('view-kpi');
+  sec.innerHTML =
+    '<div class="exec-kpi-top">' +
+      '<h2 class="exec-kpi-h1">2026 업적 KPI 실시간 현황판_품질안전부문</h2>' +
+      '<div style="display:flex; gap:10px; align-items:center;">' +
+        '<span style="font-size:13px; font-weight:800; color:#1E293B;">Summary (기준 : ' + esc(refDateStr) + ')</span>' +
+        '<button class="btn btn-sm" onclick="switchView(\'home\')">← 모닝 브리핑으로</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="exec-kpi-grid">' +
+      execCards.map(function(c) {
+        const editBtn = c.editKey
+          ? '<button class="exec-edit-mini" onclick="event.stopPropagation(); openManualKpiModal(\'' + c.editKey + '\')">편집</button>'
+          : '';
+        const redDot = c.hasDot ? '<div class="exec-red-dot" title="목표 대비 중점관리 항목"></div>' : '';
+
+        let contentHtml = '';
+        if (c.isTextOnly) {
+          contentHtml = '<div class="exec-notes-box" style="font-size:12px; color:#334155;">' +
+            (c.notes || []).map(function(n) { return '<div style="margin-bottom:4px;">' + esc(n) + '</div>'; }).join('') +
+          '</div>';
+        } else if (c.isRiskNote) {
+          contentHtml =
+            '<div class="exec-notes-box">' +
+              '<div style="margin-bottom:4px;">✓ ' + esc(c.notesTitle) + '</div>' +
+              (c.notes || []).map(function(n) {
+                const lineStr = n.indexOf('-') === 0 ? n : ('- ' + n);
+                return '<div style="padding-left:8px; font-weight:700;">' + esc(lineStr) + '</div>';
+              }).join('') +
+            '</div>';
+        } else {
+          const tVal = Number(c.targetVal) || 1;
+          const aVal = Number(c.actualVal) || 0;
+          let tPct = 78;
+          let aPct = 50;
+
+          // 6번(88.3%), 7번(94.28점)처럼 100점 만점 부근 지표는 차이를 직관적으로 강조
+          if (tVal >= 80 && aVal >= 60) {
+            const floorV = Math.min(tVal, aVal) - 5;
+            const spanV = Math.max(tVal, aVal) - floorV + 2;
+            tPct = Math.round(((tVal - floorV) / spanV) * 82) + 12;
+            aPct = Math.round(((aVal - floorV) / spanV) * 82) + 12;
+          } else {
+            const maxV = Math.max(tVal, aVal, 0.01);
+            tPct = Math.max(Math.round((tVal / maxV) * 84), 16);
+            aPct = aVal <= 0 ? 14 : Math.max(Math.round((aVal / maxV) * 84), 16);
+          }
+
+          const tDisp = tVal + (c.barSuffix || '');
+          const aDisp = aVal + (c.barSuffix || '');
+          const aLowCls = aPct <= 24 ? ' low-bar' : '';
+
+          contentHtml =
+            '<div class="exec-unit">' + esc(c.unitLabel) + '</div>' +
+            '<div class="exec-bars-area">' +
+              '<div class="exec-bars-stage">' +
+                '<div class="exec-bar-col">' +
+                  '<div class="exec-bar-rect target" style="height:' + tPct + '%;">' + esc(tDisp) + '</div>' +
+                '</div>' +
+                '<div class="exec-bar-col">' +
+                  '<div class="exec-bar-rect actual' + aLowCls + '" style="height:' + aPct + '%;">' + esc(aDisp) + '</div>' +
+                '</div>' +
+              '</div>' +
+              '<div class="exec-bars-axis">' +
+                '<div class="exec-axis-lbl">목표</div>' +
+                '<div class="exec-axis-lbl">실적</div>' +
+              '</div>' +
+            '</div>';
+        }
+
+        return '<div class="exec-card" onclick="' + c.go + '">' +
+          '<div class="exec-card-hdr">' + esc(c.title) + editBtn + '</div>' +
+          '<div class="exec-card-body">' +
+            redDot +
+            '<div class="exec-bullet">목표 : ' + esc(c.targetNumStr) + '</div>' +
+            '<div class="exec-bullet">실적 : ' + esc(c.actualNumStr) + '</div>' +
+            contentHtml +
+          '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+}
 
 // ==============================================================================
 // [VIEW 9] 미생물 검사일보 상시 3탭(평일 · 일요일 · 연휴) 및 누적 DB 관제
 // ==============================================================================
-let MICRO_HIST_DATE_FILTER = 'ALL';
-
 function renderMicroView() {
   const mc = BUNDLE.process.micro || { has_sheet: false, live_tabs: {}, hist_rows: [] };
   const spMc = (BUNDLE.special_boards && BUNDLE.special_boards.micro_status) || { status: '출고적합', note: '', mode: '자동연동' };
@@ -2428,10 +3039,10 @@ function renderMicroView() {
     '<div class="panel-card" style="background:#F0FDF4; border-color:#86EFAC; padding:11px 15px;">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
         '<div style="display:flex; align-items:center; gap:8px;">' +
-          '<span class="badge ' + stCls + '" style="font-size:12px; padding:4px 10px;">' + esc(spMc.status) + '</span>' +
-          '<strong style="font-size:13.5px; color:#14532D;">' + esc(spMc.note || mc.auto_note || '최근 판정분 전 품목 특이사항 없음') + '</strong>' +
+          '<span class="badge ' + stCls + '" style="font-size:12.5px; padding:4px 10px;">' + esc(spMc.status) + '</span>' +
+          '<strong style="font-size:14px; color:#14532D;">' + esc(spMc.note || mc.auto_note || '최근 판정분 전 품목 특이사항 없음') + '</strong>' +
         '</div>' +
-        '<span style="font-size:11.5px; color:#166534; font-weight:700;">누적 DB 총 ' + (mc.total_db_cnt || 0).toLocaleString() + '건 보관 중 (' + esc(spMc.mode || '자동연동') + ')</span>' +
+        '<span style="font-size:12px; color:#166534; font-weight:700;">누적 DB 총 ' + (mc.total_db_cnt || 0).toLocaleString() + '건 보관 중 (' + esc(spMc.mode || '자동연동') + ')</span>' +
       '</div>' +
     '</div>' +
     '<div class="tab-bar">' +
@@ -2459,7 +3070,7 @@ function renderMicroView() {
         '<div class="panel-title">' +
           '<span>날짜별 미생물 판정 누적 기록 (최대 300건 표시)</span>' +
           '<div style="display:flex; gap:8px; align-items:center;">' +
-            '<select class="form-ctrl" style="width:170px;" onchange="MICRO_HIST_DATE_FILTER=this.value; renderMicroView()">' +
+            '<select class="form-ctrl" style="width:175px;" onchange="MICRO_HIST_DATE_FILTER=this.value; renderMicroView()">' +
               '<option value="ALL">전체 판정일자 (' + jDates.length + '일)</option>' +
               jDates.map(function(d) {
                 return '<option value="' + esc(d) + '" ' + (MICRO_HIST_DATE_FILTER === d ? 'selected' : '') + '>판정일 ' + esc(d) + '</option>';
@@ -2502,12 +3113,12 @@ function renderMicroView() {
 
   const stateBanner = curLive.has_actual_input
     ? '<span class="badge badge-ok">실측치 입력 완료 (DB 자동백업 대상)</span>'
-    : '<span class="badge badge-neutral">현재 미작성 빈 양식 (필요 시에만 시트에 입력 · 비워두면 미저장)</span>';
+    : '<span class="badge badge-neutral">현재 미작성 빈 양식 (작성 시 자동 반영 · 비워두면 미저장)</span>';
 
   box.innerHTML =
     '<div class="panel-card" style="padding:11px 15px; background:#F8FAFC;">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
-        '<div style="font-size:13px;">' +
+        '<div style="font-size:13.5px;">' +
           '<strong>[' + esc(curLive.tab_title) + ']</strong> 기준 판정일 : <b>' + esc(curLive.judge_date) + ' (' + esc(curLive.day_kr) + '요일)</b>' +
           ' &nbsp;|&nbsp; 우유 검사일 : <b>' + esc(curLive.milk_insp_date) + '</b>' +
           ' &nbsp;|&nbsp; 발효유 검사일 : <b>' + esc(curLive.ferm_insp_date) + '</b>' +
@@ -2553,7 +3164,7 @@ function renderLotView() {
     '<div class="page-hdr">' +
       '<div>' +
         '<h2 class="page-h2">냉장 · 상온 전용 LOT 역추적 및 클레임/부적합 이력 관리</h2>' +
-        '<div class="page-desc">동일 제품명 혼선을 막기 위해 [냉장 전용 역추적(포장+미생물)]과 [상온 전용 역추적(상온공정+두유배양)]을 완전히 분리하여 조회합니다.</div>' +
+        '<div class="page-desc">동일 제품명 혼선을 방지하기 위해 [냉장 전용 역추적(포장+미생물)]과 [상온 전용 역추적(상온공정+두유배양)]을 완전히 분리하여 조회합니다.</div>' +
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
         '<button class="btn btn-primary" onclick="openClaimNcModal()">+ 클레임·부적합 신규 등록</button>' +
@@ -2589,7 +3200,7 @@ function renderLotView() {
               '<td><b>' + esc(it['소비기한']) + '</b></td>' +
               '<td>' + esc(it['발생공정_원인유형']) + '</td>' +
               '<td class="td-left"><div><b>사유:</b> ' + esc(it['상세사유']) + '</div><div style="color:var(--yonsei-blue); margin-top:2px;"><b>조치:</b> ' + esc(it['추가검사_조치내역']) + '</div></td>' +
-              '<td><select class="form-ctrl" style="font-size:11.5px; padding:3px 6px;" onchange="changeClaimNcStatus(\'' + esc(it['고유ID']) + '\', \'' + esc(it['구분']) + '\', this.value)">' +
+              '<td><select class="form-ctrl" style="font-size:12px; padding:3px 6px;" onchange="changeClaimNcStatus(\'' + esc(it['고유ID']) + '\', \'' + esc(it['구분']) + '\', this.value)">' +
                 ['출고대기', '검사중', '원인·조치중', '적합(종결)', '부적합'].map(function(st) {
                   return '<option value="' + st + '" ' + (it['진행상태'] === st ? 'selected' : '') + '>' + st + '</option>';
                 }).join('') +
@@ -2603,14 +3214,13 @@ function renderLotView() {
     return;
   }
 
-  // 냉장 전용 제품 목록 vs 상온 전용 제품 목록 선택
   const isDairyScope = (LOT_SCOPE === 'DAIRY');
   const prodList = isDairyScope ? (pr.dairy_products || []) : (pr.rt_products || []);
   const scopeTitle = isDairyScope
-    ? '❄️ [냉장 전용 역추적] 우유(카톤·병) · 발효유 포장일보 & 미생물 검사일보(주1~주12 공통원액 매칭)'
+    ? '❄️ [냉장 전용 역추적] 우유(카톤·병) · 발효유 포장일보 & 미생물 검사일보(주1~주12 공통원액 · 배양예정일 자동연동)'
     : '📦 [상온 전용 역추적] 상온 제품 공정·멸균 CCP 일보 & 두유 배양검사 일보';
-  const expPlaceholder = isDairyScope ? '예: 11.29 또는 2026-11-29' : '예: 27.03.15 또는 03.15';
-  const kwPlaceholder = isDairyScope ? '예: 연세 전용목장, 키짱, 딸기...' : '예: 연세두유, 서리태, 바나나...';
+  const expPlaceholder = isDairyScope ? '예: 11.26 또는 2026-11-26 (비워두면 전체 이력)' : '예: 27.03.15 또는 03.15';
+  const kwPlaceholder = isDairyScope ? '예: 연세 전용목장, 자녀사랑, 딸기...' : '예: 연세두유, 서리태, 바나나...';
 
   const prevProd = (LAST_LOT_RESULT && LAST_LOT_RESULT.scope === LOT_SCOPE) ? LAST_LOT_RESULT.product : 'ALL';
   const prevExp = (LAST_LOT_RESULT && LAST_LOT_RESULT.scope === LOT_SCOPE) ? LAST_LOT_RESULT.exp : '';
@@ -2619,7 +3229,7 @@ function renderLotView() {
   box.innerHTML =
     '<div class="panel-card" style="background:' + (isDairyScope ? '#EFF6FF' : '#F8FAFC') + '; border-color:' + (isDairyScope ? '#BFDBFE' : '#CBD5E1') + ';">' +
       '<div class="panel-title"><span>' + scopeTitle + '</span><span class="badge badge-info">등록 품목 ' + prodList.length + '종</span></div>' +
-      '<div style="display:grid; grid-template-columns:minmax(220px, 1.3fr) minmax(170px, 0.9fr) minmax(180px, 1fr) auto auto; gap:8px; align-items:end;">' +
+      '<div style="display:grid; grid-template-columns:minmax(220px, 1.3fr) minmax(170px, 0.95fr) minmax(180px, 1fr) auto auto; gap:8px; align-items:end;">' +
         '<div><label class="form-lbl">1) ' + (isDairyScope ? '냉장(우유·발효유)' : '상온(멸균팩·프리즈마)') + ' 품목 선택</label>' +
           '<select id="selLotProd" class="form-ctrl">' +
             '<option value="ALL">-- 전체 품목 (키워드·소비기한으로 검색) --</option>' +
@@ -2628,14 +3238,14 @@ function renderLotView() {
             }).join('') +
           '</select>' +
         '</div>' +
-        '<div><label class="form-lbl">2) 표기 소비기한</label>' +
+        '<div><label class="form-lbl">2) 표기 소비기한 (선택)</label>' +
           '<input type="text" id="inpLotExp" class="form-ctrl" value="' + esc(prevExp) + '" placeholder="' + expPlaceholder + '" onkeydown="if(event.key===\'Enter\') executeScopedLotTrace()" />' +
         '</div>' +
         '<div><label class="form-lbl">3) 제품명 키워드 직접 입력</label>' +
           '<input type="text" id="inpLotKw" class="form-ctrl" value="' + esc(prevKw) + '" placeholder="' + kwPlaceholder + '" onkeydown="if(event.key===\'Enter\') executeScopedLotTrace()" />' +
         '</div>' +
-        '<button class="btn btn-primary" style="height:35px; padding:0 18px;" onclick="executeScopedLotTrace()">🔍 역추적 실행</button>' +
-        '<button class="btn" style="height:35px;" onclick="resetScopedLotTrace()">초기화</button>' +
+        '<button class="btn btn-primary" style="height:36px; padding:0 18px;" onclick="executeScopedLotTrace()">🔍 역추적 실행</button>' +
+        '<button class="btn" style="height:36px;" onclick="resetScopedLotTrace()">초기화</button>' +
       '</div>' +
     '</div>' +
     '<div id="lotResultArea"></div>';
@@ -2691,9 +3301,9 @@ function renderScopedLotResultHtml(data, isDairyScope) {
     const mc = data.matched_micro || [];
     resBox.innerHTML =
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>① 우유(카톤·병) · 발효유 포장일보 및 살균기 CCP 매칭 결과</span><span class="badge badge-info">' + dy.length + '건 매칭</span></div>' +
+        '<div class="panel-title"><span>① 우유(카톤·병 분리) · 발효유 포장일보 및 살균기 CCP 매칭 결과</span><span class="badge badge-info">' + dy.length + '건 매칭</span></div>' +
         '<div class="tbl-wrap"><table class="data-tbl">' +
-          '<thead><tr><th>생산일자</th><th>라인구분</th><th>제품명</th><th>표기 소비기한(Tank)</th><th>확인시간</th><th>포장기 시작~종료</th><th>살균기 온도·균질압 CCP</th><th>접착/실링/관능</th><th>현장 특이사항</th></tr></thead>' +
+          '<thead><tr><th>생산일자</th><th>라인구분</th><th>제품명</th><th>표기 소비기한(Tank)</th><th>확인시간</th><th>해당 라인 가동시간</th><th>살균기 온도·균질압 CCP</th><th>접착/실링/관능</th><th>현장 특이사항</th></tr></thead>' +
           '<tbody>' +
           (dy.length ? dy.map(function(r) {
             const isBot = r['라인구분'] === '우유(병포장)';
@@ -2703,7 +3313,7 @@ function renderScopedLotResultHtml(data, isDairyScope) {
               '<td class="td-left"><strong>' + esc(r['제품명']) + '</strong></td>' +
               '<td><b>' + esc(r['표기소비기한_원문'] || '-') + '</b></td>' +
               '<td>' + esc(r['확인시간'] || '-') + '</td>' +
-              '<td class="td-left">' + esc(r['포장기_시작~종료시간'] || '-') + '</td>' +
+              '<td class="td-left"><b>' + esc(r['포장기_시작~종료시간'] || '-') + '</b></td>' +
               '<td class="td-left">' + esc(r['살균기온도_균질압_CCP'] || '-') + '</td>' +
               '<td>상부:' + esc(r['상부_실링'] || '-') + ' / 하부:' + esc(r['하부_외포장'] || '-') + ' / 관능:' + esc(r['관능검사'] || '-') + '</td>' +
               '<td>' + esc(r['현장특이사항'] || '이상없음') + '</td>' +
@@ -2712,15 +3322,16 @@ function renderScopedLotResultHtml(data, isDairyScope) {
           '</tbody></table></div>' +
       '</div>' +
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>② 미생물 검사일보 매칭 결과 (생산일 동기화 · 주1~주12 공통원액 자동 역매칭)</span><span class="badge badge-ok">' + mc.length + '건 매칭</span></div>' +
+        '<div class="panel-title"><span>② 미생물 검사일보 매칭 결과 (주1~주12 공통원액 누적 매칭 · 최근 생산분 판정예정일 표시)</span><span class="badge badge-ok">' + mc.length + '건 매칭</span></div>' +
         '<div class="tbl-wrap"><table class="data-tbl">' +
           '<thead><tr><th>생산·검사일</th><th>판정일자</th><th>대분류</th><th>매칭 포장품목</th><th>미생물일보 표기명</th><th>Storage Tank</th><th>호기/용량</th><th>세부라인</th><th>대장균군</th><th>세균수</th><th>효모·곰팡이</th><th>유산균</th><th>최종판정</th></tr></thead>' +
           '<tbody>' +
           (mc.length ? mc.map(function(r) {
-            const pCls = String(r['판정']).indexOf('부적합') !== -1 ? 'cell-red' : 'cell-green';
+            const jTxt = String(r['판정'] || '');
+            const pCls = jTxt.indexOf('부적합') !== -1 ? 'cell-red' : ((jTxt.indexOf('예정') !== -1 || jTxt.indexOf('대기') !== -1) ? 'cell-yellow' : 'cell-green');
             return '<tr>' +
               '<td><b>' + esc(r['생산·검사일']) + '</b></td>' +
-              '<td>' + esc(r['판정일자']) + '</td>' +
+              '<td><b>' + esc(r['판정일자']) + '</b></td>' +
               '<td>' + esc(r['대분류']) + '</td>' +
               '<td class="td-left"><strong>' + esc(r['매칭 포장품목']) + '</strong></td>' +
               '<td class="td-left">' + esc(r['미생물일보 표기명']) + '</td>' +
@@ -2731,9 +3342,9 @@ function renderScopedLotResultHtml(data, isDairyScope) {
               '<td>' + esc(r['세균수']) + '</td>' +
               '<td>' + esc(r['효모·곰팡이']) + '</td>' +
               '<td>' + esc(r['유산균']) + '</td>' +
-              '<td class="' + pCls + '">' + esc(r['판정']) + '</td>' +
+              '<td class="' + pCls + '">' + esc(jTxt) + '</td>' +
             '</tr>';
-          }).join('') : '<tr><td colspan="13" class="cell-gray">해당 생산일자의 미생물 검사 기록이 없습니다.</td></tr>') +
+          }).join('') : '<tr><td colspan="13" class="cell-gray">매칭된 미생물 검사 기록이 없습니다.</td></tr>') +
           '</tbody></table></div>' +
       '</div>';
   } else {
@@ -2791,7 +3402,7 @@ function renderScopedLotResultHtml(data, isDairyScope) {
 }
 
 // ==============================================================================
-// [VIEW 11] 클레임 발생률(PPM) 분석 & [VIEW 12] 원가절감 · 부자재 관리
+// [VIEW 11] 클레임 발생률(PPM) 분석
 // ==============================================================================
 function renderClaimView() {
   const cl = BUNDLE.claim;
@@ -2802,16 +3413,19 @@ function renderClaimView() {
   document.getElementById('view-claim').innerHTML =
     '<div class="page-hdr">' +
       '<div><h2 class="page-h2">2026 회계연도 클레임 발생률(PPM) 추이 및 부문별 분석</h2><div class="page-desc">3월~익년 2월 회계연도 기준 월별 PPM 실적 및 선형 추세 예측선을 분석합니다.</div></div>' +
-      '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+      '<div style="display:flex; gap:8px;">' +
+        '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+      '</div>' +
     '</div>' +
     '<div class="kpi-grid-4">' +
       '<div class="stat-card"><div class="stat-lbl">연간 목표 PPM</div><div class="stat-val">' + cl.target_ppm + ' PPM 이하</div><div class="stat-sub">품질안전부문 전사 관리기준</div></div>' +
       '<div class="stat-card"><div class="stat-lbl">2026년 누적 실적 PPM</div><div class="stat-val">' + cl.actual_ppm + ' PPM</div><div class="stat-sub">누적 클레임 ' + cl.total_cnt + '건</div></div>' +
       '<div class="stat-card"><div class="stat-lbl">회계연도 말(2월) 예측</div><div class="stat-val">' + cl.feb_pred + ' PPM</div><div class="stat-sub">기울기 ' + cl.slope + ' (' + cl.recorded_months + '개월 기록)</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">유제품 vs 상온 (' + esc(CLAIM_DIV_YEAR) + ')</div><div class="stat-val" style="font-size:17px;">유제품 ' + (divPack ? divPack.dairy.total_ppm : 0) + ' / 상온 ' + (divPack ? divPack.rt.total_ppm : 0) + '</div><div class="stat-sub">단위 : PPM</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">유제품 vs 상온 (' + esc(CLAIM_DIV_YEAR) + ')</div><div class="stat-val" style="font-size:17.5px;">유제품 ' + (divPack ? divPack.dairy.total_ppm : 0) + ' / 상온 ' + (divPack ? divPack.rt.total_ppm : 0) + '</div><div class="stat-sub">단위 : PPM</div></div>' +
     '</div>' +
     '<div class="panel-card">' +
-      '<div class="panel-title">월별 클레임 PPM 추이 (2025년 vs 2026년 실적 및 추세선)</div>' +
+      '<div class="panel-title">월별 클레임 PPM 추이 (2025년 vs 2026년 실적 및 목표선)</div>' +
       '<div style="height:260px;"><canvas id="chartClaimTrend"></canvas></div>' +
     '</div>' +
     '<div class="panel-card">' +
@@ -2849,26 +3463,29 @@ function renderClaimView() {
   }
 }
 
+// ==============================================================================
+// [VIEW 12] 원가절감 전용 분석 화면 (KPI 1번 카드 클릭 시에만 진입)
+// ==============================================================================
 function renderCostView() {
   const cs = BUNDLE.cost;
-  const mk = BUNDLE.manual_kpis || {};
-  const k9 = mk['kpi_9'] || { title: '4. 핵심불량 저감화', target_text: '-', actual_text: '-', notes: [] };
-  const k10 = mk['kpi_10'] || { title: '5. 부자재 관리 고도화', target_text: '-', actual_text: '-', notes: [] };
 
   document.getElementById('view-cost').innerHTML =
     '<div class="page-hdr">' +
-      '<div><h2 class="page-h2">원가절감 실적 · 핵심불량 저감 · 부자재 폐기 Zero 관리</h2><div class="page-desc">품질안전부문 · 식품안전팀 · 품질관리팀 월별 원가절감 달성률 및 부자재/핵심불량 KPI를 통합 관리합니다.</div></div>' +
-      '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+      '<div><h2 class="page-h2">1. 원가절감 활동 실적 및 연말 예측 상세</h2><div class="page-desc">\'원가절감 현황\' 시트 기반 품질안전부문 · 식품안전팀 · 품질관리팀 월별 절감액을 자동 집계합니다.</div></div>' +
+      '<div style="display:flex; gap:8px;">' +
+        '<button class="btn btn-primary" onclick="switchView(\'kpi\')">← 2026 부문 8대 KPI로</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">모닝 브리핑</button>' +
+      '</div>' +
     '</div>' +
     '<div class="kpi-grid-4">' +
-      '<div class="stat-card"><div class="stat-lbl">품질안전부문 누적 (목표 ' + cs.targets['부문'] + '억)</div><div class="stat-val">' + cs.dept.actual_uk + '억원 (' + cs.dept.rate + '%)</div><div class="stat-sub">연말 예측 ' + cs.dept.proj_uk + '억원 (' + cs.dept.proj_rate + '%)</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">품질안전부문 누적 (목표 ' + cs.targets['부문'] + '억)</div><div class="stat-val">' + cs.dept.actual_uk + '억원 (' + cs.dept.rate + '%)</div><div class="stat-sub">합계 ' + cs.dept.actual_man.toLocaleString() + '만원</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">품질안전부문 연말 추세 예측</div><div class="stat-val">' + cs.dept.proj_uk + '억원 (' + cs.dept.proj_rate + '%)</div><div class="stat-sub">기록 ' + cs.dept.recorded_months + '개월 기준 예측</div></div>' +
       '<div class="stat-card"><div class="stat-lbl">식품안전팀 누적 (목표 ' + cs.targets['식품안전팀'] + '억)</div><div class="stat-val">' + cs.fs.actual_uk + '억원 (' + cs.fs.rate + '%)</div><div class="stat-sub">' + cs.fs.actual_man.toLocaleString() + '만원 절감</div></div>' +
       '<div class="stat-card"><div class="stat-lbl">품질관리팀 누적 (목표 ' + cs.targets['품질관리팀'] + '억)</div><div class="stat-val">' + cs.qc.actual_uk + '억원 (' + cs.qc.rate + '%)</div><div class="stat-sub">' + cs.qc.actual_man.toLocaleString() + '만원 절감</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">5. 부자재 폐기 / 4. 핵심불량</div><div class="stat-val" style="font-size:18px;">폐기 ' + esc(k10.actual_text) + ' / 불량 ' + esc(k9.actual_text) + '</div><div class="stat-sub">목표 : ' + esc(k10.target_text) + ' · ' + esc(k9.target_text) + '</div></div>' +
     '</div>' +
     '<div class="panel-card">' +
       '<div class="panel-title">월별 품질안전부문 원가절감 실적 vs 목표 기준 (단위: 만원)</div>' +
-      '<div style="height:240px;"><canvas id="chartCostTrend"></canvas></div>' +
+      '<div style="height:250px;"><canvas id="chartCostTrend"></canvas></div>' +
     '</div>' +
     '<div class="panel-card">' +
       '<div class="panel-title">월별 원가절감 상세 집계표 (단위: 만원)</div>' +
@@ -2889,11 +3506,94 @@ function renderCostView() {
         labels: cs.rows.map(function(r) { return r['월']; }),
         datasets: [
           { label: '부문 실적(만원)', data: cs.rows.map(function(r) { return r['부문_실적(만원)']; }), backgroundColor: '#003378' },
-          { label: '월별 목표기준(만원)', data: cs.rows.map(function(r) { return r['부문_기준(만원)']; }), type: 'line', borderColor: '#F59E0B', borderWidth: 2 }
+          { label: '월별 목표기준(만원)', data: cs.rows.map(function(r) { return r['부문_기준(만원)']; }), type: 'line', borderColor: '#ED7D31', borderWidth: 2.5 }
         ]
       },
       options: { responsive: true, maintainAspectRatio: false }
     });
+  }
+}
+
+// ==============================================================================
+// [VIEW 13] 핵심불량 · 부자재 관리 전용 화면 (좌측 사이드바 메뉴 & KPI 4·5번 직결)
+// ==============================================================================
+function renderDefectSubView() {
+  const mk = BUNDLE.manual_kpis || {};
+  const k9 = mk['kpi_9'] || { title: '4. 핵심불량(클레임) 발생 저감화', target_text: '38건 이하', actual_text: '5건', target_num: 38, actual_num: 5, notes_title: '핵심불량 저감 추진 내역', notes: [] };
+  const k10 = mk['kpi_10'] || { title: '5. 부자재 관리 고도화', target_text: '부자재폐기 0건', actual_text: '0건', notes_title: '부자재 폐기 Zero화 관리 내역', notes: [] };
+  const lb = BUNDLE.label_status;
+  const lw = BUNDLE.law;
+  const cnh = BUNDLE.claim_nc_hist;
+
+  document.getElementById('view-defect_sub').innerHTML =
+    '<div class="page-hdr">' +
+      '<div>' +
+        '<h2 class="page-h2">핵심불량(클레임) 저감화 · 부자재 관리 고도화</h2>' +
+        '<div class="page-desc">설비·공정 중대 핵심불량 억제 실적과 표시사항·법규 선제 대응을 통한 부자재 폐기 Zero화 현황을 관리합니다.</div>' +
+      '</div>' +
+      '<div style="display:flex; gap:8px;">' +
+        '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="tab-bar">' +
+      '<button class="tab-btn ' + (DEFECT_SUB_TAB === 'defect' ? 'active' : '') + '" onclick="DEFECT_SUB_TAB=\'defect\'; renderDefectSubView()">🛡️ 4. 핵심불량(클레임) 발생 저감화 (' + esc(k9.actual_text) + ' / 목표 ' + esc(k9.target_text) + ')</button>' +
+      '<button class="tab-btn ' + (DEFECT_SUB_TAB === 'sub' ? 'active' : '') + '" onclick="DEFECT_SUB_TAB=\'sub\'; renderDefectSubView()">📦 5. 부자재 관리 고도화 · 폐기 Zero (' + esc(k10.actual_text) + ')</button>' +
+    '</div>' +
+    '<div id="defectSubBox"></div>';
+
+  const box = document.getElementById('defectSubBox');
+  if (DEFECT_SUB_TAB === 'defect') {
+    const remainCnt = Math.max(0, (k9.target_num || 38) - (k9.actual_num || 0));
+    box.innerHTML =
+      '<div class="kpi-grid-4">' +
+        '<div class="stat-card"><div class="stat-lbl">연간 허용 한도 (목표)</div><div class="stat-val">' + esc(k9.target_text) + '</div><div class="stat-sub">중대 핵심불량 억제 기준</div></div>' +
+        '<div class="stat-card"><div class="stat-lbl">현재 누적 발생 실적</div><div class="stat-val" style="color:var(--ok-fg);">' + esc(k9.actual_text) + '</div><div class="stat-sub">' + esc(k9.sub_badge || '안정 관리 중') + '</div></div>' +
+        '<div class="stat-card"><div class="stat-lbl">잔여 허용 여유분</div><div class="stat-val">' + remainCnt + '건</div><div class="stat-sub">한도 대비 여유 유지</div></div>' +
+        '<div class="stat-card"><div class="stat-lbl">클레임·부적합 추적 연동</div><div class="stat-val">' + cnh.counts.total + '건</div><div class="stat-sub">현재 진행중 ' + cnh.counts.active + '건</div></div>' +
+      '</div>' +
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>' + esc(k9.notes_title || '핵심불량(클레임) 중점 저감 추진 내역') + '</span>' +
+          '<button class="btn btn-primary btn-sm" onclick="openManualKpiModal(\'kpi_9\')">수치 · 내역 편집</button>' +
+        '</div>' +
+        '<ul style="padding-left:18px; line-height:1.8; font-size:13.5px; color:#1E293B;">' +
+          (k9.notes || []).map(function(n) { return '<li>' + esc(n) + '</li>'; }).join('') +
+        '</ul>' +
+      '</div>' +
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>공정·원인유형별 클레임/부적합 등록 분포</span><button class="btn btn-sm" onclick="openLotViewWithScope(\'HIST\')">이력 상세 관리 ›</button></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>발생공정 · 원인유형</th><th>누적 등록 건수</th></tr></thead><tbody>' +
+          ((cnh.by_cause && cnh.by_cause.length) ? cnh.by_cause.map(function(r) {
+            return '<tr><td><b>' + esc(r['원인유형']) + '</b></td><td><b>' + r['건수'] + '건</b></td></tr>';
+          }).join('') : '<tr><td colspan="2" class="cell-gray">현재 등록된 클레임·부적합 원인 내역이 없습니다.</td></tr>') +
+        '</tbody></table></div>' +
+      '</div>';
+  } else {
+    box.innerHTML =
+      '<div class="kpi-grid-4">' +
+        '<div class="stat-card"><div class="stat-lbl">연간 부자재 폐기 목표</div><div class="stat-val">' + esc(k10.target_text) + '</div><div class="stat-sub">오인쇄 · 법규 미반영 불용 Zero</div></div>' +
+        '<div class="stat-card"><div class="stat-lbl">현재 부자재 폐기 실적</div><div class="stat-val" style="color:var(--ok-fg);">' + esc(k10.actual_text) + '</div><div class="stat-sub">' + esc(k10.sub_badge || '폐기 0건 달성 중') + '</div></div>' +
+        '<div class="stat-card"><div class="stat-lbl">2026년 표시사항 사전 심의</div><div class="stat-val">' + lb.cnt_26_all + '건</div><div class="stat-sub">현재 검토중 ' + lb.reviewing_cnt + '건</div></div>' +
+        '<div class="stat-card"><div class="stat-lbl">1년내 법규 불용방지 점검</div><div class="stat-val">' + lw.prep_1yr_cnt + '건</div><div class="stat-sub">대시보드 추적 법규 ' + lw.active_cnt + '건</div></div>' +
+      '</div>' +
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>' + esc(k10.notes_title || '부자재 폐기 Zero화 관리 내역') + '</span>' +
+          '<button class="btn btn-primary btn-sm" onclick="openManualKpiModal(\'kpi_10\')">수치 · 내역 편집</button>' +
+        '</div>' +
+        '<ul style="padding-left:18px; line-height:1.8; font-size:13.5px; color:#1E293B;">' +
+          (k10.notes || []).map(function(n) { return '<li>' + esc(n) + '</li>'; }).join('') +
+        '</ul>' +
+      '</div>' +
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>2026년 검토 포장재 유형별 사전 심의 건수 TOP 10</span><button class="btn btn-sm" onclick="switchView(\'label\')">표시사항 현황 ›</button></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>검토 포장재 유형</th><th>2026년 사전 심의 건수</th></tr></thead><tbody>' +
+          ((lb.top_pkgs && lb.top_pkgs.length) ? lb.top_pkgs.map(function(p) {
+            return '<tr><td><b>' + esc(p['포장재유형']) + '</b></td><td><b>' + p['2026년_검토건수'] + '건</b></td></tr>';
+          }).join('') : '<tr><td colspan="2" class="cell-gray">데이터가 없습니다.</td></tr>') +
+        '</tbody></table></div>' +
+      '</div>';
   }
 }
 
@@ -2914,14 +3614,13 @@ async function openAiBriefingModal() {
   }
 }
 
-// 1) 표시사항 현황 시트 내 [특이사항] 탭 양방향 편집 모달
 function openLabelMemoModal() {
   const cur = (BUNDLE && BUNDLE.special_boards && BUNDLE.special_boards.label_memo) || '';
   openModal(
     '📌 표시사항 특이사항 메모 편집 ([특이사항] 탭 직결)',
     '<div class="form-row">' +
-      '<label class="form-lbl">아래 내용을 수정하고 [즉시 저장]을 누르면 \'표시사항 현황\' 시트의 [특이사항] 탭에 영구 저장됩니다. (줄바꿈별로 행 구분 저장, 내용 전체 삭제 후 빈칸 저장도 그대로 유지)</label>' +
-      '<textarea id="txtLabelMemoEdit" class="form-ctrl" rows="6" placeholder="부자재 발주 전 중점 체크사항이나 표시사항 특이사항을 입력해 주세요.">' + esc(cur) + '</textarea>' +
+      '<label class="form-lbl">아래 내용을 수정하고 [즉시 저장]을 누르면 \'표시사항 현황\' 시트의 [특이사항] 탭에 영구 저장됩니다. (줄바꿈별로 행 구분 저장)</label>' +
+      '<textarea id="txtLabelMemoEdit" class="form-ctrl" rows="6" placeholder="• 원자재 변경 품목 전성분 및 알레르기 유발물질 표시 교차 점검 진행">' + esc(cur) + '</textarea>' +
     '</div>',
     '<button class="btn" onclick="closeModal()">취소</button>' +
     '<button class="btn btn-primary" onclick="saveLabelMemo()">💾 시트 [특이사항] 탭에 즉시 저장</button>'
@@ -2941,14 +3640,13 @@ async function saveLabelMemo() {
   }
 }
 
-// 2) 미생물 출고 판정 설정 모달 (시트 최신확정 자동연동 vs 수동지정)
 function openMicroStatusModal() {
   const cur = (BUNDLE && BUNDLE.special_boards && BUNDLE.special_boards.micro_status) || { mode: '자동연동', status: '출고적합', note: '' };
   const autoNote = (BUNDLE && BUNDLE.process && BUNDLE.process.micro && BUNDLE.process.micro.auto_note) || '';
 
   openModal(
     '🔬 미생물 출고 판정 표시 설정',
-    '<div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:10px 12px; margin-bottom:12px; font-size:12px; color:#14532D;">' +
+    '<div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:10px 12px; margin-bottom:12px; font-size:12.5px; color:#14532D;">' +
       '<b>시트 최신 확정 요약 :</b> ' + esc(autoNote) +
     '</div>' +
     '<div class="form-row"><label class="form-lbl">연동 방식 선택</label>' +
@@ -2965,7 +3663,7 @@ function openMicroStatusModal() {
       '</select>' +
     '</div>' +
     '<div class="form-row"><label class="form-lbl">수동지정 시 표시 문구</label>' +
-      '<input type="text" id="inpMicroNote" class="form-ctrl" value="' + esc(cur.mode === '수동지정' ? cur.note : '') + '" placeholder="예: 우유(11/16)·발효유(11/13) 전 품목 특이사항 없음" />' +
+      '<input type="text" id="inpMicroNote" class="form-ctrl" value="' + esc(cur.mode === '수동지정' ? cur.note : '') + '" placeholder="예: 우유(11/15)·발효유(11/12) 제품 특이사항 없음" />' +
     '</div>',
     '<button class="btn" onclick="switchView(\'micro\'); closeModal()">미생물 일보 상세 보기 ›</button>' +
     '<button class="btn" onclick="closeModal()">취소</button>' +
@@ -2990,7 +3688,6 @@ async function saveMicroStatus() {
   }
 }
 
-// 3) 법규 상세 원문 열람 & 1~2줄 요약 [_법규요약DB] 영구 편집 모달
 let _LAST_SUMMARY_METHOD = 'manual';
 
 function openLawDetailModal(lawId) {
@@ -3033,7 +3730,7 @@ function openLawDetailModal(lawId) {
     '</div>' +
     '<div class="form-row">' +
       '<label class="form-lbl">시트 법령 원문 전체 (1. 개정이유 + 2. 주요내용 전문)</label>' +
-      '<div style="max-height:210px; overflow-y:auto; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:7px; padding:10px; white-space:pre-line; font-size:12px; line-height:1.55; color:#334155;">' +
+      '<div style="max-height:210px; overflow-y:auto; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:7px; padding:10px; white-space:pre-line; font-size:12.5px; line-height:1.55; color:#334155;">' +
         esc(item['원문내용']) +
       '</div>' +
     '</div>',
@@ -3078,7 +3775,6 @@ async function saveLawDetailModal(lawId) {
   }
 }
 
-// 4) 심사 · 협력업체 방문 일정 등록/수정 모달
 function openAuditModal(editIdx) {
   const scheds = (BUNDLE && BUNDLE.audit && BUNDLE.audit.schedules) || [];
   const item = (editIdx !== undefined && scheds[editIdx]) ? scheds[editIdx] : null;
@@ -3098,7 +3794,7 @@ function openAuditModal(editIdx) {
       '</div>' +
     '</div>' +
     '<div class="form-row"><label class="form-lbl">심사명 또는 방문 협력업체명</label>' +
-      '<input type="text" id="inpAudName" class="form-ctrl" value="' + esc(item ? item['심사명'] : '') + '" placeholder="예: 식약처 정기 HACCP 연장심사 / ㈜OO식품 현장점검" />' +
+      '<input type="text" id="inpAudName" class="form-ctrl" value="' + esc(item ? item['심사명'] : '') + '" placeholder="예: 유기가공식품 인증심사 / ㈜OO식품 현장점검" />' +
     '</div>' +
     '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">' +
       '<div class="form-row"><label class="form-lbl">진행 현황</label>' +
@@ -3143,7 +3839,6 @@ async function saveAuditModal(uid) {
   }
 }
 
-// 5) 클레임 · 부적합 신규 등록 및 상태 변경
 function openClaimNcModal() {
   const todayIso = (BUNDLE && BUNDLE.loaded_date) || '2026-11-18';
   openModal(
@@ -3236,7 +3931,6 @@ async function deleteClaimNcItem(uid, category) {
   }
 }
 
-// 6) 수동 관리 KPI 편집 모달
 function openManualKpiModal(kpiKey) {
   const item = (BUNDLE && BUNDLE.manual_kpis && BUNDLE.manual_kpis[kpiKey]);
   if (!item) return;
@@ -3248,10 +3942,14 @@ function openManualKpiModal(kpiKey) {
       '<div class="form-row"><label class="form-lbl">현재 실적 텍스트</label><input type="text" id="inpMkAct" class="form-ctrl" value="' + esc(item.actual_text) + '" /></div>' +
     '</div>' +
     '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">' +
-      '<div class="form-row"><label class="form-lbl">보조 배지 설명</label><input type="text" id="inpMkSub" class="form-ctrl" value="' + esc(item.sub_badge) + '" /></div>' +
-      '<div class="form-row"><label class="form-lbl">신호등 상태</label>' +
+      '<div class="form-row"><label class="form-lbl">그래프용 목표 수치</label><input type="number" step="0.01" id="inpMkTarNum" class="form-ctrl" value="' + (item.target_num || 0) + '" /></div>' +
+      '<div class="form-row"><label class="form-lbl">그래프용 실적 수치</label><input type="number" step="0.01" id="inpMkActNum" class="form-ctrl" value="' + (item.actual_num || 0) + '" /></div>' +
+    '</div>' +
+    '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">' +
+      '<div class="form-row"><label class="form-lbl">보조 설명</label><input type="text" id="inpMkSub" class="form-ctrl" value="' + esc(item.sub_badge) + '" /></div>' +
+      '<div class="form-row"><label class="form-lbl">빨간 원 신호등 표시</label>' +
         '<select id="selMkSig" class="form-ctrl">' +
-          [['green', '정상·달성 (녹색)'], ['yellow', '주의·관찰 (황색)'], ['red', '중점관리 (적색)']].map(function(p) {
+          [['green', '정상·달성 (신호등 없음)'], ['red', '미달·중점관리 (빨간 원 표시)']].map(function(p) {
             return '<option value="' + p[0] + '" ' + (item.signal === p[0] ? 'selected' : '') + '>' + p[1] + '</option>';
           }).join('') +
         '</select>' +
@@ -3262,12 +3960,11 @@ function openManualKpiModal(kpiKey) {
       '<textarea id="txtMkNotes" class="form-ctrl" rows="4">' + esc((item.notes || []).join('\n')) + '</textarea>' +
     '</div>',
     '<button class="btn" onclick="closeModal()">취소</button>' +
-    '<button class="btn btn-primary" onclick="saveManualKpiModal(\'' + esc(kpiKey) + '\')">저장</button>'
+    '<button class="btn btn-primary" onclick="saveManualKpiModal(\'' + esc(kpiKey) + '\')">시트에 즉시 저장</button>'
   );
 }
 
 async function saveManualKpiModal(kpiKey) {
-  const cur = BUNDLE.manual_kpis[kpiKey] || {};
   const notesArr = (document.getElementById('txtMkNotes').value || '').split('\n').map(function(s) { return s.trim(); }).filter(Boolean);
   try {
     const res = await apiPost('/api/manual-kpi', {
@@ -3275,8 +3972,8 @@ async function saveManualKpiModal(kpiKey) {
       target_text: document.getElementById('inpMkTar').value,
       actual_text: document.getElementById('inpMkAct').value,
       sub_badge: document.getElementById('inpMkSub').value,
-      target_num: cur.target_num || 0,
-      actual_num: cur.actual_num || 0,
+      target_num: parseFloat(document.getElementById('inpMkTarNum').value || '0'),
+      actual_num: parseFloat(document.getElementById('inpMkActNum').value || '0'),
       signal: document.getElementById('selMkSig').value,
       notes_title: document.getElementById('inpMkNTitle').value,
       notes: notesArr

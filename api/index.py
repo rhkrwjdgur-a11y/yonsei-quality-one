@@ -2224,33 +2224,68 @@ def extract_clean_right_values(sr: list, start_idx: int) -> list:
     return out
 
 
+def extract_soy_inc_days(inc_text: Any) -> int:
+    """배양구분/배양검사 문자열(예: '5일', '7일', '5일 (40 ± 5 ℃)')에서 배양일수만 정확히 추출"""
+    s = str(inc_text or "").strip()
+    m = re.search(r"(\d+)\s*일", s)
+    if m:
+        d = int(m.group(1))
+        if 1 <= d <= 30:
+            return d
+    m_num = re.match(r"^(\d+)$", s)
+    if m_num:
+        d = int(m_num.group(1))
+        if 1 <= d <= 30:
+            return d
+    if "7" in s:
+        return 7
+    return 5
+
+
+def parse_soy_tab_date(tab_title: Any, ref_date: Optional[date] = None) -> Optional[date]:
+    """두유 배양검사 하단 탭 이름(예: '11/19', '11.19', '11. 19')을 개봉·검사일(date)로 변환"""
+    s = str(tab_title or "").strip().rstrip(".")
+    if not s:
+        return None
+    m_ymd = re.match(r"^(20\d{2}|\d{2})[/\.\-\s]+(\d{1,2})[/\.\-\s]+(\d{1,2})(?:\D.*)?$", s)
+    if m_ymd:
+        yr_raw, mm, dd = int(m_ymd.group(1)), int(m_ymd.group(2)), int(m_ymd.group(3))
+        yr = 2000 + yr_raw if yr_raw < 100 else yr_raw
+        try:
+            return date(yr, mm, dd)
+        except ValueError:
+            return None
+
+    m_md = re.match(r"^(\d{1,2})[/\.\-\s]+(\d{1,2})(?:\s*\([^)]*\))?$", s)
+    if m_md:
+        mm, dd = int(m_md.group(1)), int(m_md.group(2))
+        today_d = now_kst().date()
+        if ref_date and isinstance(ref_date, date) and 2020 <= ref_date.year <= 2035:
+            yr = ref_date.year
+            if mm == 12 and ref_date.month == 1:
+                yr -= 1
+        else:
+            yr = today_d.year if mm <= today_d.month + 1 else today_d.year - 1
+        try:
+            return date(yr, mm, dd)
+        except ValueError:
+            return None
+    return None
+
+
 def resolve_soy_realtime_dates(tab_title: str, raw_prod_dt: str, raw_insp_dt: str, inc_days: str):
-    today_d = now_kst().date()
-    m_tab = re.match(r"^(\d{1,2})[/\.\-](\d{1,2})$", str(tab_title).strip())
-    if not m_tab:
+    """
+    시트 셀 내부의 '=TODAY()' 수식 날짜 왜곡 원천 차단:
+    무조건 [탭 이름 날짜 = 검사일(개봉일)], [탭 이름 날짜 - 배양일(5일/7일) = 생산일자]로 산출
+    """
+    tab_d = parse_soy_tab_date(tab_title)
+    if tab_d is None:
         return raw_prod_dt or "-", raw_insp_dt or "-"
 
-    mm, dd = int(m_tab.group(1)), int(m_tab.group(2))
-    yr = today_d.year if mm <= today_d.month + 1 else today_d.year - 1
-    try:
-        tab_d = date(yr, mm, dd)
-    except ValueError:
-        return raw_prod_dt or "-", raw_insp_dt or "-"
-
-    c_insp = parse_date_obj(re.sub(r"\s+", "", str(raw_insp_dt)).rstrip("."))
-    c_prod = parse_date_obj(re.sub(r"\s+", "", str(raw_prod_dt)).rstrip("."))
-
-    offset = 7 if "7" in str(inc_days) else 5
-    if c_insp and c_prod:
-        diff = (c_insp - c_prod).days
-        if 1 <= diff <= 20:
-            offset = diff
-
-    if c_prod is None or (c_insp and c_insp == today_d and tab_d != today_d):
-        true_prod = (tab_d - timedelta(days=offset)).strftime("%Y-%m-%d")
-        return true_prod, tab_d.strftime("%Y-%m-%d")
-
-    return c_prod.strftime("%Y-%m-%d"), tab_d.strftime("%Y-%m-%d")
+    offset = extract_soy_inc_days(inc_days)
+    true_prod = (tab_d - timedelta(days=offset)).strftime("%Y-%m-%d")
+    true_insp = tab_d.strftime("%Y-%m-%d")
+    return true_prod, true_insp
 
 
 def parse_soy_incubation_rows(tab_title_raw: str, rows: list):

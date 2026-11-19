@@ -941,7 +941,7 @@
       transition: height 0.3s ease;
     }
     .exec-bar-rect.target { background: #7F7F7F; }
-    .exec-bar-rect.actual { background: #ED7D31; }
+    .exec-bar-rect.actual { background: var(--yonsei-blue); }
     .exec-bar-rect.low-bar {
       align-items: center;
       padding-top: 0;
@@ -968,22 +968,29 @@
       line-height: 1.6;
     }
 
-    /* ==================== 공통 배지 · 버튼 · 서브 페이지 표 ==================== */
+    /* ==================== 공통 배지(글씨·여백 확대) · 버튼 · 서브 페이지 표 ==================== */
     .badge {
       display: inline-flex;
       align-items: center;
-      padding: 2px 8px;
+      justify-content: center;
+      padding: 3.5px 10px;
       border-radius: 99px;
-      font-size: var(--fs-xs);
+      font-size: var(--fs-sm);
       font-weight: 800;
+      letter-spacing: -0.2px;
       white-space: nowrap;
       flex-shrink: 0;
     }
-    .badge-ok { background: var(--ok-bg); color: var(--ok-fg); border: 1px solid #A7F3D0; }
-    .badge-warn { background: var(--warn-bg); color: var(--warn-fg); border: 1px solid #FDE68A; }
-    .badge-err { background: var(--err-bg); color: var(--err-fg); border: 1px solid #FECACA; }
-    .badge-info { background: var(--info-bg); color: var(--info-fg); border: 1px solid #BAE6FD; }
-    .badge-purple { background: var(--purple-bg); color: var(--purple-fg); border: 1px solid #DDD6FE; }
+    .proc-tile .badge,
+    .quad-hdr .badge {
+      padding: 4px 11px;
+      font-size: calc(clamp(12px, 0.8vw, 15px) * var(--ui-scale));
+    }
+    .badge-ok { background: var(--ok-bg); color: var(--ok-fg); border: 1px solid #6EE7B7; }
+    .badge-warn { background: var(--warn-bg); color: var(--warn-fg); border: 1px solid #FCD34D; }
+    .badge-err { background: var(--err-bg); color: var(--err-fg); border: 1px solid #FCA5A5; }
+    .badge-info { background: var(--info-bg); color: var(--info-fg); border: 1px solid #7DD3FC; }
+    .badge-purple { background: var(--purple-bg); color: var(--purple-fg); border: 1px solid #C4B5FD; }
     .badge-neutral { background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; }
 
     .btn {
@@ -1686,7 +1693,7 @@ function renderHome() {
       '<div class="pt-val">생산 ' + ps.active_dairy_cnt + ' 품목</div>' +
       '<div class="pt-sub">우유카톤 ' + ps.active_milk_carton_cnt + ' · 병 ' + ps.active_milk_bottle_cnt + ' · 발효 ' + ps.active_ferm_cnt + '</div>' +
     '</div>' +
-    '<div class="proc-tile" onclick="openMicroStatusModal()">' +
+    '<div class="proc-tile" onclick="switchView(\'micro\')">' +
       '<div class="pt-top"><span class="pt-name">미생물 출고 판정</span><span class="badge ' + mcBadgeCls + '">' + esc(mc.mode === '수동지정' ? '수동지정' : '최신확정') + '</span></div>' +
       '<div class="pt-val">' + esc(mcStatus) + '</div>' +
       '<div class="pt-sub" title="' + esc(mc.note) + '">' + esc(mc.note || '특이사항 없음') + '</div>' +
@@ -2135,34 +2142,108 @@ async function toggleLabelPin(itemKey, isPinned) {
 }
 
 // ==============================================================================
-// [VIEW 4] 원자재 표시사항 DB
+// [VIEW 4] 원자재 표시사항 DB (기존알레르기 + 신규알레르기[들깨·참깨·캐슈넛·아몬드] 나란히 표출)
 // ==============================================================================
+let RAW_FILTER_MODE = 'ALL'; // 'ALL' | 'NEW_ONLY' | '들깨' | '참깨' | '캐슈넛' | '아몬드'
+
 function renderRawView() {
-  const rw = BUNDLE.raw_db;
+  const rw = BUNDLE.raw_db || { master_cnt: 0, sub_cnt: 0, verified_cnt: 0, allergy_cnt: 0, rows: [] };
   const rows = rw.rows || [];
-  const headers = rows.length ? Object.keys(rows[0]).slice(0, 8) : [];
+  const bd = rw.allergen_breakdown || { '들깨': 0, '참깨': 0, '캐슈넛': 0, '아몬드': 0 };
+
+  const enriched = rows.map(function(r) {
+    const rawNew = String(r['_신규알레르기_표시'] || r['신규알레르기'] || '').trim();
+    const ingTxt = String(r['원재료명(한글표시사항)'] || r['원재료명'] || '').trim();
+    const hasNew = (r._has_new_allergy !== undefined)
+      ? Boolean(r._has_new_allergy)
+      : ((Boolean(rawNew) && !/해당없음|안전|없음|^-$/.test(rawNew)) || /들깨|참깨|흑임자|검은깨|캐슈넛|캐슈너트|아몬드/.test(ingTxt));
+
+    let linkUrl = '';
+    Object.keys(r).forEach(function(k) {
+      const v = String(r[k] || '').trim();
+      if (!linkUrl && /^https?:\/\//i.test(v)) linkUrl = v;
+    });
+    return { raw: r, hasNew: hasNew, newDisp: rawNew || (hasNew ? '원재료명 확인' : '해당없음 (안전)'), linkUrl: linkUrl };
+  });
+
+  const filtered = enriched.filter(function(item) {
+    if (RAW_FILTER_MODE === 'ALL') return true;
+    if (RAW_FILTER_MODE === 'NEW_ONLY') return item.hasNew;
+    const pool = item.newDisp + ' ' + String(item.raw['원재료명(한글표시사항)'] || '');
+    if (RAW_FILTER_MODE === '참깨') return /참깨|흑임자|검은깨|통깨/.test(pool);
+    if (RAW_FILTER_MODE === '캐슈넛') return /캐슈넛|캐슈너트/.test(pool);
+    return pool.indexOf(RAW_FILTER_MODE) !== -1;
+  });
+
+  const bdSummary = '들깨 ' + (bd['들깨'] || 0) + ' · 참깨 ' + (bd['참깨'] || 0) + ' · 캐슈넛 ' + (bd['캐슈넛'] || 0) + ' · 아몬드 ' + (bd['아몬드'] || 0);
 
   document.getElementById('view-raw').innerHTML =
     '<div class="page-hdr">' +
-      '<div><h2 class="page-h2">원자재 표시사항 DB 수집 및 검증 현황</h2><div class="page-desc">원재료 공급사별 표시사항 제출 건수 및 신규 알레르기 유발물질 유무를 점검합니다.</div></div>' +
+      '<div>' +
+        '<h2 class="page-h2">원자재 한글표시사항 DB 및 신규 알레르기(4종) 검증 현황</h2>' +
+        '<div class="page-desc">공급사 최신 원재료 한글표시사항 확보 현황과 법규 추가 알레르기 유발물질(들깨 · 참깨 · 캐슈넛 · 아몬드) 함유 원자재를 집중 관리합니다.</div>' +
+      '</div>' +
       '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
     '</div>' +
     '<div class="kpi-grid-4">' +
-      '<div class="stat-card"><div class="stat-lbl">전체 마스터 원재료</div><div class="stat-val">' + rw.master_cnt + '건</div><div class="stat-sub">관리 대상 원재료 총계</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">제출 완료 건수</div><div class="stat-val">' + rw.sub_cnt + '건</div><div class="stat-sub">원자재 DB 등록 완료</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">검증 적합 건수</div><div class="stat-val">' + rw.verified_cnt + '건</div><div class="stat-sub">식품안전팀 확인 완료</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">신규 알레르기 주의</div><div class="stat-val" style="color:var(--err-fg);">' + rw.allergy_cnt + '건</div><div class="stat-sub">교차오염·표시 반영 필수</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">관리 대상 마스터 원재료</div><div class="stat-val">' + rw.master_cnt + '건</div><div class="stat-sub">전체 원재료 명단 기준</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">한글표시사항 확보 완료</div><div class="stat-val">' + rw.sub_cnt + '건</div><div class="stat-sub">업체 제출 · DB 등록 완료</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">검증 확인 건수</div><div class="stat-val">' + rw.verified_cnt + '건</div><div class="stat-sub">전성분 · 알레르기 대조 완료</div></div>' +
+      '<div class="stat-card" style="border-color:' + (rw.allergy_cnt > 0 ? '#FCA5A5' : 'var(--border-soft)') + '; background:' + (rw.allergy_cnt > 0 ? '#FEF2F2' : '#FFFFFF') + ';">' +
+        '<div class="stat-lbl" style="color:var(--err-fg);">신규 알레르기(4종) 검출 주의</div>' +
+        '<div class="stat-val" style="color:var(--err-fg);">' + rw.allergy_cnt + '건</div>' +
+        '<div class="stat-sub" style="font-weight:700; color:#991B1B;">' + esc(bdSummary) + '</div>' +
+      '</div>' +
     '</div>' +
-    '<div class="panel-card"><div class="panel-title">원자재 표시사항 제출 목록 (' + rows.length + '건)</div>' +
-      '<div class="tbl-wrap"><table class="data-tbl">' +
-        '<thead><tr>' + headers.map(function(h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr></thead>' +
+    '<div class="panel-card">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">' +
+        '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' +
+          '<button class="btn btn-sm ' + (RAW_FILTER_MODE === 'ALL' ? 'btn-primary' : '') + '" onclick="RAW_FILTER_MODE=\'ALL\'; renderRawView()">전체 제출 목록 (' + enriched.length + '건)</button>' +
+          '<button class="btn btn-sm ' + (RAW_FILTER_MODE === 'NEW_ONLY' ? 'btn-primary' : '') + '" onclick="RAW_FILTER_MODE=\'NEW_ONLY\'; renderRawView()">⚠️ 신규 알레르기 검출만 (' + rw.allergy_cnt + '건)</button>' +
+          ['들깨', '참깨', '캐슈넛', '아몬드'].map(function(alg) {
+            return '<button class="btn btn-sm ' + (RAW_FILTER_MODE === alg ? 'btn-primary' : '') + '" onclick="RAW_FILTER_MODE=\'' + alg + '\'; renderRawView()">' + alg + ' (' + (bd[alg] || 0) + ')</button>';
+          }).join('') +
+        '</div>' +
+        '<input type="text" class="form-ctrl" style="width:260px; padding:5px 10px;" placeholder="원자재명 · 원재료명 · 공급사 · 알레르기 검색" oninput="filterSimpleTable(this.value, \'rawDbMainTbl\')" />' +
+      '</div>' +
+      '<div class="tbl-wrap"><table class="data-tbl" id="rawDbMainTbl">' +
+        '<thead><tr>' +
+          '<th>코드</th>' +
+          '<th>원자재(제품명)</th>' +
+          '<th>식품유형</th>' +
+          '<th>원재료명 (최신 한글표시사항)</th>' +
+          '<th>원산지</th>' +
+          '<th>제조원</th>' +
+          '<th>공급사(판매원)</th>' +
+          '<th>기존 알레르기</th>' +
+          '<th style="background:#FEF2F2; color:#991B1B;">신규 알레르기 (들깨·참깨·캐슈넛·아몬드)</th>' +
+          '<th>표시사항 사본</th>' +
+        '</tr></thead>' +
         '<tbody>' +
-        (rows.length ? rows.slice(0, 200).map(function(r) {
-          return '<tr>' + headers.map(function(h) { return '<td>' + esc(r[h] || '-') + '</td>'; }).join('') + '</tr>';
-        }).join('') : '<tr><td colspan="8" class="cell-gray">데이터가 없습니다.</td></tr>') +
-        '</tbody></table></div></div>';
+        (filtered.length ? filtered.map(function(item) {
+          const r = item.raw;
+          const existAlg = String(r['기존알레르기'] || '-').trim();
+          const existSafe = /해당없음|안전|없음|^-$/.test(existAlg);
+          return '<tr>' +
+            '<td>' + esc(r['코드'] || '-') + '</td>' +
+            '<td class="td-left"><strong>' + esc(r['제품명'] || r['원자재명'] || '-') + '</strong></td>' +
+            '<td>' + esc(r['식품유형'] || '-') + '</td>' +
+            '<td class="td-left" style="max-width:340px; line-height:1.4;">' + esc(r['원재료명(한글표시사항)'] || r['원재료명'] || '-') + '</td>' +
+            '<td>' + esc(r['원산지'] || '-') + '</td>' +
+            '<td class="td-left">' + esc(r['제조원'] || '-') + '</td>' +
+            '<td class="td-left">' + esc(r['공급사(판매원)'] || r['공급사'] || '-') + '</td>' +
+            '<td>' + (existSafe ? '<span class="badge badge-neutral">' + esc(existAlg) + '</span>' : '<span class="badge badge-warn">' + esc(existAlg) + '</span>') + '</td>' +
+            '<td class="' + (item.hasNew ? 'cell-red' : '') + '">' +
+              (item.hasNew
+                ? '<span class="badge badge-err">⚠️ ' + esc(item.newDisp) + '</span>'
+                : '<span class="badge badge-ok">해당없음 (안전)</span>') +
+            '</td>' +
+            '<td>' + (item.linkUrl ? '<a href="' + esc(item.linkUrl) + '" target="_blank" rel="noopener" class="btn btn-sm" style="text-decoration:none; color:var(--yonsei-blue);">원본 보기 ↗</a>' : '-') + '</td>' +
+          '</tr>';
+        }).join('') : '<tr><td colspan="10" class="cell-gray">조건에 해당하는 원자재 데이터가 없습니다.</td></tr>') +
+        '</tbody></table></div>' +
+    '</div>';
 }
-// ======================== [public/index.html - PART 2 / 4 끝] ========================
 // ==============================================================================
 // [public/index.html - PART 3 / 4]
 // 심사점수 우선 뷰 · 협력업체 관리 · 법규 1~2줄 요약([_법규요약DB]) · 공정관제(상온 우선 + 우유 카톤/병 분리)
@@ -3307,6 +3388,7 @@ function renderScopedLotResultHtml(data, isDairyScope) {
           '<tbody>' +
           (dy.length ? dy.map(function(r) {
             const isBot = r['라인구분'] === '우유(병포장)';
+            const sealSens = r['접착_실링_관능'] || ('상부:' + (r['상부_실링'] || '-') + ' / 하부:' + (r['하부_외포장'] || '-') + ' / 관능:' + (r['관능검사'] || '-'));
             return '<tr>' +
               '<td><b>' + esc(r['생산일자']) + '</b></td>' +
               '<td><span class="badge ' + (isBot ? 'badge-purple' : 'badge-info') + '">' + esc(r['라인구분']) + '</span></td>' +
@@ -3315,7 +3397,7 @@ function renderScopedLotResultHtml(data, isDairyScope) {
               '<td>' + esc(r['확인시간'] || '-') + '</td>' +
               '<td class="td-left"><b>' + esc(r['포장기_시작~종료시간'] || '-') + '</b></td>' +
               '<td class="td-left">' + esc(r['살균기온도_균질압_CCP'] || '-') + '</td>' +
-              '<td>상부:' + esc(r['상부_실링'] || '-') + ' / 하부:' + esc(r['하부_외포장'] || '-') + ' / 관능:' + esc(r['관능검사'] || '-') + '</td>' +
+              '<td>' + esc(sealSens) + '</td>' +
               '<td>' + esc(r['현장특이사항'] || '이상없음') + '</td>' +
             '</tr>';
           }).join('') : '<tr><td colspan="9" class="cell-gray">일치하는 우유·발효유 포장 이력이 없습니다.</td></tr>') +
@@ -3402,115 +3484,313 @@ function renderScopedLotResultHtml(data, isDairyScope) {
 }
 
 // ==============================================================================
-// [VIEW 11] 클레임 발생률(PPM) 분석
+// [VIEW 11] 클레임 발생률(PPM) 분석 (전사 · 유제품 부문 통합 · 상온제품 부문 통합 + AI 예상 추세선 복원)
 // ==============================================================================
+let CLAIM_SCOPE_TAB = 'ALL'; // 'ALL' | 'DAIRY' | 'RT'
+
 function renderClaimView() {
   const cl = BUNDLE.claim;
   const years = cl.years || ['2026년'];
   if (years.indexOf(CLAIM_DIV_YEAR) === -1 && years.length) CLAIM_DIV_YEAR = years[0];
   const divPack = (cl.divisions && cl.divisions[CLAIM_DIV_YEAR]) || null;
+  const dairyDiv = divPack ? divPack.dairy : null;
+  const rtDiv = divPack ? divPack.rt : null;
+
+  const isAll = (CLAIM_SCOPE_TAB === 'ALL');
+  const activeDiv = (CLAIM_SCOPE_TAB === 'DAIRY') ? dairyDiv : ((CLAIM_SCOPE_TAB === 'RT') ? rtDiv : null);
+  const scopeTitle = isAll
+    ? '전사 전체 통합'
+    : (CLAIM_SCOPE_TAB === 'DAIRY' ? '유제품 부문 통합 (냉장우유 카톤·병 + 발효유/음료 카톤·병)' : '상온제품 부문 통합 (상온 멸균팩 + 상온 프리즈마)');
+
+  const curPpm = isAll ? cl.actual_ppm : (activeDiv ? activeDiv.total_ppm : 0);
+  const curCnt = isAll ? cl.total_cnt : (activeDiv ? activeDiv.total_cnt : 0);
+  const curPred = isAll ? cl.feb_pred : (activeDiv ? activeDiv.feb_pred : 0);
+  const curSlope = isAll ? cl.slope : (activeDiv ? activeDiv.slope : 0);
 
   document.getElementById('view-claim').innerHTML =
     '<div class="page-hdr">' +
-      '<div><h2 class="page-h2">2026 회계연도 클레임 발생률(PPM) 추이 및 부문별 분석</h2><div class="page-desc">3월~익년 2월 회계연도 기준 월별 PPM 실적 및 선형 추세 예측선을 분석합니다.</div></div>' +
-      '<div style="display:flex; gap:8px;">' +
+      '<div>' +
+        '<h2 class="page-h2">2026 회계연도 클레임 발생률(PPM) 추이 및 부문별 통합 분석</h2>' +
+        '<div class="page-desc">전사 통합 · 유제품 부문 통합 · 상온제품 부문 통합별 월간 PPM 추세선과 회계연도 말(2월) AI 예상 추세선을 분석합니다.</div>' +
+      '</div>' +
+      '<div style="display:flex; gap:8px; align-items:center;">' +
+        '<select class="form-ctrl" style="width:130px;" onchange="CLAIM_DIV_YEAR=this.value; renderClaimView()">' +
+          years.map(function(y) { return '<option value="' + esc(y) + '" ' + (CLAIM_DIV_YEAR === y ? 'selected' : '') + '>기준: ' + esc(y) + '</option>'; }).join('') +
+        '</select>' +
         '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
         '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
       '</div>' +
     '</div>' +
+    '<div class="tab-bar">' +
+      '<button class="tab-btn ' + (CLAIM_SCOPE_TAB === 'ALL' ? 'active' : '') + '" onclick="CLAIM_SCOPE_TAB=\'ALL\'; renderClaimView()">📊 전사 전체 통합 (' + cl.actual_ppm + ' PPM)</button>' +
+      '<button class="tab-btn ' + (CLAIM_SCOPE_TAB === 'DAIRY' ? 'active' : '') + '" onclick="CLAIM_SCOPE_TAB=\'DAIRY\'; renderClaimView()">🥛 유제품 부문 통합 (' + (dairyDiv ? dairyDiv.total_ppm : 0) + ' PPM)</button>' +
+      '<button class="tab-btn ' + (CLAIM_SCOPE_TAB === 'RT' ? 'active' : '') + '" onclick="CLAIM_SCOPE_TAB=\'RT\'; renderClaimView()">📦 상온제품 부문 통합 (' + (rtDiv ? rtDiv.total_ppm : 0) + ' PPM)</button>' +
+    '</div>' +
     '<div class="kpi-grid-4">' +
-      '<div class="stat-card"><div class="stat-lbl">연간 목표 PPM</div><div class="stat-val">' + cl.target_ppm + ' PPM 이하</div><div class="stat-sub">품질안전부문 전사 관리기준</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">2026년 누적 실적 PPM</div><div class="stat-val">' + cl.actual_ppm + ' PPM</div><div class="stat-sub">누적 클레임 ' + cl.total_cnt + '건</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">회계연도 말(2월) 예측</div><div class="stat-val">' + cl.feb_pred + ' PPM</div><div class="stat-sub">기울기 ' + cl.slope + ' (' + cl.recorded_months + '개월 기록)</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">유제품 vs 상온 (' + esc(CLAIM_DIV_YEAR) + ')</div><div class="stat-val" style="font-size:17.5px;">유제품 ' + (divPack ? divPack.dairy.total_ppm : 0) + ' / 상온 ' + (divPack ? divPack.rt.total_ppm : 0) + '</div><div class="stat-sub">단위 : PPM</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">전사 연간 목표 PPM</div><div class="stat-val">' + cl.target_ppm + ' PPM 이하</div><div class="stat-sub">품질안전부문 관리기준</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">[' + (isAll ? '전사 통합' : (CLAIM_SCOPE_TAB === 'DAIRY' ? '유제품 부문' : '상온 부문')) + '] 누적 실적</div><div class="stat-val">' + curPpm + ' PPM</div><div class="stat-sub">누적 클레임 ' + curCnt.toLocaleString() + '건</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">회계연도 말(2월) AI 예측</div><div class="stat-val" style="color:' + (curPred > cl.target_ppm ? 'var(--err-fg)' : 'var(--yonsei-blue)') + ';">' + curPred + ' PPM</div><div class="stat-sub">추세 기울기 ' + curSlope + '</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">유제품 vs 상온 비교 (' + esc(CLAIM_DIV_YEAR) + ')</div><div class="stat-val" style="font-size:17.5px;">유제품 ' + (dairyDiv ? dairyDiv.total_ppm : 0) + ' / 상온 ' + (rtDiv ? rtDiv.total_ppm : 0) + '</div><div class="stat-sub">단위 : PPM</div></div>' +
     '</div>' +
     '<div class="panel-card">' +
-      '<div class="panel-title">월별 클레임 PPM 추이 (2025년 vs 2026년 실적 및 목표선)</div>' +
-      '<div style="height:260px;"><canvas id="chartClaimTrend"></canvas></div>' +
+      '<div class="panel-title"><span>📈 [' + esc(scopeTitle) + '] 월별 PPM 실적 · 추세선 · AI 예상 추세선(점선)</span></div>' +
+      '<div style="height:280px;"><canvas id="chartClaimTrend"></canvas></div>' +
     '</div>' +
-    '<div class="panel-card">' +
-      '<div class="panel-title">' +
-        '<span>유형별 클레임 건수 · 생산수량 · PPM 상세 집계 (' + esc(CLAIM_DIV_YEAR) + ')</span>' +
-        '<select class="form-ctrl" style="width:140px;" onchange="CLAIM_DIV_YEAR=this.value; renderClaimView()">' +
-          years.map(function(y) { return '<option value="' + esc(y) + '" ' + (CLAIM_DIV_YEAR === y ? 'selected' : '') + '>' + esc(y) + '</option>'; }).join('') +
-        '</select>' +
+    '<div id="claimBottomTables"></div>';
+
+  const tblBox = document.getElementById('claimBottomTables');
+  if (isAll) {
+    const tRows = cl.trend_rows || [];
+    tblBox.innerHTML =
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>1. 월별(3월~2월) 전사 클레임 건수 · 생산수량 · PPM 추이</span></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>구분</th>' + tRows.map(function(r) { return '<th>' + esc(r['월']) + '</th>'; }).join('') + '</tr></thead>' +
+          '<tbody>' +
+            '<tr><td><b>2026년 PPM</b></td>' + tRows.map(function(r) { return '<td><b>' + (r._기록여부 ? r['2026년_PPM'] : '-') + '</b></td>'; }).join('') + '</tr>' +
+            '<tr><td>2026년 건수</td>' + tRows.map(function(r) { return '<td>' + (r._기록여부 ? r['2026년_건수'] + '건' : '-') + '</td>'; }).join('') + '</tr>' +
+            '<tr><td>2025년 PPM</td>' + tRows.map(function(r) { return '<td class="cell-gray">' + r['2025년_PPM'] + '</td>'; }).join('') + '</tr>' +
+          '</tbody></table></div>' +
       '</div>' +
-      '<div class="tbl-wrap"><table class="data-tbl">' +
-        '<thead><tr><th>연도</th><th>유형</th><th>합계 건수</th><th>합계 생산수량</th><th>합계 PPM</th></tr></thead><tbody>' +
-        (cl.category_rows || []).filter(function(r) { return r['연도'] === CLAIM_DIV_YEAR; }).map(function(r) {
-          const isSum = r['유형'] === '합계';
-          return '<tr style="' + (isSum ? 'background:#EFF6FF; font-weight:800;' : '') + '">' +
-            '<td>' + esc(r['연도']) + '</td><td class="td-left"><b>' + esc(r['유형']) + '</b></td><td>' + r['합계_건수'].toLocaleString() + '건</td><td>' + r['합계_생산수량'].toLocaleString() + '개</td><td><b>' + r['합계_PPM'] + ' PPM</b></td></tr>';
-        }).join('') +
-      '</tbody></table></div>' +
-    '</div>';
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>2. 세부 유형별 클레임 건수 · 생산수량 · PPM 집계 (' + esc(CLAIM_DIV_YEAR) + ')</span></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>연도</th><th>유형</th><th>합계 건수</th><th>합계 생산수량</th><th>합계 PPM</th></tr></thead><tbody>' +
+          (cl.category_rows || []).filter(function(r) { return r['연도'] === CLAIM_DIV_YEAR; }).map(function(r) {
+            const isSum = r['유형'] === '합계';
+            return '<tr style="' + (isSum ? 'background:#EFF6FF; font-weight:800;' : '') + '">' +
+              '<td>' + esc(r['연도']) + '</td><td class="td-left"><b>' + esc(r['유형']) + '</b></td><td>' + r['합계_건수'].toLocaleString() + '건</td><td>' + r['합계_생산수량'].toLocaleString() + '개</td><td><b>' + r['합계_PPM'] + ' PPM</b></td></tr>';
+          }).join('') +
+        '</tbody></table></div>' +
+      '</div>';
+  } else if (activeDiv) {
+    const mList = activeDiv.monthly || [];
+    const rawCats = activeDiv.raw || [];
+    tblBox.innerHTML =
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>1. [' + esc(scopeTitle) + '] 월별 통합 건수 · 생산수량 · PPM (' + esc(CLAIM_DIV_YEAR) + ')</span></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>구분</th>' + mList.map(function(m) { return '<th>' + esc(m['월']) + '</th>'; }).join('') + '</tr></thead>' +
+          '<tbody>' +
+            '<tr style="background:#EFF6FF;"><td><b>부문 통합 PPM</b></td>' + mList.map(function(m) { return '<td><b>' + (m._기록여부 ? m['부문_통합_PPM'] : '-') + '</b></td>'; }).join('') + '</tr>' +
+            '<tr><td>합산 클레임 건수</td>' + mList.map(function(m) { return '<td>' + (m._기록여부 ? m['합산_건수'] + '건' : '-') + '</td>'; }).join('') + '</tr>' +
+            '<tr><td>합산 생산수량</td>' + mList.map(function(m) { return '<td style="font-size:11.5px;">' + (m._기록여부 ? m['합산_생산수량'].toLocaleString() : '-') + '</td>'; }).join('') + '</tr>' +
+          '</tbody></table></div>' +
+      '</div>' +
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>2. 부문 소속 세부 카테고리별 집계 (' + esc(CLAIM_DIV_YEAR) + ')</span></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>소속 카테고리</th><th>누적 건수</th><th>누적 생산수량</th><th>카테고리 PPM</th></tr></thead><tbody>' +
+          rawCats.map(function(r) {
+            return '<tr><td class="td-left"><b>' + esc(r['유형']) + '</b></td><td>' + r['합계_건수'].toLocaleString() + '건</td><td>' + r['합계_생산수량'].toLocaleString() + '개</td><td><b>' + r['합계_PPM'] + ' PPM</b></td></tr>';
+          }).join('') +
+          '<tr style="background:#EFF6FF; font-weight:800;"><td class="td-left">부문 합산 총계</td><td>' + activeDiv.total_cnt.toLocaleString() + '건</td><td>' + activeDiv.total_prod.toLocaleString() + '개</td><td>' + activeDiv.total_ppm + ' PPM</td></tr>' +
+        '</tbody></table></div>' +
+      '</div>';
+  }
 
   destroyChart('claimTrend');
   const ctx = document.getElementById('chartClaimTrend');
-  if (ctx && cl.trend_rows && cl.trend_rows.length) {
-    CHARTS['claimTrend'] = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: cl.trend_rows.map(function(r) { return r['월']; }),
-        datasets: [
-          { label: '2026년 PPM', data: cl.trend_rows.map(function(r) { return r._기록여부 ? r['2026년_PPM'] : null; }), borderColor: '#003378', backgroundColor: '#003378', tension: 0.25, borderWidth: 2.5 },
-          { label: '2025년 PPM', data: cl.trend_rows.map(function(r) { return r['2025년_PPM']; }), borderColor: '#94A3B8', borderDash: [4, 4], tension: 0.2, borderWidth: 1.5 },
-          { label: '목표 기준선(1.12)', data: cl.trend_rows.map(function() { return cl.target_ppm; }), borderColor: '#EF4444', borderDash: [2, 2], pointRadius: 0, borderWidth: 1.5 }
-        ]
-      },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
+  if (ctx) {
+    if (isAll && cl.trend_rows && cl.trend_rows.length) {
+      CHARTS['claimTrend'] = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: cl.trend_rows.map(function(r) { return r['월']; }),
+          datasets: [
+            { label: '2026년 실적 PPM', data: cl.trend_rows.map(function(r) { return r._기록여부 ? r['2026년_PPM'] : null; }), borderColor: '#003378', backgroundColor: '#003378', tension: 0.22, borderWidth: 3, pointRadius: 4 },
+            { label: '실적 추세선', data: cl.act_line || [], borderColor: '#0284C7', borderWidth: 2, pointRadius: 0, fill: false },
+            { label: 'AI 예상 추세선 (2월말 예측)', data: cl.fc_line || [], borderColor: '#7C3AED', borderDash: [6, 4], borderWidth: 2.5, pointRadius: 3, fill: false },
+            { label: '2025년 PPM', data: cl.trend_rows.map(function(r) { return r['2025년_PPM']; }), borderColor: '#94A3B8', borderDash: [3, 3], tension: 0.2, borderWidth: 1.5, pointRadius: 2 },
+            { label: '목표 기준선(1.12)', data: cl.trend_rows.map(function() { return cl.target_ppm; }), borderColor: '#EF4444', borderDash: [2, 2], pointRadius: 0, borderWidth: 1.5 }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, spanGaps: false }
+      });
+    } else if (activeDiv && activeDiv.monthly) {
+      CHARTS['claimTrend'] = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: activeDiv.monthly.map(function(m) { return m['월']; }),
+          datasets: [
+            { label: (CLAIM_SCOPE_TAB === 'DAIRY' ? '유제품 부문 통합 PPM' : '상온 부문 통합 PPM'), data: activeDiv.monthly.map(function(m) { return m._기록여부 ? m['부문_통합_PPM'] : null; }), borderColor: '#003378', backgroundColor: '#003378', tension: 0.22, borderWidth: 3, pointRadius: 4 },
+            { label: '부문 실적 추세선', data: activeDiv.act_line || [], borderColor: '#0284C7', borderWidth: 2, pointRadius: 0, fill: false },
+            { label: 'AI 예상 추세선 (2월말 예측)', data: activeDiv.fc_line || [], borderColor: '#7C3AED', borderDash: [6, 4], borderWidth: 2.5, pointRadius: 3, fill: false },
+            { label: '전사 목표선(1.12)', data: activeDiv.monthly.map(function() { return cl.target_ppm; }), borderColor: '#EF4444', borderDash: [2, 2], pointRadius: 0, borderWidth: 1.5 }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, spanGaps: false }
+      });
+    }
   }
 }
 
 // ==============================================================================
-// [VIEW 12] 원가절감 전용 분석 화면 (KPI 1번 카드 클릭 시에만 진입)
+// [VIEW 12] 원가절감 상세 분석 (상단 품질안전부문 통합 + 하단 좌[식품안전팀] · 우[품질관리팀] 분할 + AI 예측추세선)
 // ==============================================================================
+function buildCostChartConfig(labels, barVals, stdVals, actLine, fcLine, barLabel) {
+  return {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          type: 'line',
+          label: '실적 추세선',
+          data: actLine || [],
+          borderColor: '#0284C7',
+          borderWidth: 2.2,
+          pointRadius: 0,
+          fill: false,
+          order: 1
+        },
+        {
+          type: 'line',
+          label: 'AI 연말 예측 추세선',
+          data: fcLine || [],
+          borderColor: '#7C3AED',
+          borderDash: [6, 4],
+          borderWidth: 2.5,
+          pointRadius: 3,
+          fill: false,
+          order: 1
+        },
+        {
+          type: 'line',
+          label: '월별 목표기준',
+          data: stdVals,
+          borderColor: '#EF4444',
+          borderDash: [3, 3],
+          borderWidth: 1.6,
+          pointRadius: 0,
+          fill: false,
+          order: 1
+        },
+        {
+          type: 'bar',
+          label: barLabel,
+          data: barVals,
+          backgroundColor: '#003378',
+          borderRadius: 4,
+          order: 2
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      spanGaps: false
+    }
+  };
+}
+
 function renderCostView() {
   const cs = BUNDLE.cost;
+  const rows = cs.rows || [];
+  const labels = rows.map(function(r) { return r['월']; });
 
   document.getElementById('view-cost').innerHTML =
     '<div class="page-hdr">' +
-      '<div><h2 class="page-h2">1. 원가절감 활동 실적 및 연말 예측 상세</h2><div class="page-desc">\'원가절감 현황\' 시트 기반 품질안전부문 · 식품안전팀 · 품질관리팀 월별 절감액을 자동 집계합니다.</div></div>' +
+      '<div>' +
+        '<h2 class="page-h2">1. 원가절감 활동 통합 · 팀별 실적 및 AI 연말 예측 분석</h2>' +
+        '<div class="page-desc">상단에 품질안전부문 통합(식안+품관 합산) 추이를, 하단 좌·우에 식품안전팀과 품질관리팀 각각의 실적 및 AI 예측 추세선을 표시합니다.</div>' +
+      '</div>' +
       '<div style="display:flex; gap:8px;">' +
         '<button class="btn btn-primary" onclick="switchView(\'kpi\')">← 2026 부문 8대 KPI로</button>' +
         '<button class="btn" onclick="switchView(\'home\')">모닝 브리핑</button>' +
       '</div>' +
     '</div>' +
     '<div class="kpi-grid-4">' +
-      '<div class="stat-card"><div class="stat-lbl">품질안전부문 누적 (목표 ' + cs.targets['부문'] + '억)</div><div class="stat-val">' + cs.dept.actual_uk + '억원 (' + cs.dept.rate + '%)</div><div class="stat-sub">합계 ' + cs.dept.actual_man.toLocaleString() + '만원</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">품질안전부문 연말 추세 예측</div><div class="stat-val">' + cs.dept.proj_uk + '억원 (' + cs.dept.proj_rate + '%)</div><div class="stat-sub">기록 ' + cs.dept.recorded_months + '개월 기준 예측</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">식품안전팀 누적 (목표 ' + cs.targets['식품안전팀'] + '억)</div><div class="stat-val">' + cs.fs.actual_uk + '억원 (' + cs.fs.rate + '%)</div><div class="stat-sub">' + cs.fs.actual_man.toLocaleString() + '만원 절감</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">품질관리팀 누적 (목표 ' + cs.targets['품질관리팀'] + '억)</div><div class="stat-val">' + cs.qc.actual_uk + '억원 (' + cs.qc.rate + '%)</div><div class="stat-sub">' + cs.qc.actual_man.toLocaleString() + '만원 절감</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">품질안전부문 통합 누적 (목표 ' + cs.targets['부문'] + '억)</div><div class="stat-val">' + cs.dept.actual_uk + '억원 (' + cs.dept.rate + '%)</div><div class="stat-sub">식안+품관 합산 ' + cs.dept.actual_man.toLocaleString() + '만원</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">품질안전부문 AI 연말 예측</div><div class="stat-val">' + cs.dept.proj_uk + '억원 (' + cs.dept.proj_rate + '%)</div><div class="stat-sub">기록 ' + cs.dept.recorded_months + '개월 추세 기반 예측</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">식품안전팀 누적 / AI 예측 (목표 ' + cs.targets['식품안전팀'] + '억)</div><div class="stat-val">' + cs.fs.actual_uk + '억원 (' + cs.fs.rate + '%)</div><div class="stat-sub">연말 AI 예측 : <b>' + cs.fs.proj_uk + '억원 (' + cs.fs.proj_rate + '%)</b></div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">품질관리팀 누적 / AI 예측 (목표 ' + cs.targets['품질관리팀'] + '억)</div><div class="stat-val">' + cs.qc.actual_uk + '억원 (' + cs.qc.rate + '%)</div><div class="stat-sub">연말 AI 예측 : <b>' + cs.qc.proj_uk + '억원 (' + cs.qc.proj_rate + '%)</b></div></div>' +
     '</div>' +
+    // 1) 상단 대형 그래프: 품질안전부문 통합
     '<div class="panel-card">' +
-      '<div class="panel-title">월별 품질안전부문 원가절감 실적 vs 목표 기준 (단위: 만원)</div>' +
-      '<div style="height:250px;"><canvas id="chartCostTrend"></canvas></div>' +
+      '<div class="panel-title">' +
+        '<span>📊 [품질안전부문 통합] 월별 원가절감 합산 실적 · 추세선 · AI 연말 예측 추세선 (단위: 만원)</span>' +
+        '<span class="badge badge-info">연말 AI 예측 ' + cs.dept.proj_uk + '억원 (' + cs.dept.proj_rate + '%)</span>' +
+      '</div>' +
+      '<div style="height:260px;"><canvas id="chartCostDept"></canvas></div>' +
     '</div>' +
+    // 2) 중단 좌·우 분할: 좌측 식품안전팀 / 우측 품질관리팀
+    '<div style="display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:12px; margin-bottom:12px;">' +
+      '<div class="panel-card" style="margin-bottom:0;">' +
+        '<div class="panel-title">' +
+          '<span>🛡️ [식품안전팀] 원가절감 실적 및 AI 예측 (목표 ' + cs.targets['식품안전팀'] + '억)</span>' +
+          '<span class="badge badge-ok">누적 ' + cs.fs.actual_uk + '억 · 예측 ' + cs.fs.proj_uk + '억</span>' +
+        '</div>' +
+        '<div style="height:220px;"><canvas id="chartCostFs"></canvas></div>' +
+      '</div>' +
+      '<div class="panel-card" style="margin-bottom:0;">' +
+        '<div class="panel-title">' +
+          '<span>🔬 [품질관리팀] 원가절감 실적 및 AI 예측 (목표 ' + cs.targets['품질관리팀'] + '억)</span>' +
+          '<span class="badge badge-info">누적 ' + cs.qc.actual_uk + '억 · 예측 ' + cs.qc.proj_uk + '억</span>' +
+        '</div>' +
+        '<div style="height:220px;"><canvas id="chartCostQc"></canvas></div>' +
+      '</div>' +
+    '</div>' +
+    // 3) 하단 월별 통합 상세 표
     '<div class="panel-card">' +
       '<div class="panel-title">월별 원가절감 상세 집계표 (단위: 만원)</div>' +
       '<div class="tbl-wrap"><table class="data-tbl">' +
-        '<thead><tr><th>월</th><th>부문 실적</th><th>부문 기준</th><th>달성률</th><th>식안팀 실적</th><th>식안팀 달성률</th><th>품관팀 실적</th><th>품관팀 달성률</th></tr></thead><tbody>' +
-        (cs.rows || []).map(function(r) {
-          return '<tr><td><b>' + esc(r['월']) + '</b></td><td><b>' + r['부문_실적(만원)'].toLocaleString() + '</b></td><td>' + r['부문_기준(만원)'].toLocaleString() + '</td><td>' + r['부문_달성률(%)'] + '%</td><td>' + r['식품안전팀_실적(만원)'].toLocaleString() + '</td><td>' + r['식품안전팀_달성률(%)'] + '%</td><td>' + r['품질관리팀_실적(만원)'].toLocaleString() + '</td><td>' + r['품질관리팀_달성률(%)'] + '%</td></tr>';
+        '<thead><tr><th>월</th><th>부문 합산 실적</th><th>부문 기준</th><th>부문 달성률</th><th>식품안전팀 실적</th><th>식안팀 기준</th><th>식안팀 달성률</th><th>품질관리팀 실적</th><th>품관팀 기준</th><th>품관팀 달성률</th></tr></thead><tbody>' +
+        rows.map(function(r) {
+          return '<tr>' +
+            '<td><b>' + esc(r['월']) + '</b></td>' +
+            '<td><b>' + r['부문_실적(만원)'].toLocaleString() + '</b></td>' +
+            '<td>' + r['부문_기준(만원)'].toLocaleString() + '</td>' +
+            '<td><b>' + r['부문_달성률(%)'] + '%</b></td>' +
+            '<td><b>' + r['식품안전팀_실적(만원)'].toLocaleString() + '</b></td>' +
+            '<td>' + r['식품안전팀_기준(만원)'].toLocaleString() + '</td>' +
+            '<td>' + r['식품안전팀_달성률(%)'] + '%</td>' +
+            '<td><b>' + r['품질관리팀_실적(만원)'].toLocaleString() + '</b></td>' +
+            '<td>' + r['품질관리팀_기준(만원)'].toLocaleString() + '</td>' +
+            '<td>' + r['품질관리팀_달성률(%)'] + '%</td>' +
+          '</tr>';
         }).join('') +
       '</tbody></table></div>' +
     '</div>';
 
-  destroyChart('costTrend');
-  const ctx = document.getElementById('chartCostTrend');
-  if (ctx && cs.rows && cs.rows.length) {
-    CHARTS['costTrend'] = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: cs.rows.map(function(r) { return r['월']; }),
-        datasets: [
-          { label: '부문 실적(만원)', data: cs.rows.map(function(r) { return r['부문_실적(만원)']; }), backgroundColor: '#003378' },
-          { label: '월별 목표기준(만원)', data: cs.rows.map(function(r) { return r['부문_기준(만원)']; }), type: 'line', borderColor: '#ED7D31', borderWidth: 2.5 }
-        ]
-      },
-      options: { responsive: true, maintainAspectRatio: false }
-    });
+  destroyChart('costDept');
+  destroyChart('costFs');
+  destroyChart('costQc');
+
+  if (rows.length) {
+    const ctxD = document.getElementById('chartCostDept');
+    if (ctxD) {
+      CHARTS['costDept'] = new Chart(ctxD, buildCostChartConfig(
+        labels,
+        rows.map(function(r) { return r._기록여부 ? r['부문_실적(만원)'] : null; }),
+        rows.map(function(r) { return r['부문_기준(만원)']; }),
+        cs.dept.act_line,
+        cs.dept.fc_line,
+        '품질안전부문 합산 실적(만원)'
+      ));
+    }
+    const ctxF = document.getElementById('chartCostFs');
+    if (ctxF) {
+      CHARTS['costFs'] = new Chart(ctxF, buildCostChartConfig(
+        labels,
+        rows.map(function(r) { return r._기록여부 ? r['식품안전팀_실적(만원)'] : null; }),
+        rows.map(function(r) { return r['식품안전팀_기준(만원)']; }),
+        cs.fs.act_line,
+        cs.fs.fc_line,
+        '식품안전팀 실적(만원)'
+      ));
+    }
+    const ctxQ = document.getElementById('chartCostQc');
+    if (ctxQ) {
+      CHARTS['costQc'] = new Chart(ctxQ, buildCostChartConfig(
+        labels,
+        rows.map(function(r) { return r._기록여부 ? r['품질관리팀_실적(만원)'] : null; }),
+        rows.map(function(r) { return r['품질관리팀_기준(만원)']; }),
+        cs.qc.act_line,
+        cs.qc.fc_line,
+        '품질관리팀 실적(만원)'
+      ));
+    }
   }
 }
 

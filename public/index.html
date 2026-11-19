@@ -2718,6 +2718,33 @@ function renderDairyPackTableHtml(rows, isBottleMode) {
     '</tbody></table></div>';
 }
 
+let PROC_RT_HIST_DT = '';
+let PROC_SOY_HIST_DT = '';
+
+function renderDateChipsBarHtml(datesList, activeDt, stateVarName) {
+  if (!datesList || !datesList.length) {
+    return '<div style="color:var(--text-muted); font-size:12.5px;">아직 백업된 누적 이력 날짜가 없습니다.</div>';
+  }
+  const topChips = datesList.slice(0, 14);
+  return '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">' +
+    '<div style="display:flex; gap:5px; flex-wrap:wrap;">' +
+      topChips.map(function(d) {
+        const shortLbl = d.length >= 10 ? d.slice(5) : d;
+        const isAct = (d === activeDt);
+        return '<button class="btn btn-sm ' + (isAct ? 'btn-primary' : '') + '" onclick="' + stateVarName + '=\'' + esc(d) + '\'; renderProcessView()">📅 ' + esc(shortLbl) + '</button>';
+      }).join('') +
+    '</div>' +
+    '<div style="display:flex; align-items:center; gap:6px;">' +
+      '<span style="font-size:12px; color:var(--text-muted); font-weight:700;">전체 날짜 선택 (' + datesList.length + '일) :</span>' +
+      '<select class="form-ctrl" style="width:155px; padding:4px 8px;" onchange="' + stateVarName + '=this.value; renderProcessView()">' +
+        datesList.map(function(d) {
+          return '<option value="' + esc(d) + '" ' + (d === activeDt ? 'selected' : '') + '>' + esc(d) + '</option>';
+        }).join('') +
+      '</select>' +
+    '</div>' +
+  '</div>';
+}
+
 function renderProcessView() {
   const pr = BUNDLE.process;
   const ps = pr.summary;
@@ -2726,7 +2753,7 @@ function renderProcessView() {
     '<div class="page-hdr">' +
       '<div>' +
         '<h2 class="page-h2">공정 및 배양 실시간 통합 관제</h2>' +
-        '<div class="page-desc">메인 상온 멸균·포장 CCP를 우선 표출하며, 우유 포장일보(카톤우유 상단 · 병우유 하단 분리), 발효유 포장일보, 두유 배양검사를 통합 관제합니다.</div>' +
+        '<div class="page-desc">상단에 당일·전일 실시간 공정을 표출하며, 하단에서 날짜 버튼을 클릭해 지난 누적 이력 DB를 즉시 조회할 수 있습니다.</div>' +
       '</div>' +
       '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
     '</div>' +
@@ -2739,9 +2766,20 @@ function renderProcessView() {
 
   const box = document.getElementById('procTabBox');
 
+  // ==================== [1] 상온 제품 공정·멸균 CCP + 하단 날짜 클릭식 누적 이력 DB ====================
   if (PROC_MAIN_TAB === 'rt') {
     const rtObj = PROC_RT_DAY === 'yest' ? pr.rt_yest : pr.rt_today;
     const spNotes = (rtObj && rtObj.ster_special_notes) ? rtObj.ster_special_notes : [];
+
+    const rtDateSet = {};
+    (pr.rt_hist_p || []).forEach(function(r) { if (r['생산일자']) rtDateSet[r['생산일자']] = true; });
+    (pr.rt_hist_c || []).forEach(function(c) { if (c['생산일자']) rtDateSet[c['생산일자']] = true; });
+    const rtHistDates = Object.keys(rtDateSet).sort().reverse();
+    if (!PROC_RT_HIST_DT && rtHistDates.length) PROC_RT_HIST_DT = rtHistDates[0];
+
+    const selRtP = (pr.rt_hist_p || []).filter(function(r) { return r['생산일자'] === PROC_RT_HIST_DT; });
+    const selRtC = (pr.rt_hist_c || []).filter(function(c) { return c['생산일자'] === PROC_RT_HIST_DT; });
+
     box.innerHTML =
       '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">' +
         '<div style="display:flex; gap:8px;">' +
@@ -2750,7 +2788,7 @@ function renderProcessView() {
         '</div>' +
         (spNotes.length ? '<span class="badge badge-warn">특이·전달사항 ' + spNotes.length + '건</span>' : '<span class="badge badge-ok">기준이탈 및 설비 특이사항 없음</span>') +
       '</div>' +
-      (!rtObj ? '<div class="panel-card">상온 공정일보 데이터를 불러올 수 없습니다.</div>' :
+      (!rtObj ? '<div class="panel-card">상온 공정일보 실시간 탭 데이터를 불러올 수 없습니다.</div>' :
         (spNotes.length ? '<div class="panel-card" style="background:#FFFBEB; border-color:#FDE68A; padding:10px 14px; font-weight:700; color:#78350F;">' +
           spNotes.map(function(n) { return '<div>• ' + esc(n) + '</div>'; }).join('') +
         '</div>' : '') +
@@ -2786,10 +2824,37 @@ function renderProcessView() {
             }).join('') +
           '</tbody></table></div>' +
         '</div>'
-      );
+      ) +
+      // 4. 상온 누적 이력 DB (날짜 버튼 클릭 조회 복원)
+      '<div class="panel-card" style="border:2px solid #BFDBFE; background:#F8FAFC;">' +
+        '<div class="panel-title">' +
+          '<span>📚 4. [상온 누적 이력 DB] 지난 상온 포장 · 멸균 CCP 날짜별 조회 (선택일: ' + esc(PROC_RT_HIST_DT || '-') + ')</span>' +
+          '<span class="badge badge-info">포장 ' + selRtP.length + '건 · CCP ' + selRtC.length + '건</span>' +
+        '</div>' +
+        renderDateChipsBarHtml(rtHistDates, PROC_RT_HIST_DT, 'PROC_RT_HIST_DT') +
+        '<div style="font-size:13px; font-weight:800; color:var(--yonsei-blue); margin:6px 0;">① [' + esc(PROC_RT_HIST_DT || '-') + '] 상온 포장 생산 이력</div>' +
+        '<div class="tbl-wrap" style="margin-bottom:12px;"><table class="data-tbl">' +
+          '<thead><tr><th>생산일자</th><th>원본탭</th><th>포장호기</th><th>생산 제품명</th><th>표기 소비기한</th><th>확인시간</th></tr></thead><tbody>' +
+          (selRtP.length ? selRtP.map(function(r) {
+            return '<tr><td><b>' + esc(r['생산일자']) + '</b></td><td>' + esc(r['원본탭명'] || '-') + '</td><td><b>' + esc(r['포장호기']) + '</b></td><td class="td-left"><strong>' + esc(r['제품명']) + '</strong></td><td><b>' + esc(r['표기소비기한_원문'] || '-') + '</b></td><td>' + esc(r['확인시간'] || '-') + '</td></tr>';
+          }).join('') : '<tr><td colspan="6" class="cell-gray">선택한 날짜의 상온 생산 이력이 없습니다.</td></tr>') +
+        '</tbody></table></div>' +
+        '<div style="font-size:13px; font-weight:800; color:var(--yonsei-blue); margin:6px 0;">② [' + esc(PROC_RT_HIST_DT || '-') + '] UHT 멸균기 · 무균포장기 CCP 이력</div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>생산일자</th><th>기록분류</th><th>설비·호기</th><th>세부항목</th><th>기록내용 · 수치</th><th>특이사항</th></tr></thead><tbody>' +
+          (selRtC.length ? selRtC.map(function(c) {
+            const keys = Object.keys(c);
+            return '<tr><td>' + esc(c['생산일자'] || '-') + '</td><td>' + esc(c['기록분류'] || c[keys[2]] || '-') + '</td><td><b>' + esc(c['설비_호기'] || c['포장호기'] || c[keys[3]] || '-') + '</b></td><td>' + esc(c['세부항목'] || c[keys[4]] || '-') + '</td><td class="td-left">' + esc(c['기록내용_수치'] || c[keys[5]] || '-') + '</td><td class="td-left">' + esc(c['특이사항'] || '-') + '</td></tr>';
+          }).join('') : '<tr><td colspan="6" class="cell-gray">선택한 날짜의 상온 CCP 이력이 없습니다.</td></tr>') +
+        '</tbody></table></div>' +
+      '</div>';
 
+  // ==================== [2] 유제품 포장일보 + 하단 날짜 클릭식 누적 이력 DB ====================
   } else if (PROC_MAIN_TAB === 'dairy') {
-    const histDates = Object.keys(pr.dairy_hist_times_map || {}).sort().reverse();
+    const dyDateSet = {};
+    Object.keys(pr.dairy_hist_times_map || {}).forEach(function(d) { if (d) dyDateSet[d] = true; });
+    (pr.dairy_hist_p || []).forEach(function(r) { if (r['생산일자']) dyDateSet[r['생산일자']] = true; });
+    const histDates = Object.keys(dyDateSet).sort().reverse();
     if (!PROC_DAIRY_HIST_DT && histDates.length) PROC_DAIRY_HIST_DT = histDates[0];
 
     const histTimes = (pr.dairy_hist_times_map && pr.dairy_hist_times_map[PROC_DAIRY_HIST_DT]) || [];
@@ -2813,41 +2878,46 @@ function renderProcessView() {
         renderRuntimeCardsHtml(pr.ferm_run_times) +
         renderDairyPackTableHtml(pr.ferm_pack, false) +
       '</div>' +
-      '<div class="panel-card">' +
+      '<div class="panel-card" style="border:2px solid #BFDBFE; background:#F8FAFC;">' +
         '<div class="panel-title">' +
-          '<span>📚 [누적 이력 DB] 지난 우유(카톤·병) · 발효유 포장일보 날짜별 조회</span>' +
-          '<select class="form-ctrl" style="width:170px;" onchange="PROC_DAIRY_HIST_DT=this.value; renderProcessView()">' +
-            (histDates.length ? histDates.map(function(d) {
-              return '<option value="' + esc(d) + '" ' + (d === PROC_DAIRY_HIST_DT ? 'selected' : '') + '>' + esc(d) + '</option>';
-            }).join('') : '<option value="">저장된 이력 없음</option>') +
-          '</select>' +
+          '<span>📚 [유제품 누적 이력 DB] 지난 우유(카톤·병) · 발효유 포장일보 날짜별 조회 (선택일: ' + esc(PROC_DAIRY_HIST_DT || '-') + ')</span>' +
+          '<span class="badge badge-info">총 ' + histProds.length + '품목</span>' +
         '</div>' +
+        renderDateChipsBarHtml(histDates, PROC_DAIRY_HIST_DT, 'PROC_DAIRY_HIST_DT') +
         renderRuntimeCardsHtml(histTimes) +
         '<div class="tbl-wrap"><table class="data-tbl">' +
-          '<thead><tr><th>생산일자</th><th>라인구분</th><th>제품명</th><th>확인시간</th><th>표기 소비기한</th><th>표시사항</th><th>상부/실링</th><th>하부/외포장</th><th>용량</th><th>관능</th></tr></thead><tbody>' +
+          '<thead><tr><th>생산일자</th><th>라인구분</th><th>제품명 (용량)</th><th>확인시간</th><th>Tank번호</th><th>표기 소비기한</th><th>표시사항</th><th>접착 · 외관</th><th>용량</th><th>관능</th><th>판정</th></tr></thead><tbody>' +
           (histProds.length ? histProds.map(function(r) {
             const isBot = r['라인구분'] === '우유(병포장)';
             return '<tr>' +
-              '<td>' + esc(r['생산일자']) + '</td>' +
+              '<td><b>' + esc(r['생산일자']) + '</b></td>' +
               '<td><span class="badge ' + (isBot ? 'badge-purple' : 'badge-info') + '">' + esc(r['라인구분']) + '</span></td>' +
-              '<td class="td-left"><b>' + esc(r['제품명']) + '</b></td>' +
+              '<td class="td-left"><strong>' + esc(r['제품명']) + '</strong></td>' +
               '<td>' + esc(r['확인시간'] || '-') + '</td>' +
+              '<td>' + esc(r['Tank번호'] || '-') + '</td>' +
               '<td><b>' + esc(r['표기소비기한_원문'] || '-') + '</b></td>' +
               '<td>' + esc(r['표시사항'] || '-') + '</td>' +
-              '<td>' + esc(r['상부_실링'] || '-') + '</td>' +
-              '<td>' + esc(r['하부_외포장'] || '-') + '</td>' +
+              '<td>' + esc(r['접착_외관_요약'] || r['접착및외관'] || '-') + '</td>' +
               '<td>' + esc(r['제품용량'] || '-') + '</td>' +
-              '<td>' + esc(r['관능검사'] || '-') + '</td>' +
+              '<td>' + esc(r['관능검사'] || r['관능'] || '-') + '</td>' +
+              '<td class="cell-green">' + esc(r['판정'] || '적합') + '</td>' +
             '</tr>';
-          }).join('') : '<tr><td colspan="10" class="cell-gray">선택한 날짜의 포장 이력이 없습니다.</td></tr>') +
+          }).join('') : '<tr><td colspan="11" class="cell-gray">선택한 날짜의 포장 이력이 없습니다.</td></tr>') +
         '</tbody></table></div>' +
       '</div>';
 
+  // ==================== [3] 두유 배양검사 일보 + 하단 날짜 클릭식 누적 이력 DB ====================
   } else {
     const soyMap = pr.soy_tabs_map || {};
     const tabKeys = Object.keys(soyMap);
     if (!soyMap[PROC_SOY_TAB] && tabKeys.length) PROC_SOY_TAB = tabKeys[0];
     const curSoy = soyMap[PROC_SOY_TAB] || { blocks: [], hourly: [] };
+
+    const soyDateSet = {};
+    (pr.soy_hist || []).forEach(function(s) { if (s['생산일자']) soyDateSet[s['생산일자']] = true; });
+    const soyHistDates = Object.keys(soyDateSet).sort().reverse();
+    if (!PROC_SOY_HIST_DT && soyHistDates.length) PROC_SOY_HIST_DT = soyHistDates[0];
+    const selSoyH = (pr.soy_hist || []).filter(function(s) { return s['생산일자'] === PROC_SOY_HIST_DT; });
 
     box.innerHTML =
       '<div style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;">' +
@@ -2874,7 +2944,22 @@ function renderProcessView() {
               return '<tr><td><b>' + esc(h['포장기']) + '</b></td><td>' + esc(h['시간대']) + '</td><td class="td-left">' + esc(h['샘플체크']) + '</td><td>' + esc(h['Strip']) + '</td><td>' + esc(h['Paper']) + '</td></tr>';
             }).join('') +
           '</tbody></table></div>' +
-        '</div>' : '');
+        '</div>' : '') +
+      '<div class="panel-card" style="border:2px solid #BFDBFE; background:#F8FAFC;">' +
+        '<div class="panel-title">' +
+          '<span>📚 3. [두유 배양 누적 이력 DB] 생산일자별 조회 (선택일: ' + esc(PROC_SOY_HIST_DT || '-') + ')</span>' +
+          '<span class="badge badge-info">' + selSoyH.length + '건</span>' +
+        '</div>' +
+        renderDateChipsBarHtml(soyHistDates, PROC_SOY_HIST_DT, 'PROC_SOY_HIST_DT') +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>생산일자</th><th>포장기</th><th>배양구분</th><th>품목명</th><th>표기 소비기한</th><th>검사일자</th><th>생산시간</th><th>총검사수량</th><th>오염수량</th><th>검사자</th><th>판정</th></tr></thead><tbody>' +
+          (selSoyH.length ? selSoyH.map(function(s) {
+            const jv = s['판정'] || '적합';
+            const pCls = String(jv).indexOf('부적합') !== -1 ? 'cell-red' : (jv === '검사전' ? 'cell-yellow' : 'cell-green');
+            return '<tr><td><b>' + esc(s['생산일자']) + '</b></td><td><b>' + esc(s['포장기']) + '</b></td><td>' + esc(s['배양구분'] || '-') + '</td><td class="td-left"><strong>' + esc(s['품목명']) + '</strong></td><td><b>' + esc(s['표기소비기한_원문'] || '-') + '</b></td><td>' + esc(s['검사일자'] || '-') + '</td><td>' + esc(s['생산시간'] || '-') + '</td><td>' + esc(s['총검사수량'] || '-') + '</td><td>' + esc(s['오염수량'] || '0') + '</td><td>' + esc(s['검사자'] || '-') + '</td><td class="' + pCls + '">' + esc(jv) + '</td></tr>';
+          }).join('') : '<tr><td colspan="11" class="cell-gray">선택한 생산일자의 두유 배양 이력이 없습니다.</td></tr>') +
+        '</tbody></table></div>' +
+      '</div>';
   }
 }
 // ======================== [public/index.html - PART 3 / 4 끝] ========================

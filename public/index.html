@@ -3283,68 +3283,232 @@ function renderKpiView() {
 }
 
 // ==============================================================================
-// [VIEW 9] 미생물 검사일보 상시 3탭(평일 · 일요일 · 연휴) 및 누적 DB 관제
+// [VIEW 9] 미생물 검사일보 (작업용 탭 구분 숨김 · 확정 판정일 버튼 통합 전환 + 전체 DB 검색)
 // ==============================================================================
+VIEW_TITLES.micro = '미생물 검사일보 판정 현황 및 일자별 이력 관제';
+let MICRO_SEL_KEY = ''; // ''(최신 확정일 자동) | 'YYYY-MM-DD' | 'TODAY_WAIT' | '_SEARCH_ALL'
+
+function buildMicroReportByDate(judgeIso, histRows, liveTabs) {
+  // 1순위: 실시간 탭 중 실제 입력이 완료되고 판정일이 일치하는 탭이 있으면 그대로 사용
+  const liveKeys = Object.keys(liveTabs || {});
+  for (let i = 0; i < liveKeys.length; i++) {
+    const lp = liveTabs[liveKeys[i]];
+    if (lp && lp.has_actual_input && lp.judge_date === judgeIso) {
+      return {
+        judge_date: lp.judge_date,
+        day_kr: lp.day_kr || '-',
+        milk_insp_date: lp.milk_insp_date || '-',
+        ferm_insp_date: lp.ferm_insp_date || '-',
+        judge_person: lp.judge_person || '-',
+        has_actual_input: true,
+        carton_summary: lp.carton_summary || [],
+        bottle_rows: lp.bottle_rows || [],
+        oem_ferm_rows: lp.oem_ferm_rows || []
+      };
+    }
+  }
+
+  // 2순위: 누적 이력 DB(hist_rows)에서 해당 판정일자 데이터를 동일한 3단 일보 구조로 재구성
+  const dayRows = (histRows || []).filter(function(r) { return r['판정일자'] === judgeIso; });
+  if (!dayRows.length) return null;
+
+  const weekNames = ['일', '월', '화', '수', '목', '금', '토'];
+  let dayKr = dayRows[0]['요일'] || '';
+  if (!dayKr && judgeIso.length >= 10) {
+    const dtObj = new Date(judgeIso + 'T12:00:00');
+    if (!isNaN(dtObj.getTime())) dayKr = weekNames[dtObj.getDay()];
+  }
+
+  let milkInsp = '-';
+  let fermInsp = '-';
+  let judgePerson = '-';
+  dayRows.forEach(function(r) {
+    if (judgePerson === '-' && r['판정자'] && r['판정자'] !== '-') judgePerson = r['판정자'];
+    const cat = String(r['대분류'] || '');
+    const insp = r['검사일자_생산일'] || '';
+    if (insp) {
+      if (cat.indexOf('발효유') !== -1) {
+        if (fermInsp === '-') fermInsp = insp;
+      } else {
+        if (milkInsp === '-') milkInsp = insp;
+      }
+    }
+  });
+
+  const cartonOrder = [];
+  const cartonMap = {};
+  const bottleRows = [];
+  const oemFermRows = [];
+
+  dayRows.forEach(function(r) {
+    const cat = String(r['대분류'] || '');
+    const pName = r['대표품목명'] || '-';
+    const coli = String(r['대장균군'] || '').trim();
+    const bac = String(r['세균수'] || '').trim();
+
+    if (cat.indexOf('카톤') !== -1) {
+      if (!cartonMap[pName]) {
+        cartonOrder.push(pName);
+        cartonMap[pName] = {
+          insp_date: r['검사일자_생산일'] || milkInsp,
+          tank: r['Storage_Tank'] || '-',
+          lines: [],
+          nonzero: [],
+          has_fail: false
+        };
+      }
+      const grp = cartonMap[pName];
+      if (grp.tank === '-' && r['Storage_Tank'] && r['Storage_Tank'] !== '-') grp.tank = r['Storage_Tank'];
+      const ho = String(r['호기_용량'] || '').trim();
+      const ln = String(r['세부라인'] || '').trim();
+      const locTag = ho.indexOf('Storage') !== -1 ? ho : (ho + (ln && ln !== '-' ? ('-' + ln) : ''));
+      if (locTag) grp.lines.push(locTag);
+
+      const coliNonZero = (coli !== '' && coli !== '0' && coli !== '-');
+      const bacNonZero = (bac !== '' && bac !== '0' && bac !== '-');
+      if (coliNonZero || bacNonZero) {
+        grp.nonzero.push((locTag || '라인') + '(대:' + (coli || '0') + '/세:' + (bac || '0') + ')');
+      }
+      if (String(r['판정'] || '').indexOf('부적합') !== -1) grp.has_fail = true;
+
+    } else if (cat.indexOf('병우유') !== -1) {
+      bottleRows.push({
+        '제품명': pName,
+        '검사일(생산일)': r['검사일자_생산일'] || milkInsp,
+        'Storage Tank': r['Storage_Tank'] || '-',
+        '용량/구분': r['호기_용량'] || '-',
+        '대장균군': coli || '0',
+        '세균수': bac || '0'
+      });
+
+    } else {
+      oemFermRows.push({
+        '구분/업체': r['업체_라인구분'] || '-',
+        '제품명': pName,
+        '검사일(생산일)': r['검사일자_생산일'] || (cat.indexOf('발효유') !== -1 ? fermInsp : milkInsp),
+        '대장균군': coli || '-',
+        '세균수': bac || '-',
+        '효모·곰팡이': r['효모_곰팡이'] || '-',
+        '유산균': r['유산균'] || '-'
+      });
+    }
+  });
+
+  const cartonSummary = cartonOrder.map(function(nm) {
+    const g = cartonMap[nm];
+    return {
+      '제품명': nm,
+      '검사일(생산일)': g.insp_date,
+      'Storage Tank': g.tank,
+      '검사 라인수': g.lines.length + '개 라인',
+      '검출/실측 요약': g.nonzero.length ? g.nonzero.join(', ') : '전 라인 음성(0)',
+      '판정': g.has_fail ? '부적합' : '적합'
+    };
+  });
+
+  return {
+    judge_date: judgeIso,
+    day_kr: dayKr || '-',
+    milk_insp_date: milkInsp,
+    ferm_insp_date: fermInsp,
+    judge_person: judgePerson,
+    has_actual_input: true,
+    carton_summary: cartonSummary,
+    bottle_rows: bottleRows,
+    oem_ferm_rows: oemFermRows
+  };
+}
+
+function getTodayPendingMicroSheet(liveTabs, todayIso) {
+  if (!liveTabs) return null;
+  const isSun = (new Date().getDay() === 0);
+  const prefOrder = isSun
+    ? ['일요일 일보', '일요일_일보작성', '일반 일보', '일보작성']
+    : ['일반 일보', '일보작성', '일요일 일보', '일요일_일보작성'];
+  for (let i = 0; i < prefOrder.length; i++) {
+    const lp = liveTabs[prefOrder[i]];
+    if (lp && !lp.has_actual_input && (!todayIso || lp.judge_date >= todayIso)) {
+      return lp;
+    }
+  }
+  return null;
+}
+
 function renderMicroView() {
   const mc = BUNDLE.process.micro || { has_sheet: false, live_tabs: {}, hist_rows: [] };
   const spMc = (BUNDLE.special_boards && BUNDLE.special_boards.micro_status) || { status: '출고적합', note: '', mode: '자동연동' };
   const liveTabs = mc.live_tabs || {};
-const tabOrder = ['일반 일보', '일요일 일보', '휴일 일보(날짜변경)', '일보작성', '일요일_일보작성', '연휴_일보작성'].filter(function(k) { return !!liveTabs[k]; });
-  Object.keys(liveTabs).forEach(function(k) {
-    if (tabOrder.indexOf(k) === -1) tabOrder.push(k);
-  });
+  const hRows = mc.hist_rows || [];
+  const todayIso = BUNDLE.loaded_date || '';
 
-  if (!MICRO_ACTIVE_TAB || (!liveTabs[MICRO_ACTIVE_TAB] && MICRO_ACTIVE_TAB !== '_HIST_DB')) {
-    MICRO_ACTIVE_TAB = mc.default_live_tab || (tabOrder[0] || '_HIST_DB');
+  // 확정된 판정일자 목록(내림차순) 추출
+  const dateSet = {};
+  hRows.forEach(function(r) { if (r['판정일자']) dateSet[r['판정일자']] = true; });
+  Object.keys(liveTabs).forEach(function(k) {
+    const lp = liveTabs[k];
+    if (lp && lp.has_actual_input && lp.judge_date) dateSet[lp.judge_date] = true;
+  });
+  const confirmedDates = Object.keys(dateSet).sort().reverse();
+  const pendingTodayObj = (!dateSet[todayIso]) ? getTodayPendingMicroSheet(liveTabs, todayIso) : null;
+
+  // 기본 진입 시: 가장 최근 확정된 판정일자 자동 선택 (확정 이력이 하나도 없을 때만 금일 예정 표시)
+  if (!MICRO_SEL_KEY || (MICRO_SEL_KEY !== '_SEARCH_ALL' && MICRO_SEL_KEY !== 'TODAY_WAIT' && !dateSet[MICRO_SEL_KEY])) {
+    MICRO_SEL_KEY = confirmedDates.length ? confirmedDates[0] : (pendingTodayObj ? 'TODAY_WAIT' : '_SEARCH_ALL');
   }
 
-  const tabLabelMap = {
-    '일반 일보': '📌 평일·토요일 당일용 [일반 일보]',
-    '일요일 일보': '☀️ 일요일 전용 [일요일 일보]',
-    '휴일 일보(날짜변경)': '🗓️ 휴일·연휴 날짜변경 [휴일 일보]',
-    '일보작성': '📌 평일 당일용 [일보작성]',
-    '일요일_일보작성': '☀️ 일요일 전용 [일요일_일보작성]',
-    '연휴_일보작성': '🗓️ 명절·연휴 몰아쓰기 [연휴_일보작성]'
-  };
-
+  const latestConfirmedDt = confirmedDates.length ? confirmedDates[0] : '';
+  const pastChipDates = confirmedDates.slice(1, 9);
   const stCls = String(spMc.status).indexOf('보류') !== -1 ? 'badge-err' : (spMc.status === '검사중' ? 'badge-warn' : 'badge-ok');
 
   document.getElementById('view-micro').innerHTML =
     '<div class="page-hdr">' +
       '<div>' +
-        '<h2 class="page-h2">미생물 검사일보 상시 3탭 및 누적 이력 DB 관제</h2>' +
-        '<div class="page-desc">평일 · 일요일 · 명절/연휴 전용 3개 탭을 상시 도출하며, 대시보드에는 빈 양식 대기 문구 대신 가장 최근 확정된 판정 결과를 표출합니다.</div>' +
+        '<h2 class="page-h2">미생물 검사일보 판정 현황 및 일자별 이력 관제</h2>' +
+        '<div class="page-desc">최신 확정 판정 결과를 기본 표출하며, 상단 날짜 버튼을 클릭하면 해당 일자의 카톤 · 병우유 · 발효유 검사 내역으로 즉시 전환됩니다.</div>' +
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
-        '<button class="btn btn-primary" onclick="openMicroStatusModal()">⚙️ 대시보드 출고판정 설정</button>' +
+        '<button class="btn btn-primary" onclick="openMicroStatusModal()">⚙️ 출고판정 표시 설정</button>' +
         '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
       '</div>' +
     '</div>' +
-    '<div class="panel-card" style="background:#F0FDF4; border-color:#86EFAC; padding:11px 15px;">' +
+    '<div class="panel-card" style="background:#F0FDF4; border-color:#86EFAC; padding:11px 15px; margin-bottom:10px;">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
         '<div style="display:flex; align-items:center; gap:8px;">' +
           '<span class="badge ' + stCls + '" style="font-size:12.5px; padding:4px 10px;">' + esc(spMc.status) + '</span>' +
           '<strong style="font-size:14px; color:#14532D;">' + esc(spMc.note || mc.auto_note || '최근 판정분 전 품목 특이사항 없음') + '</strong>' +
         '</div>' +
-        '<span style="font-size:12px; color:#166534; font-weight:700;">누적 DB 총 ' + (mc.total_db_cnt || 0).toLocaleString() + '건 보관 중 (' + esc(spMc.mode || '자동연동') + ')</span>' +
+        '<span style="font-size:12px; color:#166534; font-weight:700;">확정 판정일 총 ' + confirmedDates.length + '일 · 누적 ' + (mc.total_db_cnt || 0).toLocaleString() + '건</span>' +
       '</div>' +
     '</div>' +
-    '<div class="tab-bar">' +
-      tabOrder.map(function(tk) {
-        const lp = liveTabs[tk];
-        const stateTag = lp.has_actual_input ? (' · 작성됨 ' + lp.judge_date.slice(5)) : ' · 빈양식';
-        const btnLbl = (tabLabelMap[tk] || tk) + stateTag;
-        return '<button class="tab-btn ' + (MICRO_ACTIVE_TAB === tk ? 'active' : '') + '" onclick="MICRO_ACTIVE_TAB=\'' + esc(tk) + '\'; renderMicroView()">' + esc(btnLbl) + '</button>';
-      }).join('') +
-      '<button class="tab-btn ' + (MICRO_ACTIVE_TAB === '_HIST_DB' ? 'active' : '') + '" onclick="MICRO_ACTIVE_TAB=\'_HIST_DB\'; renderMicroView()">📚 누적 이력 DB 조회 ([_이력DB_미생물] ' + (mc.hist_rows ? mc.hist_rows.length : 0) + '건)</button>' +
+    '<div class="panel-card" style="padding:10px 14px; background:#F8FAFC; margin-bottom:10px;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">' +
+        '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' +
+          (latestConfirmedDt ?
+            '<button class="btn btn-sm ' + (MICRO_SEL_KEY === latestConfirmedDt ? 'btn-primary' : '') + '" onclick="MICRO_SEL_KEY=\'' + esc(latestConfirmedDt) + '\'; renderMicroView()">' +
+              (latestConfirmedDt === todayIso ? '✅ 금일 확정 (' + esc(latestConfirmedDt.slice(5)) + ')' : '✅ 최신 확정 (' + esc(latestConfirmedDt.slice(5)) + ')') +
+            '</button>' : '') +
+          (pendingTodayObj ?
+            '<button class="btn btn-sm ' + (MICRO_SEL_KEY === 'TODAY_WAIT' ? 'btn-primary' : '') + '" onclick="MICRO_SEL_KEY=\'TODAY_WAIT\'; renderMicroView()">🕒 금일 예정 (' + esc(pendingTodayObj.judge_date.slice(5)) + ' · 입력대기)</button>' : '') +
+          pastChipDates.map(function(d) {
+            return '<button class="btn btn-sm ' + (MICRO_SEL_KEY === d ? 'btn-primary' : '') + '" onclick="MICRO_SEL_KEY=\'' + esc(d) + '\'; renderMicroView()">📅 ' + esc(d.slice(5)) + '</button>';
+          }).join('') +
+          (confirmedDates.length > 1 ?
+            '<select class="form-ctrl" style="width:165px; padding:4px 8px;" onchange="if(this.value){MICRO_SEL_KEY=this.value; renderMicroView();}">' +
+              '<option value="">전체 판정일 선택 (' + confirmedDates.length + '일)</option>' +
+              confirmedDates.map(function(d) {
+                return '<option value="' + esc(d) + '" ' + (MICRO_SEL_KEY === d ? 'selected' : '') + '>판정일 ' + esc(d) + '</option>';
+              }).join('') +
+            '</select>' : '') +
+        '</div>' +
+        '<button class="btn btn-sm ' + (MICRO_SEL_KEY === '_SEARCH_ALL' ? 'btn-primary' : '') + '" onclick="MICRO_SEL_KEY=\'_SEARCH_ALL\'; renderMicroView()">🔍 전체 품목 통합 검색 (' + hRows.length + '건)</button>' +
+      '</div>' +
     '</div>' +
     '<div id="microTabBox"></div>';
 
   const box = document.getElementById('microTabBox');
 
-  if (MICRO_ACTIVE_TAB === '_HIST_DB') {
-    const hRows = mc.hist_rows || [];
-    const jDates = Array.from(new Set(hRows.map(function(r) { return r['판정일자']; }).filter(Boolean))).sort().reverse();
+  // [전체 품목 통합 검색 모드]
+  if (MICRO_SEL_KEY === '_SEARCH_ALL') {
     const filtered = hRows.filter(function(r) {
       return MICRO_HIST_DATE_FILTER === 'ALL' || r['판정일자'] === MICRO_HIST_DATE_FILTER;
     });
@@ -3352,11 +3516,11 @@ const tabOrder = ['일반 일보', '일요일 일보', '휴일 일보(날짜변�
     box.innerHTML =
       '<div class="panel-card">' +
         '<div class="panel-title">' +
-          '<span>날짜별 미생물 판정 누적 기록 (최대 300건 표시)</span>' +
+          '<span>전체 기간 미생물 판정 통합 검색 (최대 300건 표시)</span>' +
           '<div style="display:flex; gap:8px; align-items:center;">' +
             '<select class="form-ctrl" style="width:175px;" onchange="MICRO_HIST_DATE_FILTER=this.value; renderMicroView()">' +
-              '<option value="ALL">전체 판정일자 (' + jDates.length + '일)</option>' +
-              jDates.map(function(d) {
+              '<option value="ALL">전체 판정일자 (' + confirmedDates.length + '일)</option>' +
+              confirmedDates.map(function(d) {
                 return '<option value="' + esc(d) + '" ' + (MICRO_HIST_DATE_FILTER === d ? 'selected' : '') + '>판정일 ' + esc(d) + '</option>';
               }).join('') +
             '</select>' +
@@ -3389,50 +3553,54 @@ const tabOrder = ['일반 일보', '일요일 일보', '휴일 일보(날짜변�
     return;
   }
 
-  const curLive = liveTabs[MICRO_ACTIVE_TAB];
-  if (!curLive) {
-    box.innerHTML = '<div class="panel-card">미생물 일보 시트 탭을 찾을 수 없습니다.</div>';
+  // [일자별 3단 일보 화면 모드 (최신 확정일 / 과거 판정일 / 금일 입력대기 모두 동일 레이아웃)]
+  const viewData = (MICRO_SEL_KEY === 'TODAY_WAIT')
+    ? pendingTodayObj
+    : buildMicroReportByDate(MICRO_SEL_KEY, hRows, liveTabs);
+
+  if (!viewData) {
+    box.innerHTML = '<div class="panel-card">선택한 판정일자의 미생물 검사 기록을 찾을 수 없습니다.</div>';
     return;
   }
 
-  const stateBanner = curLive.has_actual_input
-    ? '<span class="badge badge-ok">실측치 입력 완료 (DB 자동백업 대상)</span>'
-    : '<span class="badge badge-neutral">현재 미작성 빈 양식 (작성 시 자동 반영 · 비워두면 미저장)</span>';
+  const stateBanner = viewData.has_actual_input
+    ? '<span class="badge badge-ok">판정 확정 완료</span>'
+    : '<span class="badge badge-warn">금일 실험실 판정 입력 대기중</span>';
 
   box.innerHTML =
     '<div class="panel-card" style="padding:11px 15px; background:#F8FAFC;">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
         '<div style="font-size:13.5px;">' +
-          '<strong>[' + esc(curLive.tab_title) + ']</strong> 기준 판정일 : <b>' + esc(curLive.judge_date) + ' (' + esc(curLive.day_kr) + '요일)</b>' +
-          ' &nbsp;|&nbsp; 우유 검사일 : <b>' + esc(curLive.milk_insp_date) + '</b>' +
-          ' &nbsp;|&nbsp; 발효유 검사일 : <b>' + esc(curLive.ferm_insp_date) + '</b>' +
-          ' &nbsp;|&nbsp; 판정자 : <b>' + esc(curLive.judge_person) + '</b>' +
+          '기준 판정일 : <b>' + esc(viewData.judge_date) + ' (' + esc(viewData.day_kr) + '요일)</b>' +
+          ' &nbsp;|&nbsp; 우유 생산·검사일 : <b>' + esc(viewData.milk_insp_date) + '</b>' +
+          (viewData.ferm_insp_date && viewData.ferm_insp_date !== '-' ? ' &nbsp;|&nbsp; 발효유 생산·검사일 : <b>' + esc(viewData.ferm_insp_date) + '</b>' : '') +
+          ' &nbsp;|&nbsp; 판정자 : <b>' + esc(viewData.judge_person) + '</b>' +
         '</div>' +
         stateBanner +
       '</div>' +
     '</div>' +
     '<div class="panel-card">' +
-      '<div class="panel-title">1. 카톤우유 품목별 검사 요약</div>' +
+      '<div class="panel-title"><span>1. 카톤우유 품목별 검사 요약</span><span class="badge badge-info">' + (viewData.carton_summary ? viewData.carton_summary.length : 0) + '품목</span></div>' +
       '<div class="tbl-wrap"><table class="data-tbl">' +
         '<thead><tr><th>대표 제품명</th><th>검사일(생산일)</th><th>Storage Tank</th><th>검사 라인수</th><th>검출 · 실측 요약</th><th>판정 상태</th></tr></thead><tbody>' +
-        (curLive.carton_summary || []).map(function(r) {
-          const cCls = String(r['판정']).indexOf('부적합') !== -1 ? 'cell-red' : (curLive.has_actual_input ? 'cell-green' : 'cell-gray');
+        ((viewData.carton_summary && viewData.carton_summary.length) ? viewData.carton_summary.map(function(r) {
+          const cCls = String(r['판정']).indexOf('부적합') !== -1 ? 'cell-red' : (viewData.has_actual_input ? 'cell-green' : 'cell-gray');
           return '<tr><td class="td-left"><strong>' + esc(r['제품명']) + '</strong></td><td>' + esc(r['검사일(생산일)']) + '</td><td><b>' + esc(r['Storage Tank']) + '</b></td><td>' + esc(r['검사 라인수']) + '</td><td class="td-left">' + esc(r['검출/실측 요약']) + '</td><td class="' + cCls + '">' + esc(r['판정']) + '</td></tr>';
-        }).join('') +
+        }).join('') : '<tr><td colspan="6" class="cell-gray">해당 판정일 카톤우유 항목 없음</td></tr>') +
       '</tbody></table></div>' +
     '</div>' +
     '<div style="display:grid; grid-template-columns:1fr 1.15fr; gap:12px;">' +
       '<div class="panel-card"><div class="panel-title">2. 병우유 · Storage 원액 검사 내역</div><div class="tbl-wrap"><table class="data-tbl">' +
-        '<thead><tr><th>제품명</th><th>검사일</th><th>Storage Tank</th><th>용량/구분</th><th>대장균군</th><th>세균수</th></tr></thead><tbody>' +
-        ((curLive.bottle_rows && curLive.bottle_rows.length) ? curLive.bottle_rows.map(function(r) {
+        '<thead><tr><th>제품명</th><th>검사일(생산일)</th><th>Storage Tank</th><th>용량/구분</th><th>대장균군</th><th>세균수</th></tr></thead><tbody>' +
+        ((viewData.bottle_rows && viewData.bottle_rows.length) ? viewData.bottle_rows.map(function(r) {
           return '<tr><td class="td-left"><b>' + esc(r['제품명']) + '</b></td><td>' + esc(r['검사일(생산일)']) + '</td><td>' + esc(r['Storage Tank']) + '</td><td>' + esc(r['용량/구분']) + '</td><td>' + esc(r['대장균군']) + '</td><td>' + esc(r['세균수']) + '</td></tr>';
-        }).join('') : '<tr><td colspan="6" class="cell-gray">해당 요일 병우유 항목 없음</td></tr>') +
+        }).join('') : '<tr><td colspan="6" class="cell-gray">해당 판정일 병우유 항목 없음</td></tr>') +
       '</tbody></table></div></div>' +
       '<div class="panel-card"><div class="panel-title">3. OEM 및 발효유 · 호상 검사 내역</div><div class="tbl-wrap"><table class="data-tbl">' +
-        '<thead><tr><th>구분/업체</th><th>제품명</th><th>검사일</th><th>대장균군</th><th>세균수</th><th>효모·곰팡이</th><th>유산균</th></tr></thead><tbody>' +
-        ((curLive.oem_ferm_rows && curLive.oem_ferm_rows.length) ? curLive.oem_ferm_rows.map(function(r) {
+        '<thead><tr><th>구분/업체</th><th>제품명</th><th>검사일(생산일)</th><th>대장균군</th><th>세균수</th><th>효모·곰팡이</th><th>유산균</th></tr></thead><tbody>' +
+        ((viewData.oem_ferm_rows && viewData.oem_ferm_rows.length) ? viewData.oem_ferm_rows.map(function(r) {
           return '<tr><td>' + esc(r['구분/업체']) + '</td><td class="td-left"><b>' + esc(r['제품명']) + '</b></td><td>' + esc(r['검사일(생산일)']) + '</td><td>' + esc(r['대장균군']) + '</td><td>' + esc(r['세균수']) + '</td><td>' + esc(r['효모·곰팡이']) + '</td><td><b>' + esc(r['유산균']) + '</b></td></tr>';
-        }).join('') : '<tr><td colspan="7" class="cell-gray">해당 요일 발효유·OEM 항목 없음</td></tr>') +
+        }).join('') : '<tr><td colspan="7" class="cell-gray">해당 판정일 발효유·OEM 항목 없음</td></tr>') +
       '</tbody></table></div></div>' +
     '</div>';
 }

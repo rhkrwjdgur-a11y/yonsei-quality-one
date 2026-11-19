@@ -1061,6 +1061,42 @@ def build_division_claim_summary(cat_list: list, year_str: str, division_categor
 # [api/index.py - PART 2 / 4]
 # 4대 현장·실험실 일보 (상온 · 유제품[카톤/병 분리] · 두유배양 · 미생물 3탭 상시연동) 파서
 # ==============================================================================
+def heal_db_worksheet_if_dirty(sh, tab_title: Optional[str], raw_rows: list, row_fixer_fn) -> bool:
+    """
+    읽어온 DB 시트 행(raw_rows)에 잘못 저장된 날짜·품목명·주석이 있는지 검사하여,
+    수정이 필요한 셀이 1개라도 있을 때만 구글 시트 원본 탭에 즉시 덮어쓰기(영구 교정) 수행.
+    이미 정상인 경우에는 API 호출을 하지 않아 속도를 100% 유지함.
+    """
+    if sh is None or not tab_title or not raw_rows or len(raw_rows) < 2:
+        return False
+
+    hdr = [str(h).strip() for h in raw_rows[0]]
+    col_idx_map = {h: i for i, h in enumerate(hdr) if h}
+    new_matrix = [hdr]
+    dirty = False
+
+    for r in raw_rows[1:]:
+        if not any(str(x).strip() != "" for x in r):
+            continue
+        row_vals = [str(x).strip() for x in r] + [""] * max(0, len(hdr) - len(r))
+        row_vals = row_vals[:len(hdr)]
+        orig_copy = list(row_vals)
+
+        row_fixer_fn(row_vals, col_idx_map)
+
+        if row_vals != orig_copy:
+            dirty = True
+        new_matrix.append(row_vals)
+
+    if dirty:
+        try:
+            ws = api_call_with_retry(sh.worksheet, tab_title)
+            api_call_with_retry(ws.clear)
+            safe_ws_update(ws, new_matrix)
+            return True
+        except Exception:
+            return False
+    return False
 def select_date_tab_titles(ws_titles: List[str]):
     today = now_kst()
     yesterday = today - timedelta(days=1)
@@ -1993,6 +2029,43 @@ def fetch_process_milk_sheet(sheet_urls_map: dict):
         coord_master.update(coord_m)
         coord_master.update(coord_f)
 
+       # [시트 원본 자동 수리] _이력DB_유제품포장의 하단 용량 표기(170㎖ 등) -> 실제 품목명 & 카톤/병 구분 영구 교정
+        raw_dp_matrix = batch_map.get(t_dp, []) if t_dp else []
+        if t_dp and len(raw_dp_matrix) >= 2:
+            def _fix_dairy_db_row(r_vals: list, cmap: dict):
+                c_dt = cmap.get("생산일자", -1)
+                c_ln = cmap.get("라인구분", -1)
+                c_sec = cmap.get("세부유형", -1)
+                c_col = cmap.get("열위치", -1)
+                c_pnm = cmap.get("제품명", -1)
+                c_seal = cmap.get("접착및외관", cmap.get("접착_외관_요약", -1))
+                if c_dt >= 0:
+                    pd = parse_date_obj(r_vals[c_dt])
+                    if pd:
+                        r_vals[c_dt] = pd.strftime("%Y-%m-%d")
+                if c_pnm < 0 or c_ln < 0:
+                    return
+                sec_s = r_vals[c_sec] if c_sec >= 0 else ""
+                col_s = r_vals[c_col] if c_col >= 0 else ""
+                pnm_s = r_vals[c_pnm]
+                ln_s = r_vals[c_ln]
+                seal_s = r_vals[c_seal] if c_seal >= 0 else ""
+
+                is_vol_only = bool(re.match(r"^\d+(?:\.\d+)?\s*(?:㎖|mL|ml|L|g|kg)?$", pnm_s))
+                exact_c = coord_master.get((sec_s, col_s))
+                bot_c = coord_master.get(("우유-하단", col_s)) if ("하단" in sec_s or "우유" in ln_s) else None
+
+                if is_vol_only and (exact_c or bot_c):
+                    full_nm, mapped_ln, _ = exact_c or bot_c
+                    r_vals[c_pnm] = full_nm
+                    r_vals[c_ln] = mapped_ln
+                elif "우유" in ln_s and "발효" not in ln_s and "호상" not in ln_s:
+                    true_ln = classify_milk_sub_line(pnm_s, "", "", seal_s, "상단" in sec_s)
+                    r_vals[c_ln] = true_ln
+
+            if heal_db_worksheet_if_dirty(sh_milk, t_dp, raw_dp_matrix, _fix_dairy_db_row):
+                batch_map[t_dp] = get_values_formatted(api_call_with_retry(sh_milk.worksheet, t_dp))
+
         dairy_hist_p_raw = rows_to_records(batch_map.get(t_dp, [])) if t_dp else []
         dairy_hist_p = []
         seen_hist_keys = set()
@@ -2602,6 +2675,31 @@ def fetch_process_micro_sheet(sheet_urls_map: dict):
         t_db = next((t for t in ws_titles if t.strip() == HIST_TABS["micro_db"]), None)
         batch_map = batch_fetch_tabs(sh, target_live + ([t_db] if t_db else []), "FORMATTED_VALUE")
 
+        # [시트 원본 자동 수리] _이력DB_미생물에 잘못 들어간 주1/주2 연관품목 텍스트 및 날짜 포맷 영구 교정
+        raw_db_matrix = batch_map.get(t_db, []) if t_db else []
+        if t_db and len(raw_db_matrix) >= 2:
+            def _fix_micro_row(r_vals: list, cmap: dict):
+                c_j = cmap.get("판정일자", -1)
+                c_i = cmap.get("검사일자_생산일", -1)
+                c_rep = cmap.get("대표품목명", -1)
+                c_ali = cmap.get("연관품목_주석포함", -1)
+                if c_j >= 0:
+                    jd = parse_date_obj(r_vals[c_j])
+                    if jd:
+                        r_vals[c_j] = jd.strftime("%Y-%m-%d")
+                if c_i >= 0:
+                    id_obj = parse_date_obj(r_vals[c_i])
+                    if id_obj:
+                        r_vals[c_i] = id_obj.strftime("%Y-%m-%d")
+                if c_rep >= 0 and c_ali >= 0:
+                    rep_txt = r_vals[c_rep]
+                    clean_pool, _ = expand_micro_alias_pool(rep_txt, "")
+                    if r_vals[c_ali] != clean_pool:
+                        r_vals[c_ali] = clean_pool
+
+            if heal_db_worksheet_if_dirty(sh, t_db, raw_db_matrix, _fix_micro_row):
+                batch_map[t_db] = get_values_formatted(api_call_with_retry(sh.worksheet, t_db))
+
         live_parsed_map = {}
         for lt in target_live:
             parsed_l = parse_micro_live_sheet(lt, batch_map.get(lt, []))
@@ -2633,7 +2731,7 @@ def fetch_process_micro_sheet(sheet_urls_map: dict):
             filled_tabs.sort(key=lambda x: x["judge_date"], reverse=True)
             def_tab = filled_tabs[0]["tab_title"]
         else:
-            def_tab = "일보작성" if "일보작성" in live_parsed_map else (list(live_parsed_map.keys())[0] if live_parsed_map else "")
+            def_tab = "일반 일보" if "일반 일보" in live_parsed_map else ("일보작성" if "일보작성" in live_parsed_map else (list(live_parsed_map.keys())[0] if live_parsed_map else ""))
 
         latest_j_iso = ""
         if merged_hist:
@@ -2695,97 +2793,6 @@ def fetch_process_micro_sheet(sheet_urls_map: dict):
         return empty_micro, f"[미생물일보] {e}"
 
 
-def build_rt_view_from_db_records(dt_iso: str, p_list: list, c_list: list) -> dict:
-    """시트 탭이 삭제되고 DB에만 남은 과거 날짜도 금일·전일 탭과 동일한 3단 요약 화면으로 변환"""
-    tab_lbl = p_list[0].get("원본탭명", dt_iso[5:].replace("-", "/")) if p_list else dt_iso[5:].replace("-", "/")
-    ster_records = []
-    ccp3b_map: Dict[Tuple[str, str], dict] = {}
-    ho_ster_sum, ho_rem = {}, {}
-    special_notes = []
-
-    for c in c_list:
-        rcat = str(c.get("기록분류", "")).strip()
-        eq = str(c.get("설비_호기", c.get("포장호기", "-"))).strip()
-        sub = str(c.get("세부항목", "-")).strip()
-        val = str(c.get("기록내용_수치", "-")).strip()
-        rem = str(c.get("특이사항", "")).strip()
-
-        if rem and rem not in ["-", "없음", "이상없음", "적합"] and rem not in special_notes:
-            special_notes.append(f"[{eq}] {rem}")
-
-        if "멸균" in rcat and "3B" not in rcat and "포장살균" not in rcat:
-            m_pack = re.search(r"\(([A-F]호기)\)", eq)
-            if m_pack:
-                ho_ster_sum[m_pack.group(1)] = f"{eq} ({val})"
-                if rem and rem not in ["-", "없음", "이상없음"]:
-                    ho_rem[m_pack.group(1)] = rem
-            ster_records.append({
-                "멸균기_포장": eq,
-                "매칭 제품명": sub,
-                "확인시간": val if re.search(r"\d{1,2}:\d{2}", val) else "-",
-                "멸균온도": val if "℃" in val else "-",
-                "균질압": "-",
-                "멸균시간": "-",
-                "유량_냉각": "-",
-                "여과망_서명": "적합",
-                "특이사항": rem or "이상없음",
-                "_c_time": "cell-green" if val != "-" else "cell-gray",
-                "_c_temp": "cell-green",
-                "_c_press": "",
-                "_c_hold": "",
-                "_c_flt": "cell-green",
-                "_c_rem": "cell-yellow" if (rem and rem not in ["-", "없음", "이상없음"]) else ""
-            })
-        elif "3B" in rcat or "포장살균" in rcat:
-            key3 = (sub, eq)
-            rec3 = ccp3b_map.setdefault(key3, {
-                "항목": sub, "관리기준": "-", "적용설비": eq,
-                "A호기": "-", "B호기": "-", "C호기": "-", "D호기": "-", "E호기": "-", "F호기": "-",
-                "_cls_map": {}
-            })
-            for h_nm in ["A호기", "B호기", "C호기", "D호기", "E호기", "F호기"]:
-                if c.get(h_nm) and str(c.get(h_nm)).strip() not in ["", "-"]:
-                    rec3[h_nm] = str(c.get(h_nm)).strip()
-                    rec3["_cls_map"][h_nm] = "cell-green"
-            for m_h in re.finditer(r"([A-F]호기)\s*:\s*([^/]+)", val):
-                rec3[m_h.group(1)] = m_h.group(2).strip()
-                rec3["_cls_map"][m_h.group(1)] = "cell-green"
-
-    compact_rows = []
-    seen_cp = set()
-    for p in p_list:
-        ho = str(p.get("포장호기", "-")).strip()
-        pnm = str(p.get("제품명", "-")).strip()
-        exp_v = str(p.get("표기소비기한_원문", "-")).strip()
-        chk_t = str(p.get("확인시간", "-")).strip()
-        ck = (ho, clean_product_for_match(pnm), re.sub(r"\s+", "", exp_v))
-        if ck in seen_cp:
-            continue
-        seen_cp.add(ck)
-        rem_t = ho_rem.get(ho, "이상없음")
-        compact_rows.append({
-            "포장호기": ho,
-            "생산 제품명": pnm,
-            "소비기한": exp_v,
-            "확인시간": chk_t,
-            "멸균기·CCP 요약": ho_ster_sum.get(ho, "이력 확인완료"),
-            "특이사항": rem_t,
-            "_cls_status": "cell-green" if chk_t not in ["", "-"] else "cell-gray",
-            "_cls_rem": "cell-yellow" if rem_t != "이상없음" else "cell-green"
-        })
-
-    return {
-        "tab_title": tab_lbl,
-        "prod_date": dt_iso,
-        "running_hos": sorted(list({r["포장호기"] for r in compact_rows if r["포장호기"] != "-"})),
-        "lines_records": [],
-        "compact_rows": compact_rows,
-        "ccp3b_records": list(ccp3b_map.values()),
-        "ster_records": ster_records,
-        "ster_special_notes": special_notes
-    }
-
-
 def fetch_process_rt_sheet(sheet_urls_map: dict):
     sh_rt, err_rt = open_sheet_isolated(sheet_urls_map, "process_rt")
     if sh_rt is None:
@@ -2802,6 +2809,29 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
 
         fetch_targets = list(dict.fromkeys([t for t in ([t_today, t_yest] + recent_date_tabs + [t_hp, t_hc, t_fsk]) if t]))
         batch_map = batch_fetch_tabs(sh_rt, fetch_targets)
+
+        # [시트 원본 자동 수리] _이력DB_상온생산 / _이력DB_상온CCP의 TODAY 오기입 생산일자를 원본탭명 날짜로 영구 교정
+        def _fix_rt_db_date_row(r_vals: list, cmap: dict):
+            c_dt = cmap.get("생산일자", -1)
+            c_tb = cmap.get("원본탭명", -1)
+            if c_dt >= 0 and c_tb >= 0:
+                pd = parse_date_obj(r_vals[c_dt])
+                m_tb = re.match(r"^(\d{1,2})[/\.\-](\d{1,2})$", str(r_vals[c_tb]).strip())
+                if m_tb:
+                    yr = pd.year if pd else now_kst().year
+                    try:
+                        true_iso = date(yr, int(m_tb.group(1)), int(m_tb.group(2))).strftime("%Y-%m-%d")
+                        if r_vals[c_dt] != true_iso:
+                            r_vals[c_dt] = true_iso
+                    except ValueError:
+                        pass
+
+        if t_hp and len(batch_map.get(t_hp, [])) >= 2:
+            if heal_db_worksheet_if_dirty(sh_rt, t_hp, batch_map[t_hp], _fix_rt_db_date_row):
+                batch_map[t_hp] = get_values_formatted(api_call_with_retry(sh_rt.worksheet, t_hp))
+        if t_hc and len(batch_map.get(t_hc, [])) >= 2:
+            if heal_db_worksheet_if_dirty(sh_rt, t_hc, batch_map[t_hc], _fix_rt_db_date_row):
+                batch_map[t_hc] = get_values_formatted(api_call_with_retry(sh_rt.worksheet, t_hc))
 
         rt_today_parsed = parse_rt_process_rows(t_today, batch_map.get(t_today, [])) if t_today else None
         rt_yest_parsed = parse_rt_process_rows(t_yest, batch_map.get(t_yest, [])) if t_yest else None
@@ -2849,7 +2879,6 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
                 cc["생산일자"] = cd.strftime("%Y-%m-%d")
             rt_hist_c.append(cc)
 
-        # 날짜별 금일/전일 동일 포맷 뷰 생성 (1순위: 시트 날짜탭 원본 파싱, 2순위: DB 재구성)
         rt_date_views: Dict[str, dict] = {}
         today_yr = now_kst().year
         for raw_dt_tab in recent_date_tabs:
@@ -2919,7 +2948,8 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
         return rt_today_parsed, rt_yest_parsed, rt_hist_p, rt_hist_c, fsk_products, None
     except Exception as e:
         return None, None, [], [], [], f"[상온공정일보] {e}"
-        
+
+
 def fetch_process_soy_sheet(sheet_urls_map: dict):
     sh_soy, err_soy = open_sheet_isolated(sheet_urls_map, "process_soy")
     if sh_soy is None:
@@ -2927,17 +2957,60 @@ def fetch_process_soy_sheet(sheet_urls_map: dict):
     try:
         ws_all = api_call_with_retry(sh_soy.worksheets)
         ws_titles = [w.title for w in ws_all]
-        _, _, ordered_soy_titles = select_date_tab_titles(ws_titles)
 
-        top5_titles = ordered_soy_titles[:5]
+        today_d = now_kst().date()
+        soy_dated_tabs = []
+        for raw_t in ws_titles:
+            t_s = raw_t.strip()
+            if t_s.startswith("_이력DB_") or any(ex in t_s for ex in ["양식", "복사", "백업", "사본", "대기", "예비", "샘플", "수정"]):
+                continue
+            td = parse_soy_tab_date(t_s)
+            if td:
+                soy_dated_tabs.append((td, raw_t))
+
+        past_or_today = sorted([x for x in soy_dated_tabs if x[0] <= today_d], key=lambda x: x[0], reverse=True)
+        future_tabs = sorted([x for x in soy_dated_tabs if x[0].date() if hasattr(x[0], 'date') else x[0] > today_d], key=lambda x: x[0], reverse=True)
+        ordered_soy_titles = [t for _, t in (past_or_today + future_tabs)]
+
+        top_live_titles = ordered_soy_titles[:12]
         t_hist_soy = next((t for t in ws_titles if t.strip() == HIST_TABS["soy_inc"]), None)
 
-        batch_map = batch_fetch_tabs(sh_soy, top5_titles + ([t_hist_soy] if t_hist_soy else []))
+        batch_map = batch_fetch_tabs(sh_soy, top_live_titles + ([t_hist_soy] if t_hist_soy else []))
+
+        # [시트 원본 자동 수리] _이력DB_두유배양의 생산일자를 무조건 [원본탭명 날짜 - 배양일수]로 시트 원본에 영구 교정
+        raw_soy_db = batch_map.get(t_hist_soy, []) if t_hist_soy else []
+        if t_hist_soy and len(raw_soy_db) >= 2:
+            def _fix_soy_db_row(r_vals: list, cmap: dict):
+                c_prod = cmap.get("생산일자", -1)
+                c_insp = cmap.get("검사일자", -1)
+                c_tab = cmap.get("원본탭명", cmap.get("시트탭", cmap.get("탭명", -1)))
+                c_inc = cmap.get("배양구분", cmap.get("배양검사", cmap.get("배양일수", -1)))
+                c_sav = cmap.get("저장일시", cmap.get("백업일시", -1))
+                if c_prod < 0 or c_tab < 0:
+                    return
+                inc_txt = r_vals[c_inc] if c_inc >= 0 else ""
+                offset = extract_soy_inc_days(inc_txt)
+                ref_d = (
+                    (parse_date_obj(r_vals[c_sav]) if c_sav >= 0 else None)
+                    or (parse_date_obj(r_vals[c_insp]) if c_insp >= 0 else None)
+                    or parse_date_obj(r_vals[c_prod])
+                )
+                tab_d = parse_soy_tab_date(r_vals[c_tab], ref_d)
+                if tab_d:
+                    true_prod = (tab_d - timedelta(days=offset)).strftime("%Y-%m-%d")
+                    true_insp = tab_d.strftime("%Y-%m-%d")
+                    if r_vals[c_prod] != true_prod:
+                        r_vals[c_prod] = true_prod
+                    if c_insp >= 0 and r_vals[c_insp] != true_insp:
+                        r_vals[c_insp] = true_insp
+
+            if heal_db_worksheet_if_dirty(sh_soy, t_hist_soy, raw_soy_db, _fix_soy_db_row):
+                batch_map[t_hist_soy] = get_values_formatted(api_call_with_retry(sh_soy.worksheet, t_hist_soy))
 
         soy_tabs_parsed = {}
         default_tab_title = "-"
 
-        for raw_t in top5_titles:
+        for raw_t in ordered_soy_titles[:5]:
             t_title = raw_t.strip()
             b_list, h_list = parse_soy_incubation_rows(raw_t, batch_map.get(raw_t, []))
             if b_list:
@@ -2945,15 +3018,92 @@ def fetch_process_soy_sheet(sheet_urls_map: dict):
                 if default_tab_title == "-":
                     default_tab_title = t_title
 
-        if default_tab_title == "-" and top5_titles:
-            first_raw = top5_titles[0]
+        if default_tab_title == "-" and ordered_soy_titles:
+            first_raw = ordered_soy_titles[0]
             default_tab_title = first_raw.strip()
             b_list, h_list = parse_soy_incubation_rows(first_raw, batch_map.get(first_raw, []))
             soy_tabs_parsed[default_tab_title] = {"blocks": b_list, "hourly": h_list}
 
         def_pack = soy_tabs_parsed.get(default_tab_title, {"blocks": [], "hourly": []})
-        soy_hist = rows_to_records(batch_map.get(t_hist_soy, [])) if t_hist_soy else []
 
+        soy_hist = []
+        seen_soy_keys = set()
+
+        for raw_t in top_live_titles:
+            t_clean = raw_t.strip()
+            if t_clean in soy_tabs_parsed:
+                b_list = soy_tabs_parsed[t_clean]["blocks"]
+            else:
+                b_list, _ = parse_soy_incubation_rows(raw_t, batch_map.get(raw_t, []))
+            for blk in b_list:
+                p_nm = str(blk.get("품목명", "")).strip()
+                if not p_nm or p_nm == "-":
+                    continue
+                prod_iso = blk.get("생산일", "-")
+                insp_iso = blk.get("검사일(개봉일)", "-")
+                ho_nm = str(blk.get("포장기", "-")).strip()
+                sk = (prod_iso, ho_nm, clean_product_for_match(p_nm))
+                if sk in seen_soy_keys:
+                    continue
+                seen_soy_keys.add(sk)
+                exp_raw = str(blk.get("소비기한", "-")).strip()
+                first_exp = exp_raw.split("/")[0].strip() if exp_raw else ""
+                exp_d = parse_date_obj(first_exp)
+                soy_hist.append({
+                    "생산일자": prod_iso,
+                    "원본탭명": t_clean,
+                    "포장기": ho_nm,
+                    "배양구분": blk.get("배양구분", "-"),
+                    "품목명": p_nm,
+                    "표기소비기한_원문": exp_raw,
+                    "표준소비기한_검색용": exp_d.strftime("%Y-%m-%d") if exp_d else "",
+                    "검사일자": insp_iso,
+                    "생산시간": blk.get("생산 시작~종료", "-"),
+                    "총검사수량": blk.get("총 검사수량", "0"),
+                    "오염수량": blk.get("오염수량", "-"),
+                    "검사자": blk.get("검사자", "-"),
+                    "판정": blk.get("판정", "검사전"),
+                    "특이사항": blk.get("특이사항", "없음")
+                })
+
+        soy_hist_raw = rows_to_records(batch_map.get(t_hist_soy, [])) if t_hist_soy else []
+        for sr in soy_hist_raw:
+            sc = dict(sr)
+            raw_tab = sc.get("원본탭명") or sc.get("시트탭") or sc.get("탭명") or ""
+            inc_str = sc.get("배양구분") or sc.get("배양검사") or sc.get("배양일수") or sc.get("배양일") or ""
+            offset = extract_soy_inc_days(inc_str)
+
+            ref_d = (
+                parse_date_obj(sc.get("저장일시", ""))
+                or parse_date_obj(sc.get("백업일시", ""))
+                or parse_date_obj(sc.get("검사일자", ""))
+                or parse_date_obj(sc.get("생산일자", ""))
+            )
+            tab_d = parse_soy_tab_date(raw_tab, ref_d)
+
+            if tab_d:
+                sc["검사일자"] = tab_d.strftime("%Y-%m-%d")
+                sc["생산일자"] = (tab_d - timedelta(days=offset)).strftime("%Y-%m-%d")
+            else:
+                insp_d = parse_date_obj(sc.get("검사일자", ""))
+                prod_d = parse_date_obj(sc.get("생산일자", ""))
+                if insp_d:
+                    sc["검사일자"] = insp_d.strftime("%Y-%m-%d")
+                    sc["생산일자"] = (insp_d - timedelta(days=offset)).strftime("%Y-%m-%d")
+                elif prod_d:
+                    sc["생산일자"] = prod_d.strftime("%Y-%m-%d")
+
+            sk = (
+                sc.get("생산일자", ""),
+                str(sc.get("포장기", "")).strip(),
+                clean_product_for_match(sc.get("품목명", ""))
+            )
+            if sk in seen_soy_keys:
+                continue
+            seen_soy_keys.add(sk)
+            soy_hist.append(sc)
+
+        soy_hist.sort(key=lambda x: (x.get("생산일자", ""), x.get("포장기", "")), reverse=True)
         return default_tab_title, soy_tabs_parsed, def_pack["blocks"], def_pack["hourly"], soy_hist, None
     except Exception as e:
         return "-", {}, [], [], [], f"[두유배양일보] {e}"

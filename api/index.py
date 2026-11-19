@@ -2670,7 +2670,8 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
 
         rt_today_parsed = parse_rt_process_rows(t_today, batch_map.get(t_today, [])) if t_today else None
         rt_yest_parsed = parse_rt_process_rows(t_yest, batch_map.get(t_yest, [])) if t_yest else None
-       rt_hist_p = []
+
+        rt_hist_p = []
         for r in (rows_to_records(batch_map.get(t_hp, [])) if t_hp else []):
             rc = dict(r)
             pd = parse_date_obj(rc.get("생산일자", ""))

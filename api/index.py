@@ -621,35 +621,17 @@ def expand_micro_alias_pool(rep_name: str, saved_alias_col: str = "", custom_not
     rep_ns = re.sub(r"\s+", "", rep_s)
     rep_low = rep_ns.lower()
 
+    # 미생물 일보 시트 원본에 (주1)~(주12)가 실제로 표기된 품목만 공통원액 각주 인정
     m_ju = re.search(r"\(주\s*(\d+)\)", rep_s)
     ju_key = f"주{m_ju.group(1)}" if m_ju else ""
 
-    # A2·무항생제·유기농·골드플러스·어린이 등 별도 원액 품목은 '전용목장' 글자가 있어도 절대 주1로 묶이지 않도록 차단
-    is_special_milk = any(k in rep_low for k in ["a2", "무항생제", "유기농", "락토", "골드플러스", "어린이"])
-
-    if not ju_key and not is_special_milk:
-        if any(k in rep_ns for k in ["키짱", "자녀사랑"]):
-            ju_key = "주2"
-        elif "전용목장" in rep_ns and not any(x in rep_ns for x in ["저지방", "무지방", "고칼슘", "1.8", "2.3", "1800", "2300"]):
-            ju_key = "주1"
-        elif "고칼슘" in rep_ns and "저지방" not in rep_ns:
-            ju_key = "주3"
-        elif "바리스타" in rep_ns or "스타벅스" in rep_ns:
-            ju_key = "주4"
-        elif "저지방" in rep_ns:
-            ju_key = "주5"
-        elif any(x in rep_ns for x in ["2300", "1800", "쿠팡", "컬리1.8"]):
-            ju_key = "주9"
-        elif rep_ns in ["연세딸기", "호상딸기"]:
-            ju_key = "주10"
-        elif rep_ns in ["연세플레인", "호상플레인"]:
-            ju_key = "주11"
-        elif rep_ns in ["연세복숭아", "호상복숭아"]:
-            ju_key = "주12"
+    # 시트 내 유일하게 번호 표기가 생략된 호상 요구르트 '연세 플레인'만 예외 매칭
+    if not ju_key and rep_ns in ["연세플레인", "호상플레인"]:
+        ju_key = "주10"
 
     parts = [rep_s]
-    # 기존 DB에 잘못 저장된 주1 텍스트가 A2 품목에 섞여 들어오지 않도록 방어
-    if saved_alias_col and not (is_special_milk and not m_ju):
+    # 기존 DB(_이력DB_미생물)에 잘못 백업된 주석 텍스트가 (주N) 없는 별개 품목에 섞이지 않도록 차단
+    if saved_alias_col and m_ju:
         parts.append(str(saved_alias_col))
 
     if ju_key:
@@ -665,30 +647,35 @@ def expand_micro_alias_pool(rep_name: str, saved_alias_col: str = "", custom_not
     elif ju_key == "주9":
         parts.append("마켓컬리 1800mL, 마켓컬리 병 1800mL, 컬리 1800mL")
 
-    if "건강박사" in rep_ns:
-        parts.append("헬스닥터, 오메가3건강박사")
-    if "골드플러스" in rep_ns:
-        parts.append("연세골드플러스, 연세 골드플러스RT 우유, 골드플러스키즈, 골드플러스 1800mL")
-    if "바나바잎" in rep_ns:
-        parts.append("저당바나바잎, 연세바나바잎, 세브란스 저당 바나바잎")
-    if "헛개" in rep_ns:
-        parts.append("연세헛개, 헛개나무, 세브란스 헛개")
-    if "a2" in rep_low:
-        parts.append("A2 단백우유, 세브란스 A2 단백 우유, 전용목장 A2단백우유, A2단백우유")
-    if "어린이" in rep_ns:
-        parts.append("어린이 전용우유, 어린이전용우유, 어린이 전용우유 170mL")
-    if "무항생제" in rep_ns:
-        parts.append("연세 무항생제 목장우유, 무항생제 목장우유 750mL")
-    if "킴스" in rep_ns or "더고소한" in rep_ns:
-        parts.append("더 고소한 (킴스숲골), 더 고소한 목장우유 900mL")
+    # 수출용(Milk Talk/밀크톡) 및 요거트/발효유가 아닌 순수 자사 품목에 한해서만 약칭 보강
+    is_export_or_yogurt = any(k in rep_low for k in ["milktalk", "밀크톡", "yogurt", "요거트", "요구르트"])
+    if not is_export_or_yogurt:
+        if "건강박사" in rep_ns:
+            parts.append("헬스닥터, 오메가3건강박사")
+        if "골드플러스" in rep_ns:
+            parts.append("연세골드플러스, 연세 골드플러스RT 우유, 골드플러스키즈, 골드플러스 1800mL")
+        if "바나바잎" in rep_ns:
+            parts.append("저당바나바잎, 연세바나바잎, 세브란스 저당 바나바잎")
+        if "헛개" in rep_ns:
+            parts.append("연세헛개, 헛개나무, 세브란스 헛개")
+        if "a2" in rep_low and "greek" not in rep_low:
+            parts.append("A2 단백우유, 세브란스 A2 단백 우유, 전용목장 A2단백우유, A2단백우유")
+        if "어린이" in rep_ns:
+            parts.append("어린이 전용우유, 어린이전용우유, 어린이 전용우유 170mL")
+        if "무항생제" in rep_ns and "목초" not in rep_ns:
+            parts.append("연세 무항생제 목장우유, 무항생제 목장우유 750mL")
+        if "킴스" in rep_ns or "더고소한" in rep_ns:
+            parts.append("더 고소한 (킴스숲골), 더 고소한 목장우유 900mL")
 
     joined = " | ".join(dict.fromkeys([p.strip() for p in parts if p.strip()]))
     ju_badge = f"({ju_key} 공통원액)" if ju_key else ""
     return joined, ju_badge
 
 
-VARIANT_MODIFIERS = ["a2", "저지방", "무지방", "락토프리", "고칼슘", "무항생제", "유기농", "디카페인"]
-
+VARIANT_MODIFIERS = [
+    "a2", "저지방", "무지방", "락토프리", "고칼슘", "무항생제", "유기농", "디카페인",
+    "밀크톡", "milktalk", "yogurt", "요거트", "요구르트"
+]
 
 def is_product_match(record_prod: str, selected_prod: str, kw_text: str = "", allow_no_vol_record: bool = False) -> bool:
     """

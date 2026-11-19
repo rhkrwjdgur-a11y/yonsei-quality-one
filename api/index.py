@@ -61,7 +61,7 @@ AUDIT_STATUS_CONFIG = {
 }
 
 MICRO_STATUS_LIST = ["자동연동", "출고적합", "검사중", "재검·출고보류"]
-MICRO_LIVE_TABS = ["일보작성", "일요일_일보작성", "연휴_일보작성"]
+MICRO_LIVE_TABS = ["일반 일보", "일요일 일보", "휴일 일보(날짜변경)", "일보작성", "일요일_일보작성", "연휴_일보작성"]
 LAW_PREP_LIST = ["검토전", "부자재변경중", "반영완료"]
 
 # '법규정보' 시트 내 '대시보드' 탭 및 1~2줄 요약 전용 '_법규요약DB' 탭 표준 컬럼
@@ -2827,7 +2827,95 @@ def fetch_process_micro_sheet(sheet_urls_map: dict):
     except Exception as e:
         return empty_micro, f"[미생물일보] {e}"
 
+def build_rt_view_from_db_records(dt_iso: str, p_list: list, c_list: list) -> dict:
+    """시트 탭이 삭제되고 DB에만 남은 과거 날짜도 금일·전일 탭과 동일한 3단 요약 화면으로 변환"""
+    tab_lbl = p_list[0].get("원본탭명", dt_iso[5:].replace("-", "/")) if p_list else dt_iso[5:].replace("-", "/")
+    ster_records = []
+    ccp3b_map: Dict[Tuple[str, str], dict] = {}
+    ho_ster_sum, ho_rem = {}, {}
+    special_notes = []
 
+    for c in c_list:
+        rcat = str(c.get("기록분류", "")).strip()
+        eq = str(c.get("설비_호기", c.get("포장호기", "-"))).strip()
+        sub = str(c.get("세부항목", "-")).strip()
+        val = str(c.get("기록내용_수치", "-")).strip()
+        rem = str(c.get("특이사항", "")).strip()
+
+        if rem and rem not in ["-", "없음", "이상없음", "적합"] and rem not in special_notes:
+            special_notes.append(f"[{eq}] {rem}")
+
+        if "멸균" in rcat and "3B" not in rcat and "포장살균" not in rcat:
+            m_pack = re.search(r"\(([A-F]호기)\)", eq)
+            if m_pack:
+                ho_ster_sum[m_pack.group(1)] = f"{eq} ({val})"
+                if rem and rem not in ["-", "없음", "이상없음"]:
+                    ho_rem[m_pack.group(1)] = rem
+            ster_records.append({
+                "멸균기_포장": eq,
+                "매칭 제품명": sub,
+                "확인시간": val if re.search(r"\d{1,2}:\d{2}", val) else "-",
+                "멸균온도": val if "℃" in val else "-",
+                "균질압": "-",
+                "멸균시간": "-",
+                "유량_냉각": "-",
+                "여과망_서명": "적합",
+                "특이사항": rem or "이상없음",
+                "_c_time": "cell-green" if val != "-" else "cell-gray",
+                "_c_temp": "cell-green",
+                "_c_press": "",
+                "_c_hold": "",
+                "_c_flt": "cell-green",
+                "_c_rem": "cell-yellow" if (rem and rem not in ["-", "없음", "이상없음"]) else ""
+            })
+        elif "3B" in rcat or "포장살균" in rcat:
+            key3 = (sub, eq)
+            rec3 = ccp3b_map.setdefault(key3, {
+                "항목": sub, "관리기준": "-", "적용설비": eq,
+                "A호기": "-", "B호기": "-", "C호기": "-", "D호기": "-", "E호기": "-", "F호기": "-",
+                "_cls_map": {}
+            })
+            for h_nm in ["A호기", "B호기", "C호기", "D호기", "E호기", "F호기"]:
+                if c.get(h_nm) and str(c.get(h_nm)).strip() not in ["", "-"]:
+                    rec3[h_nm] = str(c.get(h_nm)).strip()
+                    rec3["_cls_map"][h_nm] = "cell-green"
+            for m_h in re.finditer(r"([A-F]호기)\s*:\s*([^/]+)", val):
+                rec3[m_h.group(1)] = m_h.group(2).strip()
+                rec3["_cls_map"][m_h.group(1)] = "cell-green"
+
+    compact_rows = []
+    seen_cp = set()
+    for p in p_list:
+        ho = str(p.get("포장호기", "-")).strip()
+        pnm = str(p.get("제품명", "-")).strip()
+        exp_v = str(p.get("표기소비기한_원문", "-")).strip()
+        chk_t = str(p.get("확인시간", "-")).strip()
+        ck = (ho, clean_product_for_match(pnm), re.sub(r"\s+", "", exp_v))
+        if ck in seen_cp:
+            continue
+        seen_cp.add(ck)
+        rem_t = ho_rem.get(ho, "이상없음")
+        compact_rows.append({
+            "포장호기": ho,
+            "생산 제품명": pnm,
+            "소비기한": exp_v,
+            "확인시간": chk_t,
+            "멸균기·CCP 요약": ho_ster_sum.get(ho, "이력 확인완료"),
+            "특이사항": rem_t,
+            "_cls_status": "cell-green" if chk_t not in ["", "-"] else "cell-gray",
+            "_cls_rem": "cell-yellow" if rem_t != "이상없음" else "cell-green"
+        })
+
+    return {
+        "tab_title": tab_lbl,
+        "prod_date": dt_iso,
+        "running_hos": sorted(list({r["포장호기"] for r in compact_rows if r["포장호기"] != "-"})),
+        "lines_records": [],
+        "compact_rows": compact_rows,
+        "ccp3b_records": list(ccp3b_map.values()),
+        "ster_records": ster_records,
+        "ster_special_notes": special_notes
+    }
 def fetch_process_rt_sheet(sheet_urls_map: dict):
     sh_rt, err_rt = open_sheet_isolated(sheet_urls_map, "process_rt")
     if sh_rt is None:
@@ -3004,7 +3092,7 @@ def fetch_process_soy_sheet(sheet_urls_map: dict):
                 soy_dated_tabs.append((td, raw_t))
 
         past_or_today = sorted([x for x in soy_dated_tabs if x[0] <= today_d], key=lambda x: x[0], reverse=True)
-        future_tabs = sorted([x for x in soy_dated_tabs if x[0].date() if hasattr(x[0], 'date') else x[0] > today_d], key=lambda x: x[0], reverse=True)
+        future_tabs = sorted([x for x in soy_dated_tabs if x[0] > today_d], key=lambda x: x[0], reverse=True)
         ordered_soy_titles = [t for _, t in (past_or_today + future_tabs)]
 
         top_live_titles = ordered_soy_titles[:12]
@@ -5458,7 +5546,8 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
         for mr in micro_h:
             rep_nm = mr.get("대표품목명", "")
             ho_vol_s = str(mr.get("호기_용량", "")).strip()
-            full_alias_pool, ju_badge = expand_micro_alias_pool(f"{rep_nm} {ho_vol_s}", mr.get("연관품목_주석포함", ""))
+            ho_suffix = f" {ho_vol_s}" if ho_vol_s and ho_vol_s != "-" else ""
+            full_alias_pool, ju_badge = expand_micro_alias_pool(f"{rep_nm}{ho_suffix}", mr.get("연관품목_주석포함", ""))
             m_insp_dt = str(mr.get("검사일자_생산일", "")).strip()
 
             if not is_exp_empty:

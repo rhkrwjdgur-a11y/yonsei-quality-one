@@ -1187,7 +1187,98 @@
       font-size: 13px;
       font-family: inherit;
     }
-
+/* LOT 역추적 품목 타이핑 자동완성 드롭다운 */
+    .lot-combo-wrap { position: relative; width: 100%; }
+    .lot-combo-input {
+      width: 100%;
+      padding: 7px 54px 7px 11px;
+      border: 1.5px solid #93C5FD;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: inherit;
+      background: #FFFFFF;
+      color: var(--text-main);
+      outline: none;
+    }
+    .lot-combo-input:focus {
+      border-color: var(--yonsei-blue);
+      box-shadow: 0 0 0 3px rgba(0, 51, 120, 0.12);
+    }
+    .lot-combo-actions {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .lot-combo-clear {
+      border: none;
+      background: #E2E8F0;
+      color: #475569;
+      width: 19px;
+      height: 19px;
+      border-radius: 50%;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    .lot-combo-clear:hover { background: #CBD5E1; color: #0F172A; }
+    .lot-combo-arrow {
+      color: #64748B;
+      font-size: 11px;
+      cursor: pointer;
+      padding: 2px 3px;
+      user-select: none;
+    }
+    .lot-combo-list {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      max-height: 290px;
+      overflow-y: auto;
+      background: #FFFFFF;
+      border: 1px solid #94A3B8;
+      border-radius: 8px;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+      z-index: 80;
+      display: none;
+    }
+    .lot-combo-list.open { display: block; }
+    .lot-combo-item {
+      padding: 8.5px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+      cursor: pointer;
+      border-bottom: 1px solid #F1F5F9;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .lot-combo-item:last-child { border-bottom: none; }
+    .lot-combo-item:hover,
+    .lot-combo-item.active {
+      background: #EFF6FF;
+      color: var(--yonsei-blue);
+      font-weight: 800;
+    }
+    .lot-combo-hl {
+      background: #FEF08A;
+      color: #0F172A;
+      font-weight: 900;
+      padding: 0 1px;
+      border-radius: 2px;
+    }
+    
     .toast-msg {
       position: fixed;
       bottom: 18px;

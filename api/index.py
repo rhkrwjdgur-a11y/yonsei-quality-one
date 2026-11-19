@@ -2674,32 +2674,111 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
     try:
         ws_all = api_call_with_retry(sh_rt.worksheets)
         ws_titles = [w.title for w in ws_all]
-        t_today, t_yest, _ = select_date_tab_titles(ws_titles)
+        t_today, t_yest, ordered_rt_titles = select_date_tab_titles(ws_titles)
 
+        recent_date_tabs = ordered_rt_titles[:10]
         t_hp = next((t for t in ws_titles if t.strip() == HIST_TABS["rt_prod"]), None)
         t_hc = next((t for t in ws_titles if t.strip() == HIST_TABS["rt_ccp"]), None)
         t_fsk = next((t for t in ws_titles if re.sub(r"\s+", "", t) == "제품명식품안전나라" or "식품안전나라" in t), None)
 
-        batch_map = batch_fetch_tabs(sh_rt, [t_today, t_yest, t_hp, t_hc, t_fsk])
+        fetch_targets = list(dict.fromkeys([t for t in ([t_today, t_yest] + recent_date_tabs + [t_hp, t_hc, t_fsk]) if t]))
+        batch_map = batch_fetch_tabs(sh_rt, fetch_targets)
 
         rt_today_parsed = parse_rt_process_rows(t_today, batch_map.get(t_today, [])) if t_today else None
         rt_yest_parsed = parse_rt_process_rows(t_yest, batch_map.get(t_yest, [])) if t_yest else None
 
+        # 1) 누적 DB 로드 시 '=TODAY()'로 찍힌 생산일자 대신 '원본탭명(예: 11/17)' 기준으로 날짜 복원
         rt_hist_p = []
+        seen_p_keys = set()
         for r in (rows_to_records(batch_map.get(t_hp, [])) if t_hp else []):
             rc = dict(r)
             pd = parse_date_obj(rc.get("생산일자", ""))
-            if pd:
+            tab_iso = tab_title_to_iso_date(rc.get("원본탭명", ""), pd)
+            if tab_iso:
+                rc["생산일자"] = tab_iso
+            elif pd:
                 rc["생산일자"] = pd.strftime("%Y-%m-%d")
+            pk = (
+                rc.get("생산일자", ""),
+                str(rc.get("포장호기", "")).strip(),
+                str(rc.get("제품명", "")).strip(),
+                str(rc.get("표기소비기한_원문", "")).strip()
+            )
+            seen_p_keys.add(pk)
             rt_hist_p.append(rc)
 
         rt_hist_c = []
+        seen_c_dates = set()
         for c in (rows_to_records(batch_map.get(t_hc, [])) if t_hc else []):
             cc = dict(c)
             cd = parse_date_obj(cc.get("생산일자", ""))
-            if cd:
+            tab_iso = tab_title_to_iso_date(cc.get("원본탭명", ""), cd)
+            if tab_iso:
+                cc["생산일자"] = tab_iso
+            elif cd:
                 cc["생산일자"] = cd.strftime("%Y-%m-%d")
+            if cc.get("생산일자"):
+                seen_c_dates.add(cc["생산일자"])
             rt_hist_c.append(cc)
+
+        # 2) 아직 DB에 백업되기 전인 최근 하단 날짜 탭(최대 10개)도 탭 날짜 기준으로 이력·역추적에 즉시 병합
+        for raw_dt_tab in recent_date_tabs:
+            tab_iso = tab_title_to_iso_date(raw_dt_tab)
+            if not tab_iso:
+                continue
+            parsed_tab = parse_rt_process_rows(raw_dt_tab, batch_map.get(raw_dt_tab, []))
+            if not parsed_tab:
+                continue
+            t_clean = parsed_tab["tab_title"]
+
+            for lr in parsed_tab.get("lines_records", []):
+                p_nm = str(lr.get("생산 제품명", "")).strip()
+                if not p_nm or p_nm == "(비가동)":
+                    continue
+                exp_raw = str(lr.get("소비기한", "-")).strip()
+                pk = (tab_iso, str(lr.get("포장호기", "")).strip(), p_nm, exp_raw)
+                if pk in seen_p_keys:
+                    continue
+                seen_p_keys.add(pk)
+                exp_d = parse_date_obj(exp_raw)
+                rt_hist_p.append({
+                    "생산일자": tab_iso,
+                    "원본탭명": t_clean,
+                    "포장호기": lr.get("포장호기", "-"),
+                    "제품명": p_nm,
+                    "표기소비기한_원문": exp_raw,
+                    "표준소비기한_검색용": exp_d.strftime("%Y-%m-%d") if exp_d else "",
+                    "확인시간": lr.get("확인시간", "-")
+                })
+
+            if tab_iso not in seen_c_dates:
+                for sr in parsed_tab.get("ster_records", []):
+                    if sr.get("확인시간") == "기록대기":
+                        continue
+                    rt_hist_c.append({
+                        "생산일자": tab_iso,
+                        "원본탭명": t_clean,
+                        "기록분류": "UHT 멸균기 CCP",
+                        "설비_호기": sr.get("멸균기_포장", "-"),
+                        "세부항목": sr.get("매칭 제품명", "-"),
+                        "기록내용_수치": f"확인:{sr.get('확인시간')} / 온도:{sr.get('멸균온도')} / 균질압:{sr.get('균질압')} / 유지:{sr.get('멸균시간')}",
+                        "특이사항": sr.get("특이사항", "없음")
+                    })
+                for c3 in parsed_tab.get("ccp3b_records", []):
+                    ho_vals = [f"{h}:{c3.get(h)}" for h in ["A호기", "B호기", "C호기", "D호기", "E호기", "F호기"] if c3.get(h) not in ["", "-", None]]
+                    if ho_vals:
+                        rt_hist_c.append({
+                            "생산일자": tab_iso,
+                            "원본탭명": t_clean,
+                            "기록분류": "무균포장기 CCP-3B",
+                            "설비_호기": c3.get("적용설비", "-"),
+                            "세부항목": f"{c3.get('항목', '-')} ({c3.get('관리기준', '-')})",
+                            "기록내용_수치": " / ".join(ho_vals),
+                            "특이사항": "적합"
+                        })
+
+        rt_hist_p.sort(key=lambda x: x.get("생산일자", ""), reverse=True)
+        rt_hist_c.sort(key=lambda x: x.get("생산일자", ""), reverse=True)
 
         fsk_products = []
         if t_fsk:
@@ -2719,6 +2798,7 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
         return rt_today_parsed, rt_yest_parsed, rt_hist_p, rt_hist_c, fsk_products, None
     except Exception as e:
         return None, None, [], [], [], f"[상온공정일보] {e}"
+        
 def fetch_process_soy_sheet(sheet_urls_map: dict):
     sh_soy, err_soy = open_sheet_isolated(sheet_urls_map, "process_soy")
     if sh_soy is None:

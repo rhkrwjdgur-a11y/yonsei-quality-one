@@ -1708,12 +1708,15 @@ def parse_dairy_pack_rows(tab_title_raw: str, rows: list, line_label: str):
             continue
 
         block_seq += 1
-        sec_pos_name = f"{line_label}-{'상단' if block_seq == 1 else '하단'}"
+        if line_label == "우유":
+            sec_pos_name = f"우유-{'상단' if block_seq == 1 else '하단'}"
+        else:
+            sec_pos_name = current_cat if current_cat != line_label else f"발효유-{block_seq}"
 
         next_block_r = len(rows)
         for nr in range(r_idx + 1, min(r_idx + 24, len(rows))):
             nc0 = re.sub(r"\s+", "", str(rows[nr][0])) if len(rows[nr]) > 0 else ""
-            nc1 = re.sub(r"\s+", "", str(rows[nr][1])) if len(rows[nr][1]) > 1 else ""
+            nc1 = re.sub(r"\s+", "", str(rows[nr][1])) if len(rows[nr]) > 1 else ""
             if nc0 in ["제품명", "품목", "생산시간", "포장시간", "CCP검증모니터링"] or nc1 in ["제품명", "품목", "생산시간", "포장시간", "CCP검증모니터링"]:
                 next_block_r = nr
                 break
@@ -1728,13 +1731,14 @@ def parse_dairy_pack_rows(tab_title_raw: str, rows: list, line_label: str):
         last_valid_p_name = ""
         for col_i in range(lbl_col + 1, len(r)):
             raw_p_cell = re.sub(r"\s+", " ", str(r[col_i])).strip()
-            if re.sub(r"\s+", "", raw_p_cell) in ["제품명", "품목"] or "특이사항" in raw_p_cell:
+            if re.sub(r"\s+", "", raw_p_cell) in ["제품명", "품목", "-"] or "특이사항" in raw_p_cell:
+                if raw_p_cell == "-":
+                    last_valid_p_name = ""
                 continue
 
             sub0_val = str(block_sub_rows[0][col_i]).strip() if (block_sub_rows and col_i < len(block_sub_rows[0])) else ""
             has_vol_under = bool(re.search(r"\d+\s*(?:㎖|mL|ml|L|g|kg)", sub0_val))
 
-            # 병합셀(예: 어린이 전용우유 170mL 2개 열 병합) 우측 열 제품명 자동 계승
             if raw_p_cell:
                 p_name = raw_p_cell
                 last_valid_p_name = raw_p_cell
@@ -1802,8 +1806,7 @@ def parse_dairy_pack_rows(tab_title_raw: str, rows: list, line_label: str):
 
             full_p_name = format_dairy_display_name(p_name, vol_str, final_sub_cat)
             col_let = f"{idx_to_col_letter(col_i)}열"
-            coord_prod_map[(sec_pos_name, col_let)] = (full_p_name, final_sub_cat, vol_str)
-            coord_prod_map[(line_label, col_let)] = (full_p_name, final_sub_cat, vol_str)
+            coord_prod_map[(sec_pos_name, col_let)] = (full_p_name, final_sub_cat, p_name)
 
             parsed_products.append({
                 "라인구분": final_sub_cat,
@@ -1932,7 +1935,6 @@ def fetch_process_milk_sheet(sheet_urls_map: dict):
         ws_all = api_call_with_retry(sh_milk.worksheets)
         ws_titles = [w.title for w in ws_all]
 
-        # 오직 '우유' / '발효유' 단독 탭 또는 '11/7 우유', '11/7 발효유'만 선택 ('우유(수정X)' 원천 배제!)
         milk_cands = [(dt_v, t) for t in ws_titles for ok, dt_v in [is_valid_live_dairy_tab(t, "우유")] if ok]
         ferm_cands = [(dt_v, t) for t in ws_titles for ok, dt_v in [is_valid_live_dairy_tab(t, "발효유")] if ok]
         milk_cands.sort(key=lambda x: x[0], reverse=True)
@@ -1941,8 +1943,7 @@ def fetch_process_milk_sheet(sheet_urls_map: dict):
         t_m = milk_cands[0][1] if milk_cands else None
         t_f = ferm_cands[0][1] if ferm_cands else None
 
-        # 품목명 좌표 복원용 템플릿 참조 (실시간 관제에는 절대 노출하지 않음)
-        t_m_tpl = next((t for t in ws_titles if "우유" in t and ("수정" in t or "복사" in t)), None)
+        t_m_tpl = next((t for t in ws_titles if "우유" in t and "발효" not in t and ("수정" in t or "복사" in t)), None)
         t_f_tpl = next((t for t in ws_titles if "발효유" in t and ("수정" in t or "복사" in t)), None)
 
         t_dp = next((t for t in ws_titles if t.strip() == HIST_TABS["dairy_prod"]), None)
@@ -1953,7 +1954,6 @@ def fetch_process_milk_sheet(sheet_urls_map: dict):
         m_rows, m_times, m_dt, coord_m = parse_dairy_pack_rows(t_m, batch_map.get(t_m, []), "우유") if t_m else ([], [], "-", {})
         f_rows, f_times, f_dt, coord_f = parse_dairy_pack_rows(t_f, batch_map.get(t_f, []), "발효유") if t_f else ([], [], "-", {})
 
-        # 좌표 사전 구축 (우유-하단 열위치 C열~M열 -> 실제 품목명 복원용)
         coord_master: Dict[Tuple[str, str], Tuple[str, str, str]] = {}
         for tpl_t, lbl in [(t_m_tpl, "우유"), (t_f_tpl, "발효유")]:
             if tpl_t:
@@ -1981,11 +1981,11 @@ def fetch_process_milk_sheet(sheet_urls_map: dict):
             raw_p_nm = str(dr_c.get("제품명", "")).strip()
             ln_orig = str(dr_c.get("라인구분", "")).strip()
 
-            mapped_info = coord_master.get((sec_type, col_pos)) or coord_master.get((ln_orig, col_pos))
+            exact_mapped = coord_master.get((sec_type, col_pos))
             is_vol_only_name = bool(re.match(r"^\d+(?:\.\d+)?\s*(?:㎖|mL|ml|L|g|kg)?$", raw_p_nm))
 
-            if mapped_info and (is_vol_only_name or len(raw_p_nm) <= 4 or "(" not in raw_p_nm):
-                full_nm, mapped_sub_ln, _ = mapped_info
+            if exact_mapped and (is_vol_only_name or clean_product_for_match(raw_p_nm) == clean_product_for_match(exact_mapped[2])):
+                full_nm, mapped_sub_ln, _ = exact_mapped
                 dr_c["제품명"] = full_nm
                 dr_c["라인구분"] = mapped_sub_ln
             else:
@@ -1994,13 +1994,12 @@ def fetch_process_milk_sheet(sheet_urls_map: dict):
                         raw_p_nm,
                         dr_c.get("상부_실링", dr_c.get("상부접착", "")),
                         dr_c.get("하부_외포장", dr_c.get("하부접착", "")),
-                        dr_c.get("캡속지접착", ""),
+                        dr_c.get("캡속지접착", dr.get("접착및외관", "")),
                         "하단" in sec_type
                     )
                     dr_c["라인구분"] = sub_ln
                 dr_c["제품명"] = format_dairy_display_name(raw_p_nm, "", dr_c.get("라인구분", ""))
 
-            # 시트 컬럼명 호환 보정 (Tank번호, 접착및외관, 관능 -> 표준 필드 동시 채움)
             if not dr_c.get("관능검사") and dr_c.get("관능"):
                 dr_c["관능검사"] = dr_c.get("관능")
             if not dr_c.get("접착_외관_요약"):
@@ -2015,7 +2014,6 @@ def fetch_process_milk_sheet(sheet_urls_map: dict):
             seen_hist_keys.add(hk)
             dairy_hist_p.append(dr_c)
 
-        # 금일 실시간 탭(우유 / 발효유)에 입력된 생산 품목이 아직 밤 백업 전이라도 역추적에 즉시 잡히도록 병합
         for live_list, live_dt_raw in [(m_rows, m_dt), (f_rows, f_dt)]:
             live_d_obj = parse_date_obj(live_dt_raw) or now_kst().date()
             live_iso = live_d_obj.strftime("%Y-%m-%d")
@@ -2035,13 +2033,15 @@ def fetch_process_milk_sheet(sheet_urls_map: dict):
                     "세부유형": lr.get("세부유형", ""),
                     "열위치": lr.get("열위치", ""),
                     "제품명": lr.get("제품명", ""),
+                    "Tank번호": "-",
                     "확인시간": lr.get("확인시간", "-"),
                     "표기소비기한_원문": lr.get("표기 소비기한", "-"),
                     "표준소비기한_검색용": "",
                     "표시사항": lr.get("표시사항", "-"),
                     "접착_외관_요약": seal_txt,
                     "제품용량": lr.get("제품용량", "-"),
-                    "관능검사": lr.get("관능(5점법)", "-")
+                    "관능검사": lr.get("관능(5점법)", "-"),
+                    "판정": "적합"
                 })
 
         dairy_hist_c_raw = rows_to_records(batch_map.get(t_dc, [])) if t_dc else []
@@ -2670,8 +2670,21 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
 
         rt_today_parsed = parse_rt_process_rows(t_today, batch_map.get(t_today, [])) if t_today else None
         rt_yest_parsed = parse_rt_process_rows(t_yest, batch_map.get(t_yest, [])) if t_yest else None
-        rt_hist_p = rows_to_records(batch_map.get(t_hp, [])) if t_hp else []
-        rt_hist_c = rows_to_records(batch_map.get(t_hc, [])) if t_hc else []
+       rt_hist_p = []
+        for r in (rows_to_records(batch_map.get(t_hp, [])) if t_hp else []):
+            rc = dict(r)
+            pd = parse_date_obj(rc.get("생산일자", ""))
+            if pd:
+                rc["생산일자"] = pd.strftime("%Y-%m-%d")
+            rt_hist_p.append(rc)
+
+        rt_hist_c = []
+        for c in (rows_to_records(batch_map.get(t_hc, [])) if t_hc else []):
+            cc = dict(c)
+            cd = parse_date_obj(cc.get("생산일자", ""))
+            if cd:
+                cc["생산일자"] = cd.strftime("%Y-%m-%d")
+            rt_hist_c.append(cc)
 
         fsk_products = []
         if t_fsk:

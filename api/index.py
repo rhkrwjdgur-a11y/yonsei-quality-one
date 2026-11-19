@@ -1542,25 +1542,45 @@ def parse_rt_process_rows(tab_title_raw: str, rows: list):
 
 
 def calc_time_span_text(time_str: str) -> Tuple[str, str, str]:
-    times = re.findall(r"(\d{1,2}:\d{2})", str(time_str or ""))
+    s = str(time_str or "").replace("：", ":").strip()
+    times = re.findall(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", s)
+    valid_times = [t for t in times if t not in ["00:00", "0:00"]]
+    if not valid_times:
+        return "-", "-", "비가동"
+
+    def _to_min(hm: str) -> int:
+        p = hm.split(":")
+        return int(p[0]) * 60 + int(p[1])
+
     if len(times) >= 2:
+        if len(times) >= 4 and len(times) % 2 == 0:
+            total_diff = 0
+            for i in range(0, len(times), 2):
+                if times[i] in ["00:00", "0:00"] and times[i + 1] in ["00:00", "0:00"]:
+                    continue
+                m_s, m_e = _to_min(times[i]), _to_min(times[i + 1])
+                if m_e < m_s:
+                    m_e += 24 * 60
+                total_diff += max(0, m_e - m_s)
+            dur = f"{total_diff // 60}시간 {total_diff % 60:02d}분" if total_diff > 0 else "-"
+            return times[0], times[-1], dur
+
         t_s, t_e = times[0], times[1]
         if t_s in ["00:00", "0:00"] and t_e in ["00:00", "0:00"]:
             return "-", "-", "비가동"
-        m1 = re.match(r"(\d{1,2}):(\d{2})", t_s)
-        m2 = re.match(r"(\d{1,2}):(\d{2})", t_e)
-        if m1 and m2:
-            s_min = int(m1.group(1)) * 60 + int(m1.group(2))
-            e_min = int(m2.group(1)) * 60 + int(m2.group(2))
-            if e_min < s_min:
-                e_min += 24 * 60
-            diff = e_min - s_min
-            dur = f"{diff // 60}시간 {diff % 60:02d}분" if diff > 0 else "-"
-            return t_s, t_e, dur
-    elif len(times) == 1:
-        if times[0] not in ["00:00", "0:00"]:
-            return times[0], "진행중", "가동중"
-    return "-", "-", "비가동"
+        s_min, e_min = _to_min(t_s), _to_min(t_e)
+        if e_min < s_min:
+            e_min += 24 * 60
+        diff = e_min - s_min
+        dur = f"{diff // 60}시간 {diff % 60:02d}분" if diff > 0 else "-"
+        return t_s, t_e, dur
+
+    only_t = valid_times[0]
+    tilde_pos = s.find("~")
+    time_pos = s.find(only_t)
+    if tilde_pos != -1 and tilde_pos < time_pos:
+        return "미기입", only_t, "종료확인"
+    return only_t, "진행중", "가동중"
 
 
 def classify_milk_sub_line(full_p_name: str, top_raw: str, bot_raw: str, seal_summary: str = "", is_top_section: bool = False) -> str:
@@ -1588,38 +1608,86 @@ def classify_milk_sub_line(full_p_name: str, top_raw: str, bot_raw: str, seal_su
 
 
 def build_run_time_card(line_label: str, ho_title: str, raw_time_str: str) -> dict:
-    t_s, t_e, dur = calc_time_span_text(raw_time_str)
+    raw_s = str(raw_time_str or "").replace("：", ":").strip()
+    t_s, t_e, dur = calc_time_span_text(raw_s)
+
+    if t_s == "-":
+        span_disp = "비가동 (00:00)"
+    else:
+        # 전일 야간 시작 일자(예: '15일 20:10') 및 괄호 메모(예: '(수출 키짱)') 보존
+        m_day = re.search(r"(\d{1,2}\s*일)\s*" + re.escape(t_s), raw_s)
+        day_prefix = re.sub(r"\s+", "", m_day.group(1)) + " " if m_day else ""
+
+        times_all = re.findall(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", raw_s)
+        if len(times_all) >= 4 and len(times_all) % 2 == 0:
+            pairs = [f"{times_all[i]} ~ {times_all[i + 1]}" for i in range(0, len(times_all), 2)]
+            span_disp = day_prefix + " / ".join(pairs)
+        else:
+            span_disp = f"{day_prefix}{t_s} ~ {t_e}"
+
+        notes = [
+            n.strip() for n in re.findall(r"\(([^)]+)\)", raw_s)
+            if n.strip() and not re.search(r"카톤\s*/\s*병", n)
+        ]
+        if notes:
+            span_disp = f"{span_disp} ({', '.join(dict.fromkeys(notes))})"
+
     return {
         "라인구분": line_label,
         "포장호기": ho_title,
         "생산 시작": t_s,
         "생산 종료": t_e,
-        "시작~종료": f"{t_s} ~ {t_e}" if t_s != "-" else "비가동 (00:00)",
+        "시작~종료": span_disp,
         "실가동시간": dur,
         "가동상태": "가동" if t_s != "-" else "비가동"
     }
 
 
 def split_combined_milk_time_entry(raw_val: str) -> List[dict]:
-    s = str(raw_val or "").strip()
-    m_c = re.search(r"카톤\s*[:\-]?\s*(\d{1,2}:\d{2}\s*~\s*\d{1,2}:\d{2}|\d{1,2}:\d{2}\s*~?)", s)
-    m_b = re.search(r"병(?:포장|우유)?[^0-9:]*(\d{1,2}:\d{2}\s*~\s*\d{1,2}:\d{2}|\d{1,2}:\d{2}\s*~?)", s)
-    if m_c or m_b:
+    """
+    '카톤 7:26 ~ 16:10 병포장 15일 20:10 ~ 14:23' 또는
+    '카톤 08:22 ~ 16:03 병포장 07:25 (수출 키짱) ~ 15:35' 처럼
+    날짜나 괄호 메모가 중간에 포함되더라도 카톤/병포장 구간을 정확히 분리
+    """
+    s = str(raw_val or "").replace("：", ":").strip()
+    m_c = re.search(r"카톤(?:\s*(?:포장|우유|팩|라인))?(?=\s*[:\-~0-9\(]|$)", s)
+    m_b = re.search(r"병(?:\s*(?:포장|우유|라인))?(?=\s*[:\-~0-9\(]|$)", s)
+
+    if m_c and m_b:
+        if m_c.start() < m_b.start():
+            c_seg = s[m_c.end():m_b.start()].lstrip(" :").strip(" /|,;")
+            b_seg = s[m_b.end():].lstrip(" :").strip(" /|,;")
+        else:
+            b_seg = s[m_b.end():m_c.start()].lstrip(" :").strip(" /|,;")
+            c_seg = s[m_c.end():].lstrip(" :").strip(" /|,;")
         return [
-            build_run_time_card("우유(카톤)", "우유 카톤 생산시간", m_c.group(1) if m_c else ""),
-            build_run_time_card("우유(병포장)", "우유 병포장 생산시간", m_b.group(1) if m_b else "")
+            build_run_time_card("우유(카톤)", "우유 카톤 생산시간", c_seg),
+            build_run_time_card("우유(병포장)", "우유 병포장 생산시간", b_seg)
         ]
 
-    all_t = re.findall(r"\d{1,2}:\d{2}", s)
+    if m_c and not m_b:
+        c_seg = s[m_c.end():].lstrip(" :").strip(" /|,;")
+        return [
+            build_run_time_card("우유(카톤)", "우유 카톤 생산시간", c_seg),
+            build_run_time_card("우유(병포장)", "우유 병포장 생산시간", "")
+        ]
+
+    if m_b and not m_c:
+        b_seg = s[m_b.end():].lstrip(" :").strip(" /|,;")
+        return [
+            build_run_time_card("우유(카톤)", "우유 카톤 생산시간", ""),
+            build_run_time_card("우유(병포장)", "우유 병포장 생산시간", b_seg)
+        ]
+
+    all_t = re.findall(r"(?<!\d)\d{1,2}:\d{2}(?!\d)", s)
     if len(all_t) >= 4:
         return [
             build_run_time_card("우유(카톤)", "우유 카톤 생산시간", f"{all_t[0]} ~ {all_t[1]}"),
             build_run_time_card("우유(병포장)", "우유 병포장 생산시간", f"{all_t[2]} ~ {all_t[3]}")
         ]
     if len(all_t) >= 2:
-        span_s = f"{all_t[0]} ~ {all_t[1]}"
         return [
-            build_run_time_card("우유(카톤)", "우유 카톤 생산시간", span_s),
+            build_run_time_card("우유(카톤)", "우유 카톤 생산시간", f"{all_t[0]} ~ {all_t[1]}"),
             build_run_time_card("우유(병포장)", "우유 병포장 생산시간", "")
         ]
     return [
@@ -1635,18 +1703,26 @@ def extract_clean_line_time_for_trace(item_title: str, raw_val: str, target_line
     if target_line == "우유(카톤)":
         if "병" in title_ns and "카톤" not in title_ns:
             return None
-        cards = split_combined_milk_time_entry(val_s)
-        c_card = cards[0]
+        if "카톤" in title_ns or "카톤" in val_s or "병" in val_s:
+            c_card = split_combined_milk_time_entry(val_s)[0]
+        else:
+            c_card = build_run_time_card("우유(카톤)", "우유 카톤 생산시간", val_s)
         return f"우유(카톤): {c_card['시작~종료']}" if c_card["가동상태"] == "가동" else None
 
     if target_line == "우유(병포장)":
         if "카톤" in title_ns and "병" not in title_ns:
             return None
-        cards = split_combined_milk_time_entry(val_s)
-        b_card = cards[1] if len(cards) > 1 else cards[0]
+        if "카톤" in title_ns or "카톤" in val_s:
+            cards = split_combined_milk_time_entry(val_s)
+            b_card = cards[1] if len(cards) > 1 else cards[0]
+        else:
+            b_card = build_run_time_card("우유(병포장)", "우유 병포장 생산시간", val_s)
         return f"우유(병포장): {b_card['시작~종료']}" if b_card["가동상태"] == "가동" else None
 
-    return f"{item_title}: {val_s}"
+    f_card = build_run_time_card(target_line, item_title, val_s)
+    if f_card["가동상태"] != "가동":
+        return None
+    return f"{item_title}: {f_card['시작~종료']}"
 
 
 def idx_to_col_letter(col_idx: int) -> str:

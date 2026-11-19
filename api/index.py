@@ -4634,21 +4634,20 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
         else:
             label_memo_final = DEFAULT_LABEL_MEMO
 
-        # 미생물 출고 판정: '미생물 일보' 구글 시트 최신 확정 판정 결과를 100% 최우선 반영
+        # 미생물 출고 판정: '미생물 일보' 구글 시트가 연결되어 있으면 항상 시트 판정 결과를 최우선 반영
         raw_m_pref = saved_micro if isinstance(saved_micro, dict) else dict(DEFAULT_MICRO_STATUS)
-        m_mode = raw_m_pref.get("mode", "자동연동")
-        if micro_data.get("has_sheet") and m_mode != "수동지정":
+        if micro_data.get("has_sheet"):
             micro_final = {
                 "mode": "자동연동",
                 "status": micro_data["auto_status"],
                 "note": micro_data["auto_note"],
-                "updated_at": "시트 실시간 연동"
+                "updated_at": f"미생물 일보 시트 연동 ({micro_data.get('latest_judge_date') or today_str})"
             }
         else:
             micro_final = {
-                "mode": m_mode,
-                "status": raw_m_pref.get("status", micro_data.get("auto_status", "출고적합")),
-                "note": raw_m_pref.get("note") or micro_data.get("auto_note", "최근 판정분 우유 · 발효유 제품 특이사항 없음"),
+                "mode": raw_m_pref.get("mode", "자동연동"),
+                "status": raw_m_pref.get("status", "출고적합"),
+                "note": raw_m_pref.get("note") or "최근 판정분 우유 · 발효유 제품 특이사항 없음",
                 "updated_at": raw_m_pref.get("updated_at", "")
             }
 

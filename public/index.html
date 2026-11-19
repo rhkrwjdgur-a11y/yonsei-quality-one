@@ -3437,6 +3437,160 @@ function renderMicroView() {
 // ==============================================================================
 // [VIEW 10] 냉장(우유·발효유·미생물) / 상온(상온공정·두유배양) 완전 분리 LOT 역추적 & 클레임 이력
 // ==============================================================================
+let LOT_COMBO_ACTIVE_IDX = -1;
+
+if (!window._lotComboDocBound) {
+  window._lotComboDocBound = true;
+  document.addEventListener('mousedown', function(e) {
+    const wrap = document.getElementById('lotComboWrap');
+    const dd = document.getElementById('lotProdDropdown');
+    if (dd && wrap && !wrap.contains(e.target)) {
+      dd.classList.remove('open');
+    }
+  });
+}
+
+function getActiveLotProdList() {
+  if (!BUNDLE || !BUNDLE.process) return [];
+  const rawList = (LOT_SCOPE === 'DAIRY') ? (BUNDLE.process.dairy_products || []) : (BUNDLE.process.rt_products || []);
+  return rawList.slice().sort(function(a, b) { return a.localeCompare(b, 'ko'); });
+}
+
+function highlightLotMatchHtml(text, query) {
+  const src = String(text || '');
+  const q = String(query || '').trim();
+  if (!q) return esc(src);
+  const tokens = q.split(/\s+/).filter(Boolean).sort(function(a, b) { return b.length - a.length; });
+  if (!tokens.length) return esc(src);
+  const escapedToks = tokens.map(function(t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); });
+  const re = new RegExp('(' + escapedToks.join('|') + ')', 'gi');
+  return src.split(re).map(function(part, idx) {
+    return (idx % 2 === 1) ? ('<span class="lot-combo-hl">' + esc(part) + '</span>') : esc(part);
+  }).join('');
+}
+
+function renderLotComboOptions(filterText) {
+  const listEl = document.getElementById('lotProdDropdown');
+  const clearBtn = document.getElementById('btnLotComboClear');
+  if (!listEl) return;
+
+  const q = String(filterText || '').trim();
+  if (clearBtn) clearBtn.style.display = q ? 'inline-flex' : 'none';
+
+  const allProds = getActiveLotProdList();
+  const qTokens = q.toLowerCase().replace(/\s+/g, ' ').split(' ').filter(Boolean);
+
+  const matched = allProds.filter(function(p) {
+    if (!qTokens.length) return true;
+    const pLow = String(p).toLowerCase();
+    const pNoSpace = pLow.replace(/\s+/g, '');
+    return qTokens.every(function(tok) {
+      return pLow.indexOf(tok) !== -1 || pNoSpace.indexOf(tok) !== -1;
+    });
+  });
+
+  LOT_COMBO_ACTIVE_IDX = -1;
+  let html = '';
+
+  if (!q) {
+    html += '<div class="lot-combo-item" data-val="" onmousedown="event.preventDefault(); selectLotComboItemEl(this, false)">' +
+      '<span style="color:var(--text-muted);">-- 전체 품목 (품목 지정 없이 소비기한으로만 조회) --</span>' +
+      '<span class="badge badge-neutral">전체 ' + allProds.length + '종</span>' +
+    '</div>';
+  } else {
+    html += '<div class="lot-combo-item" data-val="' + esc(q) + '" onmousedown="event.preventDefault(); selectLotComboItemEl(this, true)">' +
+      '<span>🔍 <b>"' + esc(q) + '"</b> 포함 품목 전체 키워드 검색</span>' +
+      '<span class="badge badge-info">' + matched.length + '종 해당</span>' +
+    '</div>';
+  }
+
+  if (matched.length) {
+    html += matched.map(function(p) {
+      return '<div class="lot-combo-item" data-val="' + esc(p) + '" onmousedown="event.preventDefault(); selectLotComboItemEl(this, true)">' +
+        '<span>' + highlightLotMatchHtml(p, q) + '</span>' +
+      '</div>';
+    }).join('');
+  } else {
+    html += '<div style="padding:12px; text-align:center; color:var(--text-muted); font-size:12.5px;">' +
+      '목록에 정확히 일치하는 이름이 없습니다. Enter 또는 [역추적 실행] 클릭 시 입력한 키워드로 검색합니다.' +
+    '</div>';
+  }
+
+  listEl.innerHTML = html;
+}
+
+function openLotComboDropdown() {
+  const inp = document.getElementById('inpLotProdCombo');
+  const dd = document.getElementById('lotProdDropdown');
+  if (!inp || !dd) return;
+  renderLotComboOptions(inp.value);
+  dd.classList.add('open');
+}
+
+function toggleLotComboDropdown() {
+  const dd = document.getElementById('lotProdDropdown');
+  if (!dd) return;
+  if (dd.classList.contains('open')) dd.classList.remove('open');
+  else openLotComboDropdown();
+}
+
+function onLotComboInput(val) {
+  const dd = document.getElementById('lotProdDropdown');
+  renderLotComboOptions(val);
+  if (dd) dd.classList.add('open');
+}
+
+function clearLotComboInput() {
+  const inp = document.getElementById('inpLotProdCombo');
+  if (!inp) return;
+  inp.value = '';
+  renderLotComboOptions('');
+  inp.focus();
+  const dd = document.getElementById('lotProdDropdown');
+  if (dd) dd.classList.add('open');
+}
+
+function selectLotComboItemEl(el, autoRun) {
+  const val = el ? (el.getAttribute('data-val') || '') : '';
+  const inp = document.getElementById('inpLotProdCombo');
+  const dd = document.getElementById('lotProdDropdown');
+  const clearBtn = document.getElementById('btnLotComboClear');
+  if (inp) inp.value = val;
+  if (clearBtn) clearBtn.style.display = val ? 'inline-flex' : 'none';
+  if (dd) dd.classList.remove('open');
+  if (autoRun && val) executeScopedLotTrace();
+}
+
+function onLotComboKeydown(e) {
+  const dd = document.getElementById('lotProdDropdown');
+  const items = dd ? dd.querySelectorAll('.lot-combo-item') : [];
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (dd && !dd.classList.contains('open')) openLotComboDropdown();
+    if (!items.length) return;
+    LOT_COMBO_ACTIVE_IDX = (LOT_COMBO_ACTIVE_IDX + 1) % items.length;
+    items.forEach(function(it, idx) { it.classList.toggle('active', idx === LOT_COMBO_ACTIVE_IDX); });
+    items[LOT_COMBO_ACTIVE_IDX].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!items.length) return;
+    LOT_COMBO_ACTIVE_IDX = (LOT_COMBO_ACTIVE_IDX - 1 + items.length) % items.length;
+    items.forEach(function(it, idx) { it.classList.toggle('active', idx === LOT_COMBO_ACTIVE_IDX); });
+    items[LOT_COMBO_ACTIVE_IDX].scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (dd && dd.classList.contains('open') && LOT_COMBO_ACTIVE_IDX >= 0 && items[LOT_COMBO_ACTIVE_IDX]) {
+      selectLotComboItemEl(items[LOT_COMBO_ACTIVE_IDX], true);
+    } else {
+      if (dd) dd.classList.remove('open');
+      executeScopedLotTrace();
+    }
+  } else if (e.key === 'Escape') {
+    if (dd) dd.classList.remove('open');
+  }
+}
+
 function renderLotView() {
   const cnh = BUNDLE.claim_nc_hist;
   const pr = BUNDLE.process;
@@ -3499,33 +3653,39 @@ function renderLotView() {
   const prodList = isDairyScope ? (pr.dairy_products || []) : (pr.rt_products || []);
   const scopeTitle = isDairyScope
     ? '❄️ [냉장 전용 역추적] 우유(카톤·병) · 발효유 포장일보 & 미생물 검사일보(주1~주12 공통원액 · 배양예정일 자동연동)'
-    : '📦 [상온 전용 역추적] 상온 제품 공정·멸균 CCP 일보 & 두유 배양검사 일보';
-  const expPlaceholder = isDairyScope ? '예: 11.26 또는 2026-11-26 (비워두면 전체 이력)' : '예: 27.03.15 또는 03.15';
-  const kwPlaceholder = isDairyScope ? '예: 연세 전용목장, 자녀사랑, 딸기...' : '예: 연세두유, 서리태, 바나나...';
+    : '📦 [상온 전용 역추적] 상온 제품 공정·멸균 CCP 일보 & 두유 배양검사 일보(탭날짜 - 배양일 자동연산)';
 
-  const prevProd = (LAST_LOT_RESULT && LAST_LOT_RESULT.scope === LOT_SCOPE) ? LAST_LOT_RESULT.product : 'ALL';
-  const prevExp = (LAST_LOT_RESULT && LAST_LOT_RESULT.scope === LOT_SCOPE) ? LAST_LOT_RESULT.exp : '';
-  const prevKw = (LAST_LOT_RESULT && LAST_LOT_RESULT.scope === LOT_SCOPE) ? LAST_LOT_RESULT.kw : '';
+  const comboPlaceholder = isDairyScope
+    ? '클릭 또는 타이핑 (예: 연세, 마켓컬리 1800, 더클래식 입력 시 자동 목록 표시)'
+    : '클릭 또는 타이핑 (예: 연세두유, 서리태, 스위플, 아몬드 입력 시 자동 목록 표시)';
+  const expPlaceholder = isDairyScope ? '예: 11.26 또는 2026-11-26 (비워두면 전체 이력)' : '예: 27.03.15 또는 03.15 (비워두면 전체 이력)';
+
+  const prevProd = (LAST_LOT_RESULT && LAST_LOT_RESULT.scope === LOT_SCOPE && LAST_LOT_RESULT.product !== 'ALL') ? LAST_LOT_RESULT.product : '';
+  const prevKw = (LAST_LOT_RESULT && LAST_LOT_RESULT.scope === LOT_SCOPE) ? (LAST_LOT_RESULT.kw || '') : '';
+  const prevExp = (LAST_LOT_RESULT && LAST_LOT_RESULT.scope === LOT_SCOPE) ? (LAST_LOT_RESULT.exp || '') : '';
+  const initComboVal = prevProd || prevKw;
 
   box.innerHTML =
     '<div class="panel-card" style="background:' + (isDairyScope ? '#EFF6FF' : '#F8FAFC') + '; border-color:' + (isDairyScope ? '#BFDBFE' : '#CBD5E1') + ';">' +
       '<div class="panel-title"><span>' + scopeTitle + '</span><span class="badge badge-info">등록 품목 ' + prodList.length + '종</span></div>' +
-      '<div style="display:grid; grid-template-columns:minmax(220px, 1.3fr) minmax(170px, 0.95fr) minmax(180px, 1fr) auto auto; gap:8px; align-items:end;">' +
-        '<div><label class="form-lbl">1) ' + (isDairyScope ? '냉장(우유·발효유)' : '상온(멸균팩·프리즈마)') + ' 품목 선택</label>' +
-          '<select id="selLotProd" class="form-ctrl">' +
-            '<option value="ALL">-- 전체 품목 (키워드·소비기한으로 검색) --</option>' +
-            prodList.map(function(p) {
-              return '<option value="' + esc(p) + '" ' + (prevProd === p ? 'selected' : '') + '>' + esc(p) + '</option>';
-            }).join('') +
-          '</select>' +
+      '<div style="display:grid; grid-template-columns:minmax(280px, 1.7fr) minmax(190px, 1fr) auto auto; gap:10px; align-items:end;">' +
+        '<div>' +
+          '<label class="form-lbl">1) ' + (isDairyScope ? '냉장(우유·발효유)' : '상온(멸균팩·프리즈마)') + ' 품목 타이핑 검색 · 선택</label>' +
+          '<div class="lot-combo-wrap" id="lotComboWrap">' +
+            '<input type="text" id="inpLotProdCombo" class="lot-combo-input" autocomplete="off" value="' + esc(initComboVal) + '" placeholder="' + comboPlaceholder + '" ' +
+              'onfocus="openLotComboDropdown()" oninput="onLotComboInput(this.value)" onkeydown="onLotComboKeydown(event)" />' +
+            '<div class="lot-combo-actions">' +
+              '<button type="button" id="btnLotComboClear" class="lot-combo-clear" style="display:' + (initComboVal ? 'inline-flex' : 'none') + ';" onmousedown="event.preventDefault(); clearLotComboInput()" title="지우기">✕</button>' +
+              '<span class="lot-combo-arrow" onmousedown="event.preventDefault(); toggleLotComboDropdown()">▾</span>' +
+            '</div>' +
+            '<div id="lotProdDropdown" class="lot-combo-list"></div>' +
+          '</div>' +
         '</div>' +
-        '<div><label class="form-lbl">2) 표기 소비기한 (선택)</label>' +
+        '<div>' +
+          '<label class="form-lbl">2) 표기 소비기한 (선택)</label>' +
           '<input type="text" id="inpLotExp" class="form-ctrl" value="' + esc(prevExp) + '" placeholder="' + expPlaceholder + '" onkeydown="if(event.key===\'Enter\') executeScopedLotTrace()" />' +
         '</div>' +
-        '<div><label class="form-lbl">3) 제품명 키워드 직접 입력</label>' +
-          '<input type="text" id="inpLotKw" class="form-ctrl" value="' + esc(prevKw) + '" placeholder="' + kwPlaceholder + '" onkeydown="if(event.key===\'Enter\') executeScopedLotTrace()" />' +
-        '</div>' +
-        '<button class="btn btn-primary" style="height:36px; padding:0 18px;" onclick="executeScopedLotTrace()">🔍 역추적 실행</button>' +
+        '<button class="btn btn-primary" style="height:36px; padding:0 20px;" onclick="executeScopedLotTrace()">🔍 역추적 실행</button>' +
         '<button class="btn" style="height:36px;" onclick="resetScopedLotTrace()">초기화</button>' +
       '</div>' +
     '</div>' +
@@ -3536,7 +3696,7 @@ function renderLotView() {
   } else {
     document.getElementById('lotResultArea').innerHTML =
       '<div class="panel-card" style="text-align:center; color:var(--text-muted); padding:28px;">' +
-        '위 검색창에서 <b>품목 선택 · 소비기한 · 키워드</b> 중 하나 이상을 입력하고 <b>[역추적 실행]</b>을 눌러주세요.' +
+        '위 검색창에 <b>품목명 일부(예: 연세)</b>를 타이핑해 목록에서 고르거나 <b>소비기한</b>을 입력한 뒤 <b>[역추적 실행]</b>을 눌러주세요.' +
       '</div>';
   }
 }
@@ -3547,14 +3707,21 @@ function resetScopedLotTrace() {
 }
 
 async function executeScopedLotTrace() {
-  const prod = document.getElementById('selLotProd').value;
+  const comboEl = document.getElementById('inpLotProdCombo');
+  const rawInput = comboEl ? (comboEl.value || '').trim() : '';
   const exp = (document.getElementById('inpLotExp').value || '').trim();
-  const kw = (document.getElementById('inpLotKw').value || '').trim();
+  const dd = document.getElementById('lotProdDropdown');
+  if (dd) dd.classList.remove('open');
 
-  if (prod === 'ALL' && !exp && !kw) {
-    showToast('품목을 선택하거나 소비기한 또는 제품명 키워드를 입력해 주세요.', 2800);
+  if (!rawInput && !exp) {
+    showToast('품목명(예: 연세)을 입력·선택하거나 소비기한을 입력해 주세요.', 2800);
     return;
   }
+
+  const allProds = getActiveLotProdList();
+  const isExactProd = allProds.indexOf(rawInput) !== -1;
+  const prod = isExactProd ? rawInput : 'ALL';
+  const kw = isExactProd ? '' : rawInput;
 
   const resBox = document.getElementById('lotResultArea');
   resBox.innerHTML = '<div class="panel-card" style="text-align:center; padding:24px;">⏳ ' + (LOT_SCOPE === 'DAIRY' ? '냉장(포장·미생물)' : '상온(공정·두유배양)') + ' 누적 이력을 조회하고 있습니다...</div>';

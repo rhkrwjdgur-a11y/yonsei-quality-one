@@ -3289,7 +3289,7 @@ function renderMicroView() {
   const mc = BUNDLE.process.micro || { has_sheet: false, live_tabs: {}, hist_rows: [] };
   const spMc = (BUNDLE.special_boards && BUNDLE.special_boards.micro_status) || { status: '출고적합', note: '', mode: '자동연동' };
   const liveTabs = mc.live_tabs || {};
-  const tabOrder = ['일보작성', '일요일_일보작성', '연휴_일보작성'].filter(function(k) { return !!liveTabs[k]; });
+const tabOrder = ['일반 일보', '일요일 일보', '휴일 일보(날짜변경)', '일보작성', '일요일_일보작성', '연휴_일보작성'].filter(function(k) { return !!liveTabs[k]; });
   Object.keys(liveTabs).forEach(function(k) {
     if (tabOrder.indexOf(k) === -1) tabOrder.push(k);
   });
@@ -3299,6 +3299,9 @@ function renderMicroView() {
   }
 
   const tabLabelMap = {
+    '일반 일보': '📌 평일·토요일 당일용 [일반 일보]',
+    '일요일 일보': '☀️ 일요일 전용 [일요일 일보]',
+    '휴일 일보(날짜변경)': '🗓️ 휴일·연휴 날짜변경 [휴일 일보]',
     '일보작성': '📌 평일 당일용 [일보작성]',
     '일요일_일보작성': '☀️ 일요일 전용 [일요일_일보작성]',
     '연휴_일보작성': '🗓️ 명절·연휴 몰아쓰기 [연휴_일보작성]'

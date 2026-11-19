@@ -1189,17 +1189,31 @@ def is_same_tab_date_memo(memo_dt_str: str, tab_title: str) -> bool:
     return False
 
 
+def tab_title_to_iso_date(tab_title: str, ref_date: Optional[date] = None) -> Optional[str]:
+    """상온 일보의 '=TODAY()' 수식 왜곡 방지를 위해 하단 탭 이름(예: 11/18)을 YYYY-MM-DD로 변환"""
+    s = str(tab_title or "").strip()
+    m = re.match(r"^(\d{1,2})[/\.\-](\d{1,2})(?![/\.\-\d])", s)
+    if not m:
+        return None
+    mm, dd = int(m.group(1)), int(m.group(2))
+    today_d = now_kst().date()
+    if ref_date and abs((today_d - ref_date).days) > 200:
+        yr = ref_date.year
+    else:
+        yr = today_d.year if mm <= today_d.month + 1 else today_d.year - 1
+    try:
+        return date(yr, mm, dd).strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
 def parse_rt_process_rows(tab_title_raw: str, rows: list):
     if not tab_title_raw or not rows or len(rows) < 5:
         return None
 
     tab_title = tab_title_raw.strip()
-    prod_date_str = tab_title
-    for r in rows[:4]:
-        for c in r[:18]:
-            if "생 산 일" in str(c) or re.search(r"202\d\.\s*\d{1,2}\.\s*\d{1,2}", str(c)):
-                prod_date_str = str(c).replace("생 산 일 :", "").strip()
-                break
+    # 시트 내부 '생산일(=TODAY)' 셀을 무시하고 무조건 하단 탭 날짜를 생산일로 고정
+    prod_date_str = tab_title_to_iso_date(tab_title) or tab_title
 
     r_pack_hdr, r_ccp3b_hdr, r_ster_hdr = None, None, None
     for idx, r in enumerate(rows):

@@ -53,11 +53,11 @@ RT_CATEGORIES = ["상온 멸균팩", "상온 프리즈마"]
 AUDIT_TYPE_LIST = ["방문심사", "협력업체 방문"]
 AUDIT_STATUS_LIST = ["심사준비중", "심사중", "서류심사중", "현장심사중", "심사종료"]
 AUDIT_STATUS_CONFIG = {
-    "심사준비중": {"pct": 20, "color": "#1D4ED8"},
+    "심사준비중": {"pct": 20, "color": "#3B82F6"},
     "심사중": {"pct": 50, "color": "#0284C7"},
-    "서류심사중": {"pct": 75, "color": "#003378"},
-    "현장심사중": {"pct": 85, "color": "#D97706"},
-    "심사종료": {"pct": 100, "color": "#10B981"}
+    "서류심사중": {"pct": 75, "color": "#1D4ED8"},
+    "현장심사중": {"pct": 85, "color": "#003378"},
+    "심사종료": {"pct": 100, "color": "#0F3A7D"}
 }
 
 MICRO_STATUS_LIST = ["자동연동", "출고적합", "검사중", "재검·출고보류"]
@@ -3600,7 +3600,7 @@ def parse_schedule_tab_rows(rows: list) -> list:
                 "비고": g(col_mm),
                 "수정일시": g(col_ts)
             })
-        out.sort(key=lambda x: x.get("심사일자", ""))
+        out.sort(key=lambda x: x.get("심사일자", ""), reverse=True)
         return out
 
     out_dual = []
@@ -3656,7 +3656,7 @@ def parse_schedule_tab_rows(rows: list) -> list:
                     "비고": mm_v,
                     "수정일시": ""
                 })
-        out_dual.sort(key=lambda x: x.get("심사일자", ""))
+        out_dual.sort(key=lambda x: x.get("심사일자", ""), reverse=True)
     return out_dual
 
 
@@ -5841,7 +5841,7 @@ def api_save_audit_schedule(body: AuditSchedulePayload):
     elif body.action == "delete":
         cur_list = [x for x in cur_list if x["고유ID"] != body.uid]
 
-    cur_list.sort(key=lambda x: x.get("심사일자", ""))
+    cur_list.sort(key=lambda x: x.get("심사일자", ""), reverse=True)
     payload = [AUDIT_COLS] + [[str(r.get(c, "")) for c in AUDIT_COLS] for r in cur_list]
     api_call_with_retry(ws_sched.clear)
     safe_ws_update(ws_sched, payload)

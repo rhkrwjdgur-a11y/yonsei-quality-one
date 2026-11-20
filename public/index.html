@@ -678,21 +678,23 @@
     }
     .gauge-track {
       height: clamp(14px, 1.8vh, 18px);
-      background: #DCE4EE;
+      background: #E2E8F0;
       border-radius: 99px;
       overflow: hidden;
       margin: 7px 0 6px;
+      box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.12);
     }
     .gauge-fill {
       height: 100%;
       border-radius: 99px;
-      transition: width 0.25s ease;
+      transition: width 0.25s ease, background 0.25s ease;
       font-size: 11px;
       font-weight: 800;
       color: #FFFFFF;
       display: flex;
       align-items: center;
       justify-content: center;
+      background-image: linear-gradient(90deg, rgba(255,255,255,0.16) 0%, rgba(0,0,0,0.08) 100%);
     }
     .step-btn-row {
       display: grid;
@@ -1855,7 +1857,7 @@ function renderHome() {
   const memoVal = (BUNDLE.special_boards && BUNDLE.special_boards.label_memo) ? BUNDLE.special_boards.label_memo : '';
   document.getElementById('q2LabelMemoTxt').textContent = memoVal || '• 원자재 변경 품목 전성분 및 알레르기 유발물질 표시 교차 점검 진행\n• 표시사항 신규·변경 의뢰 건 부자재 발주 전 최종 확인필 여부 상시 체크';
 
-  // --- Q3: 방문심사 게이지 & 일정 ---
+  // --- Q3: 방문심사 게이지 & 일정 (최신 날짜 상단 정렬) ---
   const steps = [
     ['심사준비중', '준비중 20%'],
     ['심사중', '심사중 50%'],
@@ -1863,12 +1865,15 @@ function renderHome() {
     ['현장심사중', '현장 85%'],
     ['심사종료', '종료 100%']
   ];
+  const isRecentDone = String(au.visit_title || '').indexOf('최근 방문심사') !== -1 && au.status === '심사종료';
+  const heroBadgeTxt = isRecentDone ? '최근 수검' : '차기 최우선';
+
   document.getElementById('q3HeroBox').innerHTML =
     '<div class="q3-banner-line">' +
-      '<span class="q3-tag-navy">차기 최우선</span>' +
+      '<span class="q3-tag-navy">' + heroBadgeTxt + '</span>' +
       '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + esc(au.visit_title || '-') + '"><b>' + esc(au.visit_title || '-') + '</b></span>' +
     '</div>' +
-    '<div class="gauge-track"><div class="gauge-fill" style="width:' + (au.pct || 0) + '%; background:' + esc(au.color || '#003378') + ';">' + (au.pct || 0) + '%</div></div>' +
+    '<div class="gauge-track"><div class="gauge-fill" style="width:' + (au.pct || 0) + '%; background-color:' + esc(au.color || '#003378') + ';">' + (au.pct || 0) + '%</div></div>' +
     '<div class="step-btn-row">' +
       steps.map(function(st) {
         const isAct = au.status === st[0] ? ' active' : '';
@@ -1876,7 +1881,9 @@ function renderHome() {
       }).join('') +
     '</div>';
 
-  const allScheds = BUNDLE.audit.schedules || [];
+  const allScheds = (BUNDLE.audit.schedules || []).slice().sort(function(a, b) {
+    return String(b['심사일자'] || '').localeCompare(String(a['심사일자'] || ''));
+  });
   const visitList = allScheds.filter(function(s) { return s['구분'] !== '협력업체 방문'; });
   const supVisitList = allScheds.filter(function(s) { return s['구분'] === '협력업체 방문'; });
 

@@ -4199,7 +4199,6 @@ def smart_trim_korean_clause(text: str, limit: int = 105) -> str:
     if len(s) <= limit:
         return s
 
-    # 3개 이상 나열된 품목(A, B, C 및 D)은 'A·B 등'으로 먼저 압축
     s_compact = re.sub(
         r"([가-힣A-Za-z0-9]+)\s*,\s*([가-힣A-Za-z0-9]+)\s*,\s*[가-힣A-Za-z0-9,\s·]+?(?:및|또는)\s*[가-힣A-Za-z0-9\s·]+?(?=\s*(?:을|를|의|에| 등| 원재료| 포함| 제외| 추가| 삭제))",
         r"\1·\2 등",
@@ -4209,7 +4208,6 @@ def smart_trim_korean_clause(text: str, limit: int = 105) -> str:
         return s_compact.strip(" ,./·:-")
     s = s_compact
 
-    # 문장 맨 끝에 법령 핵심 결론어(마지막 2~3어절)가 있으면 따로 확보하여 보존
     tail_conclusion = ""
     m_tail = re.search(
         r"\s+([가-힣A-Za-z0-9·\(\)]+\s+(?:표시대상\s*)?(?:강화|완화|신설|개정|추가|확대|축소|제외|포함|명확화|구체화|허용|금지|의무화|면제|합리화|정비|개선|변경|조정|폐지|마련|적용|시행|처분기준\s*신설|처분기준\s*명확화))$",
@@ -4236,7 +4234,7 @@ def smart_trim_korean_clause(text: str, limit: int = 105) -> str:
         if p >= int(limit * 0.55):
             best_pos = p
             break
-   if best_pos == -1:
+    if best_pos == -1:
         sp = s.find(" ", limit)
         trimmed = s[:sp] if sp != -1 else s[:limit]
     else:

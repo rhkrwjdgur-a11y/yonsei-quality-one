@@ -1416,27 +1416,136 @@
       display: none;
       box-shadow: 0 8px 20px rgba(0,0,0,0.25);
     }
-    /* ==================== Q-Safety 깔끔한 정통 로그인 화면 & 좌측 환영 박스 ==================== */
+   /* ==================== Q-Safety 와이드 2단 로그인 포털 & 좌측 환영 박스 ==================== */
     .auth-gate-backdrop {
       position: fixed;
       inset: 0;
       z-index: 500;
-      background: radial-gradient(circle at 50% 28%, #003A88 0%, #002352 62%, #001533 100%);
+      background-color: #001838;
+      background-image:
+        radial-gradient(circle at 18% 22%, rgba(0, 82, 180, 0.48) 0%, transparent 48%),
+        radial-gradient(circle at 82% 78%, rgba(2, 132, 199, 0.28) 0%, transparent 45%),
+        linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 20px;
+      padding: 28px;
     }
     .auth-gate-backdrop.hidden { display: none; }
-    .auth-card {
+
+    .auth-portal-shell {
       width: 100%;
-      max-width: 420px;
+      max-width: 980px;
+      min-height: 540px;
       background: #FFFFFF;
-      border-radius: 16px;
-      padding: 32px 28px 26px;
-      box-shadow: 0 24px 55px rgba(0, 10, 28, 0.5);
-      border-top: 5px solid var(--yonsei-mid);
+      border-radius: 20px;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1.08fr 0.92fr;
+      box-shadow: 0 30px 70px rgba(0, 8, 24, 0.62), 0 0 0 1px rgba(255, 255, 255, 0.14);
     }
+    @media (max-width: 860px) {
+      .auth-portal-shell { grid-template-columns: 1fr; max-width: 480px; min-height: auto; }
+      .auth-brand-side { padding: 28px 26px !important; }
+    }
+
+    .auth-brand-side {
+      background: linear-gradient(155deg, #002352 0%, #003378 58%, #00469B 100%);
+      color: #FFFFFF;
+      padding: 44px 40px 36px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+    }
+    .auth-brand-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 13px;
+      border-radius: 99px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(147, 197, 253, 0.35);
+      font-size: 12px;
+      font-weight: 800;
+      color: #BFDBFE;
+      width: fit-content;
+      margin-bottom: 18px;
+    }
+    .auth-feature-list {
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+      margin: 24px 0;
+    }
+    .auth-feat-item {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.13);
+      border-radius: 11px;
+      padding: 11px 14px;
+      display: flex;
+      align-items: flex-start;
+      gap: 11px;
+    }
+    .auth-feat-icon {
+      font-size: 18px;
+      line-height: 1.2;
+      flex-shrink: 0;
+    }
+    .auth-feat-title {
+      font-size: 13.5px;
+      font-weight: 800;
+      color: #FFFFFF;
+      margin-bottom: 2px;
+    }
+    .auth-feat-desc {
+      font-size: 12px;
+      color: #CBD5E1;
+      line-height: 1.38;
+    }
+
+    .auth-form-side {
+      background: #FFFFFF;
+      padding: 44px 40px 38px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .auth-form-side .form-lbl {
+      font-size: 13.5px;
+      margin-bottom: 6px;
+      color: #1E293B;
+    }
+    .auth-form-side .form-ctrl {
+      height: 46px;
+      padding: 0 14px;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 9px;
+      border: 1.5px solid #CBD5E1;
+    }
+    .auth-form-side .form-ctrl:focus {
+      outline: none;
+      border-color: var(--yonsei-blue);
+      box-shadow: 0 0 0 3px rgba(0, 51, 120, 0.12);
+    }
+    .auth-submit-btn {
+      width: 100%;
+      height: 50px;
+      border: none;
+      border-radius: 10px;
+      background: var(--yonsei-blue);
+      color: #FFFFFF;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: background 0.15s;
+      box-shadow: 0 6px 16px rgba(0, 51, 120, 0.22);
+    }
+    .auth-submit-btn:hover { background: var(--yonsei-mid); }
+
     .sidebar-user-welcome {
       margin-bottom: 8px;
       padding: 8px 10px;
@@ -1480,7 +1589,6 @@
       text-underline-offset: 2px;
     }
     .suw-pw-link:hover { color: #FFFFFF; }
-
   </style>
 </head>
 <body>
@@ -1718,65 +1826,119 @@
 </div>
 
 <div class="toast-msg" id="toastMsg"></div>
-<!-- ======================= Q-Safety 로그인 게이트 (연세 심볼 · 사번 + 비밀번호) ======================= -->
+<!-- ======================= Q-Safety 와이드 2단 로그인 포털 ======================= -->
 <div class="auth-gate-backdrop" id="authGate">
-  <div class="auth-card">
-    <div style="text-align:center; margin-bottom:22px;">
-      <img src="/img-symbol1.png" alt="연세유업" style="width:58px; height:58px; border-radius:50%; background:#FFFFFF; padding:4px; border:1.5px solid #DBEAFE; box-shadow:0 4px 12px rgba(0,51,120,0.12); margin-bottom:10px;" onerror="this.style.display='none'" />
-      <div style="font-size:28px; font-weight:900; color:#002659; letter-spacing:-0.6px; line-height:1.15;">Q-Safety</div>
-      <div style="font-size:14.5px; font-weight:800; color:#0052B4; margin-top:4px;">품질안전부문 통합 대시보드</div>
-      <div style="font-size:11.5px; font-weight:600; color:#64748B; margin-top:3px;">연세유업 아산공장 임직원 전용 시스템</div>
-    </div>
-
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:16px; background:#F1F5F9; padding:4px; border-radius:9px;">
-      <button type="button" id="tabBtnLogin" class="btn btn-sm btn-primary" style="border:none; padding:7px;" onclick="switchAuthTab('login')">임직원 로그인</button>
-      <button type="button" id="tabBtnReq" class="btn btn-sm" style="border:none; background:transparent; padding:7px;" onclick="switchAuthTab('req')">신규 계정 신청</button>
-    </div>
-
-    <!-- [탭 1] 사번 + 비밀번호 로그인 -->
-    <div id="authPaneLogin">
-      <div class="form-row">
-        <label class="form-lbl">사번</label>
-        <input type="text" id="inpAuthEmpNo" class="form-ctrl" placeholder="사번 8자리 입력 (예: 20220403)" inputmode="numeric" autocomplete="username" onkeydown="if(event.key==='Enter') document.getElementById('inpAuthPw').focus()" />
-      </div>
-      <div class="form-row">
-        <label class="form-lbl">비밀번호 <span style="font-weight:600; color:#64748B; font-size:11.5px;">(초기 비밀번호 : 000)</span></label>
-        <input type="password" id="inpAuthPw" class="form-ctrl" placeholder="비밀번호 입력" autocomplete="current-password" onkeydown="if(event.key==='Enter') submitQsafetyLogin()" />
-      </div>
-      <div style="display:flex; align-items:center; justify-content:space-between; margin:8px 0 14px; font-size:12px; color:#475569;">
-        <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:700;">
-          <input type="checkbox" id="chkAuthRemember" checked /> 로그인 상태 유지
-        </label>
-        <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer;">
-          <input type="checkbox" onchange="document.getElementById('inpAuthPw').type = this.checked ? 'text' : 'password'" /> 비밀번호 표시
-        </label>
-      </div>
-      <div id="authErrMsg" style="display:none; margin-bottom:10px; padding:8px 10px; border-radius:7px; background:#FEF2F2; border:1px solid #FCA5A5; color:#B91C1C; font-size:12.5px; font-weight:700;"></div>
-      <button type="button" id="btnDoLogin" class="btn btn-primary" style="width:100%; padding:10.5px; font-size:14.5px;" onclick="submitQsafetyLogin()">로그인</button>
-    </div>
-
-    <!-- [탭 2] 신규 사번 신청 -->
-    <div id="authPaneReq" style="display:none;">
-      <div class="form-row">
-        <label class="form-lbl">성명 *</label>
-        <input type="text" id="inpReqName" class="form-ctrl" placeholder="성명 입력" />
-      </div>
-      <div style="display:grid; grid-template-columns:1fr 1.3fr; gap:8px;">
-        <div class="form-row">
-          <label class="form-lbl">직급</label>
-          <input type="text" id="inpReqRank" class="form-ctrl" placeholder="예: 사원 / 대리" />
+  <div class="auth-portal-shell">
+    <!-- 좌측: 연세유업 브랜드 & 통합관제 4대 핵심 영역 소개 -->
+    <div class="auth-brand-side">
+      <div>
+        <div class="auth-brand-badge">
+          <span class="live-dot"></span>
+          <span>YONSEI DAIRY · ASAN PLANT</span>
         </div>
-        <div class="form-row">
-          <label class="form-lbl">소속 팀</label>
-          <input type="text" id="inpReqDept" class="form-ctrl" placeholder="예: 품질관리팀" />
+        <div style="display:flex; align-items:center; gap:14px; margin-bottom:10px;">
+          <img src="/img-symbol1.png" alt="연세유업" style="width:62px; height:62px; border-radius:50%; background:#FFFFFF; padding:4px; box-shadow:0 6px 16px rgba(0,0,0,0.25);" onerror="this.style.display='none'" />
+          <div>
+            <div style="font-size:34px; font-weight:900; letter-spacing:-0.8px; line-height:1.1;">Q-Safety</div>
+            <div style="font-size:16.5px; font-weight:800; color:#93C5FD; margin-top:4px;">품질안전부문 통합 대시보드</div>
+          </div>
+        </div>
+
+        <div class="auth-feature-list">
+          <div class="auth-feat-item">
+            <span class="auth-feat-icon">🏭</span>
+            <div>
+              <div class="auth-feat-title">공정 · 배양 · 미생물 실시간 통합 관제</div>
+              <div class="auth-feat-desc">상온 멸균 · 유제품(카톤/병/발효) · 두유배양 · 미생물 출고판정 상시 연동</div>
+            </div>
+          </div>
+          <div class="auth-feat-item">
+            <span class="auth-feat-icon">⚖️</span>
+            <div>
+              <div class="auth-feat-title">표시사항 심의 · 개정 법규 RISK 선제 차단</div>
+              <div class="auth-feat-desc">AI 법령 핵심 요약 · 시행 D-Day 부자재 불용방지 · 신규 알레르기 검증</div>
+            </div>
+          </div>
+          <div class="auth-feat-item">
+            <span class="auth-feat-icon">🔍</span>
+            <div>
+              <div class="auth-feat-title">냉장 · 상온 LOT 즉시 역추적</div>
+              <div class="auth-feat-desc">제품명·소비기한 기반 포장시간 · 살균/멸균 CCP · 공통원액(주1~12) 교차 조회</div>
+            </div>
+          </div>
+          <div class="auth-feat-item">
+            <span class="auth-feat-icon">📊</span>
+            <div>
+              <div class="auth-feat-title">부문 8대 KPI 현황판 & 계절성 예측</div>
+              <div class="auth-feat-desc">원가절감 · 클레임 발생률 통계 예측 · 외부심사 및 협력업체 통합 관리</div>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="form-row">
-        <label class="form-lbl">사번 *</label>
-        <input type="text" id="inpReqEmpNo" class="form-ctrl" placeholder="사번 입력" />
+
+      <div style="font-size:12px; color:#93C5FD; font-weight:600; border-top:1px solid rgba(255,255,255,0.14); padding-top:12px; display:flex; justify-content:space-between;">
+        <span>연세유업 아산공장 품질안전부문 (식품안전팀 · 품질관리팀)</span>
+        <span>인가 임직원 전용</span>
       </div>
-      <div id="authReqMsg" style="display:none; margin-bottom:10px; padding:8px 10px; border-radius:7px; font-size:12.5px; font-weight:700;"></div>
-      <button type="button" class="btn btn-primary" style="width:100%; padding:10px; font-size:14px;" onclick="submitAccessRequest()">관리자 승인 요청하기</button>
+    </div>
+
+    <!-- 우측: 사번 + 비밀번호 로그인 및 계정 신청 폼 -->
+    <div class="auth-form-side">
+      <div style="margin-bottom:20px;">
+        <div style="font-size:22px; font-weight:900; color:#0F172A; letter-spacing:-0.4px;">임직원 시스템 접속</div>
+        <div style="font-size:13px; color:#64748B; font-weight:600; margin-top:4px;">부여된 사번과 비밀번호를 입력해 주세요.</div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:20px; background:#F1F5F9; padding:5px; border-radius:10px;">
+        <button type="button" id="tabBtnLogin" class="btn btn-primary" style="border:none; padding:9px; font-size:13.5px;" onclick="switchAuthTab('login')">임직원 로그인</button>
+        <button type="button" id="tabBtnReq" class="btn" style="border:none; background:transparent; padding:9px; font-size:13.5px;" onclick="switchAuthTab('req')">신규 계정 신청</button>
+      </div>
+
+      <!-- [탭 1] 사번 + 비밀번호 로그인 -->
+      <form id="authPaneLogin" onsubmit="event.preventDefault(); submitQsafetyLogin();">
+        <div class="form-row" style="margin-bottom:14px;">
+          <label class="form-lbl" for="inpAuthEmpNo">사번</label>
+          <input type="text" id="inpAuthEmpNo" class="form-ctrl" placeholder="사번 8자리 입력 (예: 20220403)" inputmode="numeric" autocomplete="username" />
+        </div>
+        <div class="form-row" style="margin-bottom:12px;">
+          <label class="form-lbl" for="inpAuthPw">비밀번호 <span style="font-weight:700; color:#0052B4; font-size:12px;">(초기 비밀번호 : 000)</span></label>
+          <input type="password" id="inpAuthPw" class="form-ctrl" placeholder="비밀번호 입력" autocomplete="current-password" />
+        </div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin:10px 0 18px; font-size:13px; color:#475569;">
+          <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-weight:700;">
+            <input type="checkbox" id="chkAuthRemember" checked style="width:15px; height:15px;" /> 로그인 상태 유지
+          </label>
+          <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-weight:600;">
+            <input type="checkbox" style="width:15px; height:15px;" onchange="document.getElementById('inpAuthPw').type = this.checked ? 'text' : 'password'" /> 비밀번호 표시
+          </label>
+        </div>
+        <div id="authErrMsg" style="display:none; margin-bottom:14px; padding:10px 12px; border-radius:8px; background:#FEF2F2; border:1px solid #FCA5A5; color:#B91C1C; font-size:13px; font-weight:700; line-height:1.4;"></div>
+        <button type="submit" id="btnDoLogin" class="auth-submit-btn">로그인하여 대시보드 열기</button>
+      </form>
+
+      <!-- [탭 2] 신규 사번 신청 -->
+      <form id="authPaneReq" style="display:none;" onsubmit="event.preventDefault(); submitAccessRequest();">
+        <div class="form-row">
+          <label class="form-lbl">성명 *</label>
+          <input type="text" id="inpReqName" class="form-ctrl" placeholder="성명 입력" />
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1.3fr; gap:8px;">
+          <div class="form-row">
+            <label class="form-lbl">직급</label>
+            <input type="text" id="inpReqRank" class="form-ctrl" placeholder="예: 사원 / 대리" />
+          </div>
+          <div class="form-row">
+            <label class="form-lbl">소속 팀</label>
+            <input type="text" id="inpReqDept" class="form-ctrl" placeholder="예: 품질관리팀" />
+          </div>
+        </div>
+        <div class="form-row" style="margin-bottom:14px;">
+          <label class="form-lbl">사번 *</label>
+          <input type="text" id="inpReqEmpNo" class="form-ctrl" placeholder="사번 8자리 입력" inputmode="numeric" />
+        </div>
+        <div id="authReqMsg" style="display:none; margin-bottom:12px; padding:10px 12px; border-radius:8px; font-size:13px; font-weight:700;"></div>
+        <button type="submit" class="auth-submit-btn">관리자 승인 요청하기</button>
+      </form>
     </div>
   </div>
 </div>
@@ -5408,11 +5570,10 @@ async function saveManualKpiModal(kpiKey) {
   }
 }
 
+</script>
+<script>
 // ==============================================================================
-// 초기 구동 및 3분 주기 자동 갱신 타이머
-// ==============================================================================
-// ==============================================================================
-// 사번 + 비밀번호 인증 · 비밀번호 변경([로그인] 탭 실시간 저장) · 관리자 계정관리
+// 독립 실행형 사번 + 비밀번호 인증 · 비밀번호 변경 · 관리자 계정관리 모듈
 // ==============================================================================
 let AUTH_TOKEN = '';
 let CURRENT_USER = null;
@@ -5436,15 +5597,34 @@ window.fetch = async function(input, init) {
   return resp;
 };
 
+async function authPostJson(url, payload) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {})
+  });
+  const rawTxt = await res.text();
+  let data = null;
+  try {
+    data = rawTxt ? JSON.parse(rawTxt) : {};
+  } catch (parseErr) {
+    throw new Error('서버 응답 오류 (HTTP ' + res.status + ') — 백엔드(api/index.py) 배포 상태를 확인해 주세요.');
+  }
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.detail || data.message || ('요청 실패 (HTTP ' + res.status + ')'));
+  }
+  return data;
+}
+
 function switchAuthTab(tab) {
   const isLogin = (tab === 'login');
   document.getElementById('authPaneLogin').style.display = isLogin ? 'block' : 'none';
   document.getElementById('authPaneReq').style.display = isLogin ? 'none' : 'block';
   const b1 = document.getElementById('tabBtnLogin');
   const b2 = document.getElementById('tabBtnReq');
-  b1.className = 'btn btn-sm' + (isLogin ? ' btn-primary' : '');
+  b1.className = 'btn' + (isLogin ? ' btn-primary' : '');
   b1.style.background = isLogin ? '' : 'transparent';
-  b2.className = 'btn btn-sm' + (!isLogin ? ' btn-primary' : '');
+  b2.className = 'btn' + (!isLogin ? ' btn-primary' : '');
   b2.style.background = !isLogin ? '' : 'transparent';
 }
 
@@ -5509,9 +5689,10 @@ async function submitQsafetyLogin() {
     return;
   }
 
-  btn.textContent = '확인 중...';
+  btn.disabled = true;
+  btn.textContent = '⏳ 로그인 확인 중...';
   try {
-    const res = await apiPost('/api/auth/login', { emp_no: emp, password: pw, remember: rem });
+    const res = await authPostJson('/api/auth/login', { emp_no: emp, password: pw, remember: rem });
     AUTH_TOKEN = res.token;
     try {
       if (rem) localStorage.setItem('qsafety_auth_token', AUTH_TOKEN);
@@ -5519,13 +5700,18 @@ async function submitQsafetyLogin() {
     } catch (e) {}
     document.getElementById('inpAuthPw').value = '';
     applyLoggedInUserUI(res.user, res.pending_cnt || 0);
-    showToast(res.user['성명'] + '님 환영합니다! (필요시 좌측 하단에서 비밀번호 변경 가능)');
-    loadBundle(false);
+    if (typeof showToast === 'function') {
+      showToast(res.user['성명'] + '님 환영합니다! (필요시 좌측 하단에서 비밀번호 변경 가능)');
+    }
+    if (typeof loadBundle === 'function') {
+      loadBundle(false);
+    }
   } catch (e) {
     errEl.textContent = e.message;
     errEl.style.display = 'block';
   } finally {
-    btn.textContent = '로그인';
+    btn.disabled = false;
+    btn.textContent = '로그인하여 대시보드 열기';
   }
 }
 
@@ -5567,7 +5753,7 @@ async function submitChangePw() {
     return;
   }
   try {
-    const res = await apiPost('/api/auth/change-password', { current_pw: curPw, new_pw: newPw });
+    const res = await authPostJson('/api/auth/change-password', { current_pw: curPw, new_pw: newPw });
     CURRENT_USER = res.user;
     closeModal();
     showToast(res.message);
@@ -5584,7 +5770,7 @@ async function submitAccessRequest() {
   const msgEl = document.getElementById('authReqMsg');
 
   try {
-    const res = await apiPost('/api/auth/request-access', { name: nm, rank: rk, dept: dp, emp_no: emp });
+    const res = await authPostJson('/api/auth/request-access', { name: nm, rank: rk, dept: dp, emp_no: emp });
     msgEl.style.background = '#ECFDF5';
     msgEl.style.border = '1px solid #6EE7B7';
     msgEl.style.color = '#047857';
@@ -5639,6 +5825,8 @@ function renderAdminUsersModalBody(users) {
       users.map(function(u) {
         const st = u['상태'] || '정상';
         const stCls = st === '정상' ? 'badge-ok' : (st === '승인대기' ? 'badge-warn' : 'badge-err');
+        const rl = u['권한'] || '실무자';
+        const rlCls = rl === '관리자' ? 'badge-purple' : 'badge-neutral';
         const pwTag = u['초기비번여부'] ? '<span class="badge badge-neutral">초기(000)</span>' : '<span class="badge badge-info">변경완료</span>';
         let btns = '';
         if (st === '승인대기') {
@@ -5650,9 +5838,6 @@ function renderAdminUsersModalBody(users) {
           else if (st === '차단') btns += '<button class="btn btn-sm" style="color:#047857;" onclick="adminActionUser(\'activate\', \'' + esc(u['사번']) + '\')">해제</button> ';
           btns += '<button class="btn btn-sm" style="color:var(--err-fg);" onclick="adminActionUser(\'delete\', \'' + esc(u['사번']) + '\')">삭제</button>';
         }
-        return '<tr>' +
-          const rl = u['권한'] || '실무자';
-        const rlCls = rl === '관리자' ? 'badge-purple' : 'badge-neutral';
         return '<tr>' +
           '<td><span class="badge ' + stCls + '">' + esc(st) + '</span></td>' +
           '<td><span class="badge ' + rlCls + '">' + esc(rl) + '</span></td>' +
@@ -5680,7 +5865,7 @@ async function adminActionUser(act, empNo) {
     payload.role = document.getElementById('admAddRole').value;
   }
   try {
-    const res = await apiPost('/api/auth/manage', payload);
+    const res = await authPostJson('/api/auth/manage', payload);
     renderAdminUsersModalBody(res.users || []);
     showToast(res.message);
   } catch (e) {
@@ -5691,7 +5876,7 @@ async function adminActionUser(act, empNo) {
 window.addEventListener('DOMContentLoaded', async function() {
   try {
     const savedSc = localStorage.getItem('qsafety_ui_scale');
-    if (savedSc) setUiScale(savedSc);
+    if (savedSc && typeof setUiScale === 'function') setUiScale(savedSc);
   } catch (e) {}
 
   if (AUTH_TOKEN) {
@@ -5700,7 +5885,7 @@ window.addEventListener('DOMContentLoaded', async function() {
       const data = await res.json();
       if (res.ok && data.ok) {
         applyLoggedInUserUI(data.user, data.pending_cnt || 0);
-        loadBundle(false);
+        if (typeof loadBundle === 'function') loadBundle(false);
       } else {
         clearAuthSessionAndShowGate('');
       }
@@ -5713,7 +5898,7 @@ window.addEventListener('DOMContentLoaded', async function() {
 
   AUTO_TIMER = setInterval(function() {
     if (AUTH_TOKEN && AUTO_REFRESH_ON && !document.getElementById('commonModal').classList.contains('open')) {
-      loadBundle(false);
+      if (typeof loadBundle === 'function') loadBundle(false);
     }
   }, 180000);
 });

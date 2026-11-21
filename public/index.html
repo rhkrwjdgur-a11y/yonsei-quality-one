@@ -1348,6 +1348,9 @@
       <button class="nav-btn" data-view="defect_sub" onclick="switchView('defect_sub')">
         <span>🛡️ 핵심불량 · 부적합 내역</span><span class="nav-arr">›</span>
       </button>
+      <button class="nav-btn" data-view="sub_mat" onclick="switchView('sub_mat')">
+        <span>📦 부자재 관리</span><span class="nav-arr">›</span>
+      </button>
       <button class="nav-btn" data-view="lot" onclick="switchView('lot')">
         <span>🔍 냉장 · 상온 LOT 역추적</span><span class="nav-arr">›</span>
       </button>
@@ -1504,6 +1507,7 @@
     <section id="view-claim" class="view-section"></section>
     <section id="view-cost" class="view-section"></section>
     <section id="view-defect_sub" class="view-section"></section>
+    <section id="view-sub_mat" class="view-section"></section>
   </div>
 </div>
 
@@ -1560,7 +1564,8 @@ const VIEW_TITLES = {
   lot: '냉장 · 상온 전용 LOT 역추적',
   claim: '클레임 발생률(PPM) 추이 및 부문별 분석',
   cost: '원가절감 실적 추이 관리',
-  defect_sub: '핵심불량 저감화 · 클레임 및 부적합 내역 관리'
+  defect_sub: '핵심불량 저감화 · 클레임 및 부적합 내역 관리',
+  sub_mat: '부자재 입고 검수 · 이전 내역 · 폐기 건수 관리'
 };
 
 function esc(v) {
@@ -1643,9 +1648,10 @@ function switchView(viewKey, subOpt) {
   });
   document.getElementById('lblBreadcrumb').textContent = VIEW_TITLES[viewKey];
 
-  if (subOpt && viewKey === 'process') PROC_MAIN_TAB = subOpt;
+ if (subOpt && viewKey === 'process') PROC_MAIN_TAB = subOpt;
   if (subOpt && viewKey === 'audit') AUDIT_TAB = subOpt;
   if (subOpt && viewKey === 'defect_sub') DEFECT_SUB_TAB = subOpt;
+  if (subOpt && viewKey === 'sub_mat') SUB_MAT_TAB = subOpt;
   if (BUNDLE && BUNDLE.ok) renderActiveView();
 }
 
@@ -1749,6 +1755,7 @@ function renderActiveView() {
   else if (CURRENT_VIEW === 'claim') renderClaimView();
   else if (CURRENT_VIEW === 'cost') renderCostView();
   else if (CURRENT_VIEW === 'defect_sub') renderDefectSubView();
+  else if (CURRENT_VIEW === 'sub_mat') renderSubMatView();
 }
 
 // ==============================================================================
@@ -2017,12 +2024,12 @@ function renderKpiView() {
     {
       no: '5',
       title: '5. 부자재 관리 고도화',
-      targetNumStr: mk['kpi_10'].target_text,
-      actualNumStr: mk['kpi_10'].actual_text,
-      unitLabel: '(단위 : 건)',
+      targetNumStr: k10.target_text,
+      actualNumStr: k10.actual_text,
       isTextOnly: true,
-      notes: ['• 표시사항 사전 심의 및 법규 개정 선제 반영으로 부자재 오인쇄·폐기 0건 유지', '• 포장재 발주 전 표시사항 더블체크 프로세스 상시 가동'],
-      go: "switchView('defect_sub')"
+      notes: (k10.notes && k10.notes.length) ? k10.notes.map(function(n) { return '• ' + n; }) : [],
+      editKey: 'kpi_10',
+      go: "SUB_MAT_TAB='today'; switchView('sub_mat')"
     },
     {
       no: '6',
@@ -4513,21 +4520,19 @@ function renderCostView() {
 }
 
 // ==============================================================================
-// [VIEW 13] 핵심불량 · 클레임 및 부적합 내역 · 부자재 관리 통합 화면
+// [VIEW 13] 핵심불량 저감화 · 클레임 및 부적합 내역 통합 화면 (부자재 완전 분리)
 // ==============================================================================
 function renderDefectSubView() {
   const mk = BUNDLE.manual_kpis || {};
   const k9 = mk['kpi_9'] || { title: '4. 핵심불량(클레임) 발생 저감화', target_text: '38건 이하', actual_text: '5건', target_num: 38, actual_num: 5, notes_title: '핵심불량 저감 추진 내역', notes: [] };
-  const k10 = mk['kpi_10'] || { title: '5. 부자재 관리 고도화', target_text: '부자재폐기 0건', actual_text: '0건', notes_title: '부자재 폐기 Zero화 관리 내역', notes: [] };
-  const lb = BUNDLE.label_status;
-  const lw = BUNDLE.law;
   const cnh = BUNDLE.claim_nc_hist;
+  if (DEFECT_SUB_TAB !== 'defect' && DEFECT_SUB_TAB !== 'hist') DEFECT_SUB_TAB = 'defect';
 
   document.getElementById('view-defect_sub').innerHTML =
     '<div class="page-hdr">' +
       '<div>' +
-        '<h2 class="page-h2">핵심불량 저감화 · 클레임 및 부적합 내역 통합 관리</h2>' +
-        '<div class="page-desc">핵심불량 억제 KPI 실적과 실시간 클레임·공정 부적합 내역(\'클레임, 부적합 이력\' 시트 연동) 및 부자재 폐기 Zero 현황을 한곳에서 관리합니다.</div>' +
+        '<h2 class="page-h2">핵심불량 저감화 · 클레임 및 부적합 내역 관리</h2>' +
+        '<div class="page-desc">핵심불량(클레임) 억제 KPI 실적과 실시간 클레임·공정 부적합 내역(\'클레임, 부적합 이력\' 시트 연동)을 통합 관리합니다.</div>' +
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
         '<button class="btn btn-primary" onclick="openClaimNcModal()">+ 클레임·부적합 신규 등록</button>' +
@@ -4539,7 +4544,6 @@ function renderDefectSubView() {
     '<div class="tab-bar">' +
       '<button class="tab-btn ' + (DEFECT_SUB_TAB === 'defect' ? 'active' : '') + '" onclick="DEFECT_SUB_TAB=\'defect\'; renderDefectSubView()">🛡️ 핵심불량(클레임) 발생 저감화 (' + esc(k9.actual_text) + ' / 목표 ' + esc(k9.target_text) + ')</button>' +
       '<button class="tab-btn ' + (DEFECT_SUB_TAB === 'hist' ? 'active' : '') + '" onclick="DEFECT_SUB_TAB=\'hist\'; renderDefectSubView()">🚨 클레임 및 부적합 내역 관리 (진행 ' + cnh.counts.active + '건 / 누적 ' + cnh.counts.total + '건)</button>' +
-      '<button class="tab-btn ' + (DEFECT_SUB_TAB === 'sub' ? 'active' : '') + '" onclick="DEFECT_SUB_TAB=\'sub\'; renderDefectSubView()">📦 부자재 관리 고도화 · 폐기 Zero (' + esc(k10.actual_text) + ')</button>' +
     '</div>' +
     '<div id="defectSubBox"></div>';
 
@@ -4588,58 +4592,196 @@ function renderDefectSubView() {
     return;
   }
 
-  if (DEFECT_SUB_TAB === 'defect') {
-    const remainCnt = Math.max(0, (k9.target_num || 38) - (k9.actual_num || 0));
+  const remainCnt = Math.max(0, (k9.target_num || 38) - (k9.actual_num || 0));
+  box.innerHTML =
+    '<div class="kpi-grid-4">' +
+      '<div class="stat-card"><div class="stat-lbl">연간 허용 한도 (목표)</div><div class="stat-val">' + esc(k9.target_text) + '</div><div class="stat-sub">중대 핵심불량 억제 기준</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">현재 누적 발생 실적</div><div class="stat-val" style="color:var(--ok-fg);">' + esc(k9.actual_text) + '</div><div class="stat-sub">' + esc(k9.sub_badge || '안정 관리 중') + '</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">잔여 허용 여유분</div><div class="stat-val">' + remainCnt + '건</div><div class="stat-sub">한도 대비 여유 유지</div></div>' +
+      '<div class="stat-card" style="cursor:pointer;" onclick="DEFECT_SUB_TAB=\'hist\'; renderDefectSubView()"><div class="stat-lbl">클레임·부적합 내역 연동</div><div class="stat-val">' + cnh.counts.total + '건</div><div class="stat-sub">현재 진행중 ' + cnh.counts.active + '건 (클릭 시 내역 보기)</div></div>' +
+    '</div>' +
+    '<div class="panel-card">' +
+      '<div class="panel-title"><span>' + esc(k9.notes_title || '핵심불량(클레임) 중점 저감 추진 내역') + '</span>' +
+        '<button class="btn btn-primary btn-sm" onclick="openManualKpiModal(\'kpi_9\')">수치 · 내역 편집</button>' +
+      '</div>' +
+      '<ul style="padding-left:18px; line-height:1.8; font-size:13.5px; color:#1E293B;">' +
+        (k9.notes || []).map(function(n) { return '<li>' + esc(n) + '</li>'; }).join('') +
+      '</ul>' +
+    '</div>' +
+    '<div class="panel-card">' +
+      '<div class="panel-title"><span>공정·원인유형별 클레임/부적합 등록 분포</span><button class="btn btn-sm" onclick="DEFECT_SUB_TAB=\'hist\'; renderDefectSubView()">클레임·부적합 내역 탭으로 ›</button></div>' +
+      '<div class="tbl-wrap"><table class="data-tbl">' +
+        '<thead><tr><th>발생공정 · 원인유형</th><th>누적 등록 건수</th></tr></thead><tbody>' +
+        ((cnh.by_cause && cnh.by_cause.length) ? cnh.by_cause.map(function(r) {
+          return '<tr><td><b>' + esc(r['원인유형']) + '</b></td><td><b>' + r['건수'] + '건</b></td></tr>';
+        }).join('') : '<tr><td colspan="2" class="cell-gray">현재 등록된 클레임·부적합 원인 내역이 없습니다.</td></tr>') +
+      '</tbody></table></div>' +
+    '</div>';
+}
+
+// ==============================================================================
+// [VIEW 14] 부자재 관리 전용 화면 (부자재 폐기 건수 + 금일 입고·검수 목록 + 이전 검수 내역)
+// ==============================================================================
+let SUB_MAT_HIST_DATE = 'ALL';
+
+function renderSubMatView() {
+  const mk = BUNDLE.manual_kpis || {};
+  const k10 = mk['kpi_10'] || { title: '5. 부자재 관리 고도화', target_text: '부자재폐기 0건', actual_text: '0건', notes_title: '부자재 폐기 Zero화 관리 내역', notes: [] };
+  const lb = BUNDLE.label_status;
+  const lw = BUNDLE.law;
+
+  // 향후 구글 시트('부자재 입고검수 일보' 등) 연동 시 BUNDLE.sub_material 객체에서 자동 수신
+  const sm = BUNDLE.sub_material || {
+    has_sheet: false,
+    today_date: BUNDLE.loaded_date || '-',
+    today_rows: [],
+    hist_rows: [],
+    pass_cnt: 0,
+    hold_cnt: 0
+  };
+  const todayRows = sm.today_rows || [];
+  const histRows = sm.hist_rows || [];
+
+  document.getElementById('view-sub_mat').innerHTML =
+    '<div class="page-hdr">' +
+      '<div>' +
+        '<h2 class="page-h2">부자재 입고 검수 · 이전 내역 및 폐기 Zero 관리</h2>' +
+        '<div class="page-desc">연간 부자재 폐기 건수(KPI 5번)와 일일 부자재 입고 검수 목록 · 과거 누적 검수 이력을 통합 관제합니다.</div>' +
+      '</div>' +
+      '<div style="display:flex; gap:8px;">' +
+        '<button class="btn btn-primary" onclick="openManualKpiModal(\'kpi_10\')">⚙️ 부자재 폐기 건수 편집</button>' +
+        '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="kpi-grid-4">' +
+      '<div class="stat-card" style="background:#F0FDF4; border-color:#86EFAC;">' +
+        '<div class="stat-lbl" style="color:#166534;">2026년 누적 부자재 폐기 건수</div>' +
+        '<div class="stat-val" style="color:var(--ok-fg);">' + esc(k10.actual_text) + '</div>' +
+        '<div class="stat-sub" style="color:#15803D; font-weight:700;">목표 : ' + esc(k10.target_text) + ' (' + esc(k10.sub_badge || '오인쇄·불용 Zero 유지') + ')</div>' +
+      '</div>' +
+      '<div class="stat-card">' +
+        '<div class="stat-lbl">금일 부자재 검수 건수 (' + esc(sm.today_date) + ')</div>' +
+        '<div class="stat-val">' + (sm.has_sheet ? (todayRows.length + '건') : '시트 연동 예정') + '</div>' +
+        '<div class="stat-sub">' + (sm.has_sheet ? ('적합 ' + sm.pass_cnt + '건 · 보류/부적합 ' + sm.hold_cnt + '건') : '구글 시트 연결 시 자동 집계') + '</div>' +
+      '</div>' +
+      '<div class="stat-card">' +
+        '<div class="stat-lbl">누적 부자재 검수 이력</div>' +
+        '<div class="stat-val">' + (sm.has_sheet ? (histRows.length.toLocaleString() + '건') : '0건') + '</div>' +
+        '<div class="stat-sub">일자별 입고 · 표시사항 · 외관 검수 DB</div>' +
+      '</div>' +
+      '<div class="stat-card" style="cursor:pointer;" onclick="switchView(\'law\')">' +
+        '<div class="stat-lbl">사전 표시심의 · 법규 불용방지</div>' +
+        '<div class="stat-val" style="font-size:18px;">심의 ' + lb.cnt_26_all + '건 / 법규 ' + lw.prep_1yr_cnt + '건</div>' +
+        '<div class="stat-sub">1년내 개정 법규 선제 반영으로 폐기 차단</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="tab-bar">' +
+      '<button class="tab-btn ' + (SUB_MAT_TAB === 'today' ? 'active' : '') + '" onclick="SUB_MAT_TAB=\'today\'; renderSubMatView()">📋 금일 부자재 검수 목록 (' + todayRows.length + '건)</button>' +
+      '<button class="tab-btn ' + (SUB_MAT_TAB === 'hist' ? 'active' : '') + '" onclick="SUB_MAT_TAB=\'hist\'; renderSubMatView()">📚 이전 부자재 검수 내역 조회 (' + histRows.length + '건)</button>' +
+      '<button class="tab-btn ' + (SUB_MAT_TAB === 'kpi' ? 'active' : '') + '" onclick="SUB_MAT_TAB=\'kpi\'; renderSubMatView()">🛡️ 부자재 폐기 Zero화 추진 관리 (KPI 5번)</button>' +
+    '</div>' +
+    '<div id="subMatTabBox"></div>';
+
+  const box = document.getElementById('subMatTabBox');
+
+  if (SUB_MAT_TAB === 'today') {
     box.innerHTML =
-      '<div class="kpi-grid-4">' +
-        '<div class="stat-card"><div class="stat-lbl">연간 허용 한도 (목표)</div><div class="stat-val">' + esc(k9.target_text) + '</div><div class="stat-sub">중대 핵심불량 억제 기준</div></div>' +
-        '<div class="stat-card"><div class="stat-lbl">현재 누적 발생 실적</div><div class="stat-val" style="color:var(--ok-fg);">' + esc(k9.actual_text) + '</div><div class="stat-sub">' + esc(k9.sub_badge || '안정 관리 중') + '</div></div>' +
-        '<div class="stat-card"><div class="stat-lbl">잔여 허용 여유분</div><div class="stat-val">' + remainCnt + '건</div><div class="stat-sub">한도 대비 여유 유지</div></div>' +
-        '<div class="stat-card" style="cursor:pointer;" onclick="DEFECT_SUB_TAB=\'hist\'; renderDefectSubView()"><div class="stat-lbl">클레임·부적합 내역 연동</div><div class="stat-val">' + cnh.counts.total + '건</div><div class="stat-sub">현재 진행중 ' + cnh.counts.active + '건 (클릭 시 내역 보기)</div></div>' +
-      '</div>' +
+      (!sm.has_sheet ?
+        '<div class="panel-card" style="background:#EFF6FF; border-color:#BFDBFE; padding:12px 16px;">' +
+          '<div style="font-weight:800; color:var(--yonsei-blue); font-size:13.5px;">📌 일일 부자재 입고·검수 구글 시트 연동 준비 완료</div>' +
+          '<div style="font-size:12.5px; color:#1E3A8A; margin-top:3px;">추후 일일 부자재 검수용 구글 시트를 생성해 연결하면, 매일 검수한 품목·공급사·LOT·표시사항 일치 여부·판정 결과가 아래 표에 실시간으로 자동 표시됩니다.</div>' +
+        '</div>' : '') +
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>' + esc(k9.notes_title || '핵심불량(클레임) 중점 저감 추진 내역') + '</span>' +
-          '<button class="btn btn-primary btn-sm" onclick="openManualKpiModal(\'kpi_9\')">수치 · 내역 편집</button>' +
+        '<div class="panel-title">' +
+          '<span>금일(' + esc(sm.today_date) + ') 부자재 입고 · 외관 · 표시사항 검수 목록</span>' +
+          '<input type="text" class="form-ctrl" style="width:240px; padding:4px 9px;" placeholder="부자재명 · 공급사 · 판정 검색" oninput="filterSimpleTable(this.value, \'subMatTodayTbl\')" />' +
         '</div>' +
-        '<ul style="padding-left:18px; line-height:1.8; font-size:13.5px; color:#1E293B;">' +
-          (k9.notes || []).map(function(n) { return '<li>' + esc(n) + '</li>'; }).join('') +
-        '</ul>' +
-      '</div>' +
-      '<div class="panel-card">' +
-        '<div class="panel-title"><span>공정·원인유형별 클레임/부적합 등록 분포</span><button class="btn btn-sm" onclick="DEFECT_SUB_TAB=\'hist\'; renderDefectSubView()">클레임·부적합 내역 탭으로 ›</button></div>' +
-        '<div class="tbl-wrap"><table class="data-tbl">' +
-          '<thead><tr><th>발생공정 · 원인유형</th><th>누적 등록 건수</th></tr></thead><tbody>' +
-          ((cnh.by_cause && cnh.by_cause.length) ? cnh.by_cause.map(function(r) {
-            return '<tr><td><b>' + esc(r['원인유형']) + '</b></td><td><b>' + r['건수'] + '건</b></td></tr>';
-          }).join('') : '<tr><td colspan="2" class="cell-gray">현재 등록된 클레임·부적합 원인 내역이 없습니다.</td></tr>') +
-        '</tbody></table></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl" id="subMatTodayTbl">' +
+          '<thead><tr><th>검수일자</th><th>포장재 구분</th><th>부자재명 (품목명)</th><th>공급업체</th><th>입고수량 / LOT</th><th>외관 · 규격</th><th>표시사항 대조</th><th>검수자</th><th>최종판정</th><th>특이사항</th></tr></thead>' +
+          '<tbody>' +
+          (todayRows.length ? todayRows.map(function(r) {
+            const pCls = String(r['판정'] || '').indexOf('부적합') !== -1 ? 'cell-red' : 'cell-green';
+            return '<tr>' +
+              '<td><b>' + esc(r['검수일자'] || '-') + '</b></td>' +
+              '<td>' + esc(r['구분'] || '-') + '</td>' +
+              '<td class="td-left"><strong>' + esc(r['부자재명'] || '-') + '</strong></td>' +
+              '<td>' + esc(r['공급업체'] || '-') + '</td>' +
+              '<td>' + esc(r['입고수량_LOT'] || '-') + '</td>' +
+              '<td>' + esc(r['외관규격'] || '-') + '</td>' +
+              '<td>' + esc(r['표시사항'] || '-') + '</td>' +
+              '<td>' + esc(r['검수자'] || '-') + '</td>' +
+              '<td class="' + pCls + '">' + esc(r['판정'] || '적합') + '</td>' +
+              '<td class="td-left">' + esc(r['특이사항'] || '-') + '</td>' +
+            '</tr>';
+          }).join('') : '<tr><td colspan="10" class="cell-gray" style="padding:26px;">' + (sm.has_sheet ? '금일 등록된 부자재 검수 내역이 없습니다.' : '일일 부자재 검수 구글 시트 연결 대기 중입니다.') + '</td></tr>') +
+          '</tbody></table></div>' +
       '</div>';
-  } else {
-    box.innerHTML =
-      '<div class="kpi-grid-4">' +
-        '<div class="stat-card"><div class="stat-lbl">연간 부자재 폐기 목표</div><div class="stat-val">' + esc(k10.target_text) + '</div><div class="stat-sub">오인쇄 · 법규 미반영 불용 Zero</div></div>' +
-        '<div class="stat-card"><div class="stat-lbl">현재 부자재 폐기 실적</div><div class="stat-val" style="color:var(--ok-fg);">' + esc(k10.actual_text) + '</div><div class="stat-sub">' + esc(k10.sub_badge || '폐기 0건 달성 중') + '</div></div>' +
-        '<div class="stat-card"><div class="stat-lbl">2026년 표시사항 사전 심의</div><div class="stat-val">' + lb.cnt_26_all + '건</div><div class="stat-sub">현재 검토중 ' + lb.reviewing_cnt + '건</div></div>' +
-        '<div class="stat-card"><div class="stat-lbl">1년내 법규 불용방지 점검</div><div class="stat-val">' + lw.prep_1yr_cnt + '건</div><div class="stat-sub">대시보드 추적 법규 ' + lw.active_cnt + '건</div></div>' +
-      '</div>' +
-      '<div class="panel-card">' +
-        '<div class="panel-title"><span>' + esc(k10.notes_title || '부자재 폐기 Zero화 관리 내역') + '</span>' +
-          '<button class="btn btn-primary btn-sm" onclick="openManualKpiModal(\'kpi_10\')">수치 · 내역 편집</button>' +
-        '</div>' +
-        '<ul style="padding-left:18px; line-height:1.8; font-size:13.5px; color:#1E293B;">' +
-          (k10.notes || []).map(function(n) { return '<li>' + esc(n) + '</li>'; }).join('') +
-        '</ul>' +
-      '</div>' +
-      '<div class="panel-card">' +
-        '<div class="panel-title"><span>2026년 검토 포장재 유형별 사전 심의 건수 TOP 10</span><button class="btn btn-sm" onclick="switchView(\'label\')">표시사항 현황 ›</button></div>' +
-        '<div class="tbl-wrap"><table class="data-tbl">' +
-          '<thead><tr><th>검토 포장재 유형</th><th>2026년 사전 심의 건수</th></tr></thead><tbody>' +
-          ((lb.top_pkgs && lb.top_pkgs.length) ? lb.top_pkgs.map(function(p) {
-            return '<tr><td><b>' + esc(p['포장재유형']) + '</b></td><td><b>' + p['2026년_검토건수'] + '건</b></td></tr>';
-          }).join('') : '<tr><td colspan="2" class="cell-gray">데이터가 없습니다.</td></tr>') +
-        '</tbody></table></div>' +
-      '</div>';
+    return;
   }
+
+  if (SUB_MAT_TAB === 'hist') {
+    const hDates = Array.from(new Set(histRows.map(function(r) { return r['검수일자']; }).filter(Boolean))).sort().reverse();
+    const filteredHist = histRows.filter(function(r) {
+      return SUB_MAT_HIST_DATE === 'ALL' || r['검수일자'] === SUB_MAT_HIST_DATE;
+    });
+
+    box.innerHTML =
+      '<div class="panel-card">' +
+        '<div class="panel-title">' +
+          '<span>이전 부자재 입고 · 검수 누적 이력 조회</span>' +
+          '<div style="display:flex; gap:8px; align-items:center;">' +
+            '<select class="form-ctrl" style="width:170px;" onchange="SUB_MAT_HIST_DATE=this.value; renderSubMatView()">' +
+              '<option value="ALL">전체 검수일자 (' + hDates.length + '일)</option>' +
+              hDates.map(function(d) {
+                return '<option value="' + esc(d) + '" ' + (SUB_MAT_HIST_DATE === d ? 'selected' : '') + '>검수일 ' + esc(d) + '</option>';
+              }).join('') +
+            '</select>' +
+            '<input type="text" class="form-ctrl" style="width:230px;" placeholder="부자재명 · 공급사 · LOT 검색" oninput="filterSimpleTable(this.value, \'subMatHistTbl\')" />' +
+          '</div>' +
+        '</div>' +
+        '<div class="tbl-wrap"><table class="data-tbl" id="subMatHistTbl">' +
+          '<thead><tr><th>검수일자</th><th>포장재 구분</th><th>부자재명 (품목명)</th><th>공급업체</th><th>입고수량 / LOT</th><th>외관 · 규격</th><th>표시사항 대조</th><th>검수자</th><th>최종판정</th><th>특이사항</th></tr></thead>' +
+          '<tbody>' +
+          (filteredHist.length ? filteredHist.slice(0, 300).map(function(r) {
+            const pCls = String(r['판정'] || '').indexOf('부적합') !== -1 ? 'cell-red' : 'cell-green';
+            return '<tr>' +
+              '<td><b>' + esc(r['검수일자'] || '-') + '</b></td>' +
+              '<td>' + esc(r['구분'] || '-') + '</td>' +
+              '<td class="td-left"><strong>' + esc(r['부자재명'] || '-') + '</strong></td>' +
+              '<td>' + esc(r['공급업체'] || '-') + '</td>' +
+              '<td>' + esc(r['입고수량_LOT'] || '-') + '</td>' +
+              '<td>' + esc(r['외관규격'] || '-') + '</td>' +
+              '<td>' + esc(r['표시사항'] || '-') + '</td>' +
+              '<td>' + esc(r['검수자'] || '-') + '</td>' +
+              '<td class="' + pCls + '">' + esc(r['판정'] || '적합') + '</td>' +
+              '<td class="td-left">' + esc(r['특이사항'] || '-') + '</td>' +
+            '</tr>';
+          }).join('') : '<tr><td colspan="10" class="cell-gray" style="padding:26px;">' + (sm.has_sheet ? '조건에 해당하는 이전 부자재 검수 내역이 없습니다.' : '일일 부자재 검수 구글 시트 연결 후 누적 이력이 자동 축적됩니다.') + '</td></tr>') +
+          '</tbody></table></div>' +
+      '</div>';
+    return;
+  }
+
+  // [부자재 폐기 Zero화 추진 관리 탭]
+  box.innerHTML =
+    '<div class="panel-card">' +
+      '<div class="panel-title"><span>' + esc(k10.notes_title || '부자재 폐기 Zero화 관리 내역') + '</span>' +
+        '<button class="btn btn-primary btn-sm" onclick="openManualKpiModal(\'kpi_10\')">폐기 건수 · 추진내역 편집</button>' +
+      '</div>' +
+      '<ul style="padding-left:18px; line-height:1.8; font-size:13.5px; color:#1E293B;">' +
+        (k10.notes || []).map(function(n) { return '<li>' + esc(n) + '</li>'; }).join('') +
+      '</ul>' +
+    '</div>' +
+    '<div class="panel-card">' +
+      '<div class="panel-title"><span>2026년 검토 포장재 유형별 사전 표시사항 심의 건수 TOP 10</span><button class="btn btn-sm" onclick="switchView(\'label\')">표시사항 현황 ›</button></div>' +
+      '<div class="tbl-wrap"><table class="data-tbl">' +
+        '<thead><tr><th>검토 포장재 유형</th><th>2026년 사전 심의 건수</th></tr></thead><tbody>' +
+        ((lb.top_pkgs && lb.top_pkgs.length) ? lb.top_pkgs.map(function(p) {
+          return '<tr><td><b>' + esc(p['포장재유형']) + '</b></td><td><b>' + p['2026년_검토건수'] + '건</b></td></tr>';
+        }).join('') : '<tr><td colspan="2" class="cell-gray">데이터가 없습니다.</td></tr>') +
+      '</tbody></table></div>' +
+    '</div>';
 }
 
 // ==============================================================================

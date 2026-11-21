@@ -5575,19 +5575,21 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
         active_ferm_cnt = sum(1 for r in ferm_pack if "금일생산" in str(r.get("가동여부", "")))
         active_dairy_cnt = active_milk_cnt + active_ferm_cnt
 
-        # 야간에 실시간 시트가 익일 양식(00.00)으로 초기화된 경우 당일(또는 최근일) 이력 DB에서 세부 건수까지 동기화
-        if active_dairy_cnt == 0 and dy_hp:
+        # 우유 탭 또는 발효유 탭 중 하나라도 마감 후 삭제·초기화되면 당일(또는 최근 마감일) 이력 DB에서 자동 복원
+        if (active_milk_cnt == 0 or active_ferm_cnt == 0) and dy_hp:
             today_dy = [r for r in dy_hp if r.get("생산일자") == today_str]
-            if not today_dy:
+            if not today_dy and active_dairy_cnt == 0:
                 latest_dy_dt = max((r.get("생산일자", "") for r in dy_hp), default="")
                 if latest_dy_dt == (cur_kst - timedelta(days=1)).strftime("%Y-%m-%d"):
                     today_dy = [r for r in dy_hp if r.get("생산일자") == latest_dy_dt]
             if today_dy:
-                active_milk_carton_cnt = sum(1 for r in today_dy if r.get("라인구분") == "우유(카톤)")
-                active_milk_bottle_cnt = sum(1 for r in today_dy if r.get("라인구분") == "우유(병포장)")
-                active_ferm_cnt = sum(1 for r in today_dy if "발효" in str(r.get("라인구분", "")))
-                active_milk_cnt = active_milk_carton_cnt + active_milk_bottle_cnt
-                active_dairy_cnt = len(today_dy)
+                if active_milk_cnt == 0:
+                    active_milk_carton_cnt = sum(1 for r in today_dy if r.get("라인구분") == "우유(카톤)")
+                    active_milk_bottle_cnt = sum(1 for r in today_dy if r.get("라인구분") == "우유(병포장)")
+                    active_milk_cnt = active_milk_carton_cnt + active_milk_bottle_cnt
+                if active_ferm_cnt == 0:
+                    active_ferm_cnt = sum(1 for r in today_dy if "발효" in str(r.get("라인구분", "")) or "호상" in str(r.get("라인구분", "")))
+                active_dairy_cnt = active_milk_cnt + active_ferm_cnt
 
         soy_blocks_cnt = len(soy_b)
         soy_total_samples = sum(int(to_float(r.get("총 검사수량", 0), 0)) for r in soy_b)

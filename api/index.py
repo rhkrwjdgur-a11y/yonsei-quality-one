@@ -582,10 +582,7 @@ def calc_trend_and_forecast_split(y_values: list, is_recorded_list: list = None,
 
 
 def despike_prev_year_series(prev_ppms: List[float]) -> List[float]:
-    """
-    전년도 일회성 설비 사고(예: 25년 2월 발효유 CIP 이상으로 인한 3.1 PPM 폭등) 특별원인 이상치(Outlier)를
-    IQR(사분위수 범위) 상한 기준으로 자동 절사하여 순수 계절성 패턴만 추출
-    """
+    """단일 PPM 시계열의 특별원인 이상치를 Q3(여름 피크)가 아닌 평월 중앙값(Median)으로 안정 보정"""
     valid = sorted([v for v in prev_ppms if v > 0])
     if len(valid) < 4:
         return list(prev_ppms)
@@ -593,10 +590,68 @@ def despike_prev_year_series(prev_ppms: List[float]) -> List[float]:
     q1 = valid[n // 4]
     med = valid[n // 2]
     q3 = valid[(3 * n) // 4]
-    iqr = max(q3 - q1, 0.18)
-    upper_fence = min(q3 + 1.5 * iqr, med * 2.15)
-    cap_replacement = round(q3 + 0.35 * iqr, 2)
-    return [cap_replacement if v > upper_fence else v for v in prev_ppms]
+    iqr = max(q3 - q1, 0.15)
+    upper_fence = min(q3 + 1.5 * iqr, med * 2.0)
+    return [round(med, 2) if v > upper_fence else v for v in prev_ppms]
+
+
+def compute_clean_prev_seasonal_ppms(cat_list: list, prev_year_str: str, target_categories: Optional[list] = None) -> Optional[List[float]]:
+    """
+    전년도 세부 유형별 데이터에서 일회성 특별원인 사고(예: 25년 2월 발효유/음료 카톤팩 CIP 이상 97건, 168.7 PPM)를
+    유형 단위로 먼저 감지하여 해당 유형의 평월 정상 PPM으로 치환한 뒤 순수 월별 계절 PPM을 재산출
+    """
+    if not prev_year_str:
+        return None
+    sub = [
+        r for r in cat_list
+        if r["연도"] == prev_year_str
+        and r["유형"] != "합계"
+        and (target_categories is None or r["유형"] in target_categories)
+    ]
+    if not sub:
+        return None
+
+    adj_cnt_by_m = [0.0] * len(FISCAL_MONTHS)
+    tot_prd_by_m = [0] * len(FISCAL_MONTHS)
+
+    for r in sub:
+        m_cnts = [int(r.get(f"{m}_건수", 0)) for m in FISCAL_MONTHS]
+        m_prds = [int(r.get(f"{m}_생산수량", 0)) for m in FISCAL_MONTHS]
+        m_ppms = [
+            (c / p) * 1_000_000.0 if p > 0 else float(r.get(f"{m}_PPM", 0.0))
+            for m, c, p in zip(FISCAL_MONTHS, m_cnts, m_prds)
+        ]
+
+        active_ppms = sorted([p for p, prd in zip(m_ppms, m_prds) if prd > 0])
+        med_ppm = active_ppms[len(active_ppms) // 2] if active_ppms else 0.0
+        q1_p = active_ppms[len(active_ppms) // 4] if len(active_ppms) >= 4 else med_ppm
+        q3_p = active_ppms[(3 * len(active_ppms)) // 4] if len(active_ppms) >= 4 else med_ppm
+        iqr_p = max(q3_p - q1_p, max(med_ppm * 0.5, 0.3))
+        fence_ppm = max(q3_p + 2.2 * iqr_p, med_ppm * 3.2, 3.5)
+
+        active_cnts = sorted([c for c, prd in zip(m_cnts, m_prds) if prd > 0])
+        med_cnt = active_cnts[len(active_cnts) // 2] if active_cnts else 0
+
+        for idx in range(len(FISCAL_MONTHS)):
+            prd = m_prds[idx]
+            cnt = m_cnts[idx]
+            ppm = m_ppms[idx]
+            tot_prd_by_m[idx] += prd
+
+            # 평월 대비 3배 이상 급등하고 15건 이상 발생한 일회성 대량 클레임은 해당 품목 평월 중앙값으로 치환
+            if prd > 0 and cnt >= 15 and ppm > fence_ppm and cnt > max(med_cnt * 3, med_cnt + 15):
+                normal_cnt = (med_ppm * prd) / 1_000_000.0
+                adj_cnt_by_m[idx] += normal_cnt
+            else:
+                adj_cnt_by_m[idx] += cnt
+
+    if sum(tot_prd_by_m) <= 0:
+        return None
+
+    return [
+        round((adj_cnt_by_m[i] / tot_prd_by_m[i]) * 1_000_000.0, 3) if tot_prd_by_m[i] > 0 else 0.0
+        for i in range(len(FISCAL_MONTHS))
+    ]
 
 
 def calc_seasonal_claim_forecast(
@@ -1186,11 +1241,11 @@ def fetch_claim_sheet(sheet_urls_map: dict):
 
 
 def build_year_total_claim_pack(cat_list: list, year_str: str, prev_year_str: str = "") -> dict:
-    """선택한 임의 연도(2025·2026·2027년 등)에 대한 전사 합계 추이 및 이상치 보정 계절성 예측 산출"""
+    """선택한 임의 연도(2025·2026·2027년 등)에 대한 전사 합계 추이 및 유형별 이상치 제거 계절성 예측 산출"""
     row_cur = next((r for r in cat_list if r["연도"] == year_str and r["유형"] == "합계"), None)
     row_prev = next((r for r in cat_list if r["연도"] == prev_year_str and r["유형"] == "합계"), None) if prev_year_str else None
 
-    cur_ppms, cur_prods, cur_cnts, prev_ppms = [], [], [], []
+    cur_ppms, cur_prods, cur_cnts, raw_prev_ppms = [], [], [], []
     monthly_rows = []
     for m in FISCAL_MONTHS:
         cnt_v = int(row_cur.get(f"{m}_건수", 0)) if row_cur else 0
@@ -1201,7 +1256,7 @@ def build_year_total_claim_pack(cat_list: list, year_str: str, prev_year_str: st
         cur_ppms.append(ppm_v)
         cur_prods.append(prd_v)
         cur_cnts.append(cnt_v)
-        prev_ppms.append(p_ppm_v)
+        raw_prev_ppms.append(p_ppm_v)
         monthly_rows.append({
             "월": m,
             "당해_건수": cnt_v,
@@ -1212,7 +1267,12 @@ def build_year_total_claim_pack(cat_list: list, year_str: str, prev_year_str: st
             "_기록여부": (prd_v > 0 or cnt_v > 0)
         })
 
-    fc_res = calc_seasonal_claim_forecast(cur_ppms, cur_prods, cur_cnts, prev_ppms if row_prev else None)
+    # 표에는 실제 전년 실적(3.1 PPM)을 그대로 남기되, 예측 모델에는 세부 유형 단위로 사고 건수(97건)를 제거한 순수 계절 PPM 주입!
+    clean_prev_seasonal = compute_clean_prev_seasonal_ppms(cat_list, prev_year_str, None)
+    if clean_prev_seasonal is None and row_prev:
+        clean_prev_seasonal = despike_prev_year_series(raw_prev_ppms)
+
+    fc_res = calc_seasonal_claim_forecast(cur_ppms, cur_prods, cur_cnts, clean_prev_seasonal)
     return {
         "year": year_str,
         "prev_year": prev_year_str,
@@ -1229,7 +1289,7 @@ def build_division_claim_summary(cat_list: list, year_str: str, division_categor
     sub_prev = [r for r in cat_list if r["연도"] == prev_year_str and r["유형"] in division_categories] if prev_year_str else []
 
     monthly = []
-    cur_ppms, cur_prods, cur_cnts, prev_ppms = [], [], [], []
+    cur_ppms, cur_prods, cur_cnts, raw_prev_ppms = [], [], [], []
     for m in FISCAL_MONTHS:
         cnt_sum = sum(int(r.get(f"{m}_건수", 0)) for r in sub)
         prod_sum = sum(int(r.get(f"{m}_생산수량", 0)) for r in sub)
@@ -1242,7 +1302,7 @@ def build_division_claim_summary(cat_list: list, year_str: str, division_categor
         cur_ppms.append(ppm_val)
         cur_prods.append(prod_sum)
         cur_cnts.append(cnt_sum)
-        prev_ppms.append(p_ppm_val)
+        raw_prev_ppms.append(p_ppm_val)
 
         item = {
             "월": m,
@@ -1261,7 +1321,12 @@ def build_division_claim_summary(cat_list: list, year_str: str, division_categor
     tot_c = sum(x["합산_건수"] for x in monthly)
     tot_p = sum(x["합산_생산수량"] for x in monthly)
     tot_ppm = round((tot_c / tot_p) * 1_000_000, 2) if tot_p > 0 else 0.0
-    fc_res = calc_seasonal_claim_forecast(cur_ppms, cur_prods, cur_cnts, prev_ppms if sub_prev else None)
+
+    clean_prev_div = compute_clean_prev_seasonal_ppms(cat_list, prev_year_str, division_categories)
+    if clean_prev_div is None and sub_prev:
+        clean_prev_div = despike_prev_year_series(raw_prev_ppms)
+
+    fc_res = calc_seasonal_claim_forecast(cur_ppms, cur_prods, cur_cnts, clean_prev_div)
 
     return {
         "year": year_str,

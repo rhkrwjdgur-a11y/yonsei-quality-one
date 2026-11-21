@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================================
   [public/index.html - PART 1 / 4]
-  Q-Safety 프론트엔드 (화면배율 연동 무스크롤 CSS · 8대 KPI 장표 스타일 · 좌측 메뉴 복원 · 모닝브리핑 4분할)
+  Q-Safety 프론트엔드 (화면배율 연동 무스크롤 CSS · 8대 KPI 장표 스타일 · 좌측 메뉴 복원 · 통합 대시보드 4분할)
 =========================================================================== -->
 <html lang="ko">
 <head>
@@ -332,7 +332,7 @@
     }
     .view-section.active { display: block; }
 
-    /* [모닝브리핑] & [8대 KPI 현황판]은 전 해상도 100% 무스크롤 고정 */
+    /* [통합 대시보드] & [8대 KPI 현황판]은 전 해상도 100% 무스크롤 고정 */
     #view-home.view-section.active,
     #view-kpi.view-section.active {
       display: flex;
@@ -342,7 +342,7 @@
       overflow: hidden;
     }
 
-    /* ==================== [1] 모닝 브리핑 통합 대시보드 (가안 완벽 구현) ==================== */
+    /* ==================== [1] 통합 대시보드 (가안 완벽 구현) ==================== */
     .home-title-bar {
       display: flex;
       align-items: center;
@@ -1372,7 +1372,7 @@
   <div class="main-area">
     <header class="topbar">
       <div class="breadcrumb">
-        <span>Q-Safety</span> / <span class="cur" id="lblBreadcrumb">통합 대시보드 (모닝 브리핑)</span>
+        <span>Q-Safety</span> / <span class="cur" id="lblBreadcrumb">통합 대시보드</span>
       </div>
       <div class="topbar-right">
         <div class="scale-ctrl">
@@ -1395,11 +1395,11 @@
       </div>
     </header>
 
-    <!-- [1] 홈: 모닝 브리핑 통합 대시보드 (전 화면 100vh 무스크롤 + 좌·우 3~4줄 특이사항 대칭) -->
+    <!-- [1] 홈: 통합 대시보드 (전 화면 100vh 무스크롤 + 좌·우 3~4줄 특이사항 대칭) -->
     <section id="view-home" class="view-section active">
       <div class="home-title-bar">
         <div class="home-title-left">
-          <h1 class="home-h1">Q-Safety 모닝 브리핑 통합 관제</h1>
+          <h1 class="home-h1">Q-Safety 품질안전 실시간 통합 관제</h1>
           <span class="date-chip" id="lblKstDateBanner">데이터 동기화 중...</span>
         </div>
         <div class="quad-actions">
@@ -1528,7 +1528,7 @@
 <script>
 // ==============================================================================
 // [public/index.html - PART 2 / 4]
-// 배율 스위치 · 모닝브리핑 4분할(가안 반영) · 8대 KPI 중간보고 장표 · 표시사항 통계 우선 뷰
+// 배율 스위치 · 통합 대시보드 4분할(가안 반영) · 8대 KPI 중간보고 장표 · 표시사항 통계 우선 뷰
 // ==============================================================================
 let BUNDLE = null;
 let CURRENT_VIEW = 'home';
@@ -1549,10 +1549,11 @@ let PROC_DAIRY_HIST_DT = '';
 let MICRO_ACTIVE_TAB = '';
 let LOT_SCOPE = 'DAIRY';
 let LAST_LOT_RESULT = null;
-let CLAIM_DIV_YEAR = '2026년';
+let CLAIM_DIV_YEAR = '';
+let SUB_MAT_TAB = 'kpi'; // 부자재 관리 진입 시 기본 1번 탭(KPI 폐기건수·설명) 우선 표시!
 
 const VIEW_TITLES = {
-  home: '통합 대시보드 (모닝 브리핑)',
+  home: '통합 대시보드',
   kpi: '2026 품질안전부문 8대 KPI 현황판',
   label: '표시사항 진행 현황 및 업무량 분석',
   raw: '원자재 표시사항 DB 검증 현황',
@@ -1723,8 +1724,8 @@ async function loadBundle(forceRefresh) {
     if (!MICRO_ACTIVE_TAB && BUNDLE.process && BUNDLE.process.micro) {
       MICRO_ACTIVE_TAB = BUNDLE.process.micro.default_live_tab || '일보작성';
     }
-    if (!CLAIM_DIV_YEAR && BUNDLE.claim && BUNDLE.claim.years && BUNDLE.claim.years.length) {
-      CLAIM_DIV_YEAR = BUNDLE.claim.years[0];
+    if (!CLAIM_DIV_YEAR && BUNDLE.claim) {
+      CLAIM_DIV_YEAR = BUNDLE.claim.active_year || ((BUNDLE.claim.years && BUNDLE.claim.years[0]) || '2026년');
     }
 
     document.getElementById('lblSyncTime').textContent = '동기화 : ' + (BUNDLE.loaded_at || '-');
@@ -1759,7 +1760,7 @@ function renderActiveView() {
 }
 
 // ==============================================================================
-// [VIEW 1] 모닝 브리핑 통합 대시보드 (가안 이미지 레이아웃 완벽 일치)
+// [VIEW 1] 통합 대시보드 (가안 이미지 레이아웃 완벽 일치)
 // ==============================================================================
 function renderHome() {
   const ps = BUNDLE.process.summary;
@@ -1968,165 +1969,6 @@ async function quickChangeAuditStatus(uid, newStatus) {
   }
 }
 
-// ==============================================================================
-// [VIEW 2] 2026 부문 8대 KPI 중간보고 장표 디자인 스타일 복원
-// ==============================================================================
-function renderKpiView() {
-  const cs = BUNDLE.cost;
-  const cl = BUNDLE.claim;
-  const mk = BUNDLE.manual_kpis || {};
-
-  const execCards = [
-    {
-      no: '1',
-      title: '1. 원가 절감',
-      targetNumStr: cs.targets['부문'] + '억원 이상',
-      actualNumStr: cs.actual_uk + '억원, ' + cs.rate + '% 달성',
-      unitLabel: '(단위 : 억원)',
-      targetVal: cs.targets['부문'],
-      actualVal: cs.actual_uk,
-      hasDot: (cs.actual_uk < cs.targets['부문'] && cs.rate < 85),
-      go: "switchView('cost')"
-    },
-    {
-      no: '2',
-      title: '2. 클레임 발생률',
-      targetNumStr: cl.target_ppm + ' ppm 이하',
-      actualNumStr: cl.actual_ppm + ' ppm(총 ' + cl.total_cnt + '건)',
-      unitLabel: '(단위 : ppm)',
-      targetVal: cl.target_ppm,
-      actualVal: cl.actual_ppm,
-      hasDot: (cl.actual_ppm > cl.target_ppm),
-      go: "switchView('claim')"
-    },
-    {
-      no: '3',
-      title: '3. 식품안전 및 HACCP 강화',
-      targetNumStr: mk['kpi_8'].target_text,
-      actualNumStr: mk['kpi_8'].actual_text,
-      unitLabel: '(단위 : 건)',
-      targetVal: 11,
-      actualVal: 11,
-      hasDot: false,
-      go: "switchView('law')"
-    },
-    {
-      no: '4',
-      title: '4. 핵심불량(클레임) 발생 저감화',
-      targetNumStr: mk['kpi_9'].target_text,
-      actualNumStr: mk['kpi_9'].actual_text,
-      unitLabel: '(단위 : 건)',
-      targetVal: 38,
-      actualVal: 5,
-      hasDot: false,
-      go: "switchView('defect_sub')"
-    },
-    {
-      no: '5',
-      title: '5. 부자재 관리 고도화',
-      targetNumStr: k10.target_text,
-      actualNumStr: k10.actual_text,
-      isTextOnly: true,
-      notes: (k10.notes && k10.notes.length) ? k10.notes.map(function(n) { return '• ' + n; }) : [],
-      editKey: 'kpi_10',
-      go: "SUB_MAT_TAB='today'; switchView('sub_mat')"
-    },
-    {
-      no: '6',
-      title: '6. 협력업체 관리강화',
-      targetNumStr: mk['kpi_11'].target_text,
-      actualNumStr: mk['kpi_11'].actual_text,
-      unitLabel: '(단위 : %)',
-      targetVal: 88.3,
-      actualVal: mk['kpi_11'].actual_num || 77.9,
-      hasDot: ((mk['kpi_11'].actual_num || 77.9) < 88.3),
-      go: "switchView('supplier')"
-    },
-    {
-      no: '7',
-      title: '7. 심사점수',
-      targetNumStr: mk['kpi_5'].target_text,
-      actualNumStr: mk['kpi_5'].actual_text,
-      unitLabel: '(단위 : 점)',
-      targetVal: 94.28,
-      actualVal: mk['kpi_5'].actual_num || 91.56,
-      hasDot: ((mk['kpi_5'].actual_num || 91.56) < 94.28),
-      go: "switchView('audit')"
-    },
-    {
-      no: '8',
-      title: '8. 식품안전 법적 RISK 최소화',
-      targetNumStr: mk['kpi_12'].target_text,
-      actualNumStr: mk['kpi_12'].actual_text,
-      unitLabel: '(단위 : 건)',
-      isRiskNote: true,
-      notes: [
-        '✓ 중요건 행정기관 조사 3건 대응',
-        '  - 카톤발효유 : 3월',
-        '  - 락토프리(명가) : 6월',
-        '  - 호상발효유 : 10월'
-      ],
-      go: "switchView('law')"
-    }
-  ];
-
-  const sec = document.getElementById('view-kpi');
-  sec.innerHTML =
-    '<div class="exec-kpi-top">' +
-      '<h2 class="exec-kpi-h1">2026 업적이행 KPI 중간보고(10월)_품질안전부문</h2>' +
-      '<div style="display:flex; gap:8px; align-items:center;">' +
-        '<span style="font-size:12px; font-weight:800; color:#475569;">(기준 : 2026. 9. 30)</span>' +
-        '<button class="btn btn-sm" onclick="switchView(\'home\')">← 모닝 브리핑으로</button>' +
-      '</div>' +
-    '</div>' +
-    '<div class="exec-kpi-grid">' +
-      execCards.map(function(c, i) {
-        const editKeyMap = { 2:'kpi_8', 3:'kpi_9', 4:'kpi_10', 5:'kpi_11', 6:'kpi_5', 7:'kpi_12' };
-        const editBtn = editKeyMap[i] ? '<button class="exec-edit-mini" onclick="event.stopPropagation(); openManualKpiModal(\'' + editKeyMap[i] + '\')">수치 편집</button>' : '';
-        const redDot = c.hasDot ? '<div class="exec-red-dot"></div>' : '';
-
-        let contentHtml = '';
-        if (c.isTextOnly) {
-          contentHtml = '<div class="exec-notes-box">' + (c.notes || []).map(function(n) { return '<div>' + esc(n) + '</div>'; }).join('') + '</div>';
-        } else if (c.isRiskNote) {
-          contentHtml = '<div class="exec-notes-box" style="font-size:12px; line-height:1.55;">' + (c.notes || []).map(function(n) { return '<div>' + esc(n) + '</div>'; }).join('') + '</div>';
-        } else {
-          const tVal = Number(c.targetVal) || 1;
-          const aVal = Number(c.actualVal) || 0;
-          const maxScale = Math.max(tVal, aVal) * 1.25 || 1;
-          const tH = Math.max(Math.round((tVal / maxScale) * 105), 24);
-          const aH = Math.max(Math.round((aVal / maxScale) * 105), 22);
-
-          contentHtml =
-            '<div class="exec-unit">' + esc(c.unitLabel) + '</div>' +
-            '<div class="exec-bars-area">' +
-              '<div class="exec-bars-stage">' +
-                '<div class="exec-bar-col">' +
-                  '<div class="exec-bar-rect target" style="height:' + tH + 'px;">' + tVal + '</div>' +
-                '</div>' +
-                '<div class="exec-bar-col">' +
-                  '<div class="exec-bar-rect actual" style="height:' + aH + 'px;">' + aVal + '</div>' +
-                '</div>' +
-              '</div>' +
-              '<div class="exec-bars-axis">' +
-                '<div class="exec-axis-lbl">목표</div>' +
-                '<div class="exec-axis-lbl">실적</div>' +
-              '</div>' +
-            '</div>';
-        }
-
-        return '<div class="exec-card" onclick="' + c.go + '">' +
-          '<div class="exec-card-hdr">' + esc(c.title) + editBtn + '</div>' +
-          '<div class="exec-card-body">' +
-            redDot +
-            '<div class="exec-bullet">목표 : ' + esc(c.targetNumStr) + '</div>' +
-            '<div class="exec-bullet">실적 : ' + esc(c.actualNumStr) + '</div>' +
-            contentHtml +
-          '</div>' +
-        '</div>';
-      }).join('') +
-    '</div>';
-}
 
 // ==============================================================================
 // [VIEW 3] 표시사항 진행 현황 (통계 탭 우선 진입)
@@ -2142,7 +1984,7 @@ function renderLabelView() {
       '<div><h2 class="page-h2">표시사항 심의 진행 현황 및 25년 vs 26년 업무량 분석</h2><div class="page-desc">월별 통계 및 부서별 업무량 분석을 기본 제공하며, [특이사항] 탭 메모 양방향 편집을 지원합니다.</div></div>' +
       '<div style="display:flex; gap:8px;">' +
         '<button class="btn btn-primary" onclick="openLabelMemoModal()">📝 [특이사항] 탭 메모 편집</button>' +
-        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
       '</div>' +
     '</div>' +
     '<div class="kpi-grid-4">' +
@@ -2211,7 +2053,7 @@ function renderLabelView() {
     const list = lb.reviewing_list || [];
     box.innerHTML =
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>📌 체크박스 선택 시 모닝 브리핑 대시보드에 대표 품목으로 우선 표시됩니다.</span></div>' +
+        '<div class="panel-title"><span>📌 체크박스 선택 시 통합 대시보드에 대표 품목으로 우선 표시됩니다.</span></div>' +
         '<div class="tbl-wrap"><table class="data-tbl">' +
           '<thead><tr><th>대시보드 핀</th><th>문서번호</th><th>요청부서</th><th>품목 · 제목</th><th>카테고리</th><th>생산처</th><th>포장재 유형</th><th>등록일</th></tr></thead>' +
           '<tbody>' +
@@ -2246,7 +2088,7 @@ async function toggleLabelPin(itemKey, isPinned) {
   try {
     const res = await apiPost('/api/label-pin', { item_key: itemKey, pinned: isPinned });
     if (res.label_status) BUNDLE.label_status = res.label_status;
-    showToast('모닝 브리핑 대표 표시사항 설정이 반영되었습니다.');
+    showToast('통합 대시보드 대표 표시사항 설정이 반영되었습니다.');
   } catch (e) {
     showToast(e.message, 3000);
   }
@@ -2294,7 +2136,7 @@ function renderRawView() {
         '<h2 class="page-h2">원자재 한글표시사항 DB 및 신규 알레르기(4종) 검증 현황</h2>' +
         '<div class="page-desc">공급사 최신 원재료 한글표시사항 확보 현황과 법규 추가 알레르기 유발물질(들깨 · 참깨 · 캐슈넛 · 아몬드) 함유 원자재를 집중 관리합니다.</div>' +
       '</div>' +
-      '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+      '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
     '</div>' +
     '<div class="kpi-grid-4">' +
       '<div class="stat-card"><div class="stat-lbl">관리 대상 마스터 원재료</div><div class="stat-val">' + rw.master_cnt + '건</div><div class="stat-sub">전체 원재료 명단 기준</div></div>' +
@@ -2379,7 +2221,7 @@ function renderAuditView() {
       '<div style="display:flex; gap:8px;">' +
         '<button class="btn btn-primary" onclick="AUDIT_TAB=\'schedule\'; renderAuditView(); openAuditModal()">+ 신규 일정 등록</button>' +
         '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
-        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
       '</div>' +
     '</div>' +
     '<div class="kpi-grid-4">' +
@@ -2505,7 +2347,7 @@ function renderSupplierView() {
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
         '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
-        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
       '</div>' +
     '</div>' +
     '<div class="kpi-grid-4">' +
@@ -2626,7 +2468,7 @@ function renderLawView() {
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
         '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
-        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
       '</div>' +
     '</div>' +
     '<div class="tab-bar">' +
@@ -2863,7 +2705,7 @@ function renderProcessView() {
         '<h2 class="page-h2">공정 및 배양 실시간 통합 관제</h2>' +
         '<div class="page-desc">금일 · 전일 및 지난 날짜 버튼을 클릭하면 동일한 일보 화면 구성으로 깔끔하게 전환됩니다.</div>' +
       '</div>' +
-      '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+      '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
     '</div>' +
     '<div class="tab-bar">' +
       '<button class="tab-btn ' + (PROC_MAIN_TAB === 'rt' ? 'active' : '') + '" onclick="PROC_MAIN_TAB=\'rt\'; renderProcessView()">📦 상온 제품 공정·멸균 CCP (메인 · 가동 ' + ps.active_rt_cnt + '품목)</button>' +
@@ -3180,7 +3022,7 @@ function renderKpiView() {
       isTextOnly: true,
       notes: (k10.notes && k10.notes.length) ? k10.notes.map(function(n) { return '• ' + n; }) : [],
       editKey: 'kpi_10',
-      go: "DEFECT_SUB_TAB='sub'; switchView('defect_sub')"
+      go: "SUB_MAT_TAB='kpi'; switchView('sub_mat', 'kpi')"
     },
     {
       no: '6',
@@ -3225,7 +3067,7 @@ function renderKpiView() {
       '<h2 class="exec-kpi-h1">2026 업적 KPI 실시간 현황판_품질안전부문</h2>' +
       '<div style="display:flex; gap:10px; align-items:center;">' +
         '<span style="font-size:13px; font-weight:800; color:#1E293B;">Summary (기준 : ' + esc(refDateStr) + ')</span>' +
-        '<button class="btn btn-sm" onclick="switchView(\'home\')">← 모닝 브리핑으로</button>' +
+        '<button class="btn btn-sm" onclick="switchView(\'home\')">← 통합 대시보드으로</button>' +
       '</div>' +
     '</div>' +
     '<div class="exec-kpi-grid">' +
@@ -3488,7 +3330,7 @@ function renderMicroView() {
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
         '<button class="btn btn-primary" onclick="openMicroStatusModal()">⚙️ 출고판정 표시 설정</button>' +
-        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
       '</div>' +
     '</div>' +
     '<div class="panel-card" style="background:#F0FDF4; border-color:#86EFAC; padding:11px 15px; margin-bottom:10px;">' +
@@ -3794,7 +3636,7 @@ function renderLotView() {
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
         '<button class="btn btn-primary" onclick="DEFECT_SUB_TAB=\'hist\'; switchView(\'defect_sub\', \'hist\')">🚨 클레임·부적합 내역 관리 ›</button>' +
-        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
       '</div>' +
     '</div>' +
     '<div class="tab-bar">' +
@@ -4026,7 +3868,14 @@ const CLAIM_CAT_COLORS = {
 function renderClaimView() {
   const cl = BUNDLE.claim;
   const years = cl.years || ['2026년'];
-  if (years.indexOf(CLAIM_DIV_YEAR) === -1 && years.length) CLAIM_DIV_YEAR = years[0];
+  if (!CLAIM_DIV_YEAR || years.indexOf(CLAIM_DIV_YEAR) === -1) {
+    CLAIM_DIV_YEAR = cl.active_year || years[0];
+  }
+
+  const yrTotalsMap = cl.year_totals || {};
+  const curYrPack = yrTotalsMap[CLAIM_DIV_YEAR] || null;
+  const prevYrLabel = (curYrPack && curYrPack.prev_year) ? curYrPack.prev_year : '전년';
+
   const divPack = (cl.divisions && cl.divisions[CLAIM_DIV_YEAR]) || null;
   const dairyDiv = divPack ? divPack.dairy : null;
   const rtDiv = divPack ? divPack.rt : null;
@@ -4040,30 +3889,30 @@ function renderClaimView() {
       : '상온제품 부문 통합 (상온 멸균팩 + 상온 프리즈마)');
 
   const yearSumRow = (cl.category_rows || []).find(function(r) { return r['연도'] === CLAIM_DIV_YEAR && r['유형'] === '합계'; });
-  const curPpm = isAll ? (yearSumRow ? yearSumRow['합계_PPM'] : cl.actual_ppm) : (activeDiv ? activeDiv.total_ppm : 0);
-  const curCnt = isAll ? (yearSumRow ? yearSumRow['합계_건수'] : cl.total_cnt) : (activeDiv ? activeDiv.total_cnt : 0);
-  const curPred = isAll ? cl.feb_pred : (activeDiv ? activeDiv.feb_pred : 0);
-  const curSlope = isAll ? cl.slope : (activeDiv ? activeDiv.slope : 0);
+  const curPpm = isAll ? (curYrPack ? curYrPack.total_ppm : (yearSumRow ? yearSumRow['합계_PPM'] : cl.actual_ppm)) : (activeDiv ? activeDiv.total_ppm : 0);
+  const curCnt = isAll ? (curYrPack ? curYrPack.total_cnt : (yearSumRow ? yearSumRow['합계_건수'] : cl.total_cnt)) : (activeDiv ? activeDiv.total_cnt : 0);
+  const curCumPred = isAll ? (curYrPack && curYrPack.cum_pred_ppm !== undefined ? curYrPack.cum_pred_ppm : cl.feb_pred) : (activeDiv && activeDiv.cum_pred_ppm !== undefined ? activeDiv.cum_pred_ppm : (activeDiv ? activeDiv.feb_pred : 0));
+  const curFebPred = isAll ? (curYrPack ? curYrPack.feb_pred : cl.feb_pred) : (activeDiv ? activeDiv.feb_pred : 0);
 
   const barToggleBtns = isAll
     ? '<div style="display:flex; gap:5px;">' +
         '<button class="btn btn-sm ' + (CLAIM_ALL_BAR_MODE === 'GROUP' ? 'btn-primary' : '') + '" onclick="CLAIM_ALL_BAR_MODE=\'GROUP\'; renderClaimView()">기둥: 3대 부문별 비중</button>' +
-        '<button class="btn btn-sm ' + (CLAIM_ALL_BAR_MODE === 'DETAIL' ? 'btn-primary' : '') + '" onclick="CLAIM_ALL_BAR_MODE=\'DETAIL\'; renderClaimView()">기둥: 9개 세부유형별 비중</button>' +
+        '<button class="btn btn-sm ' + (CLAIM_ALL_BAR_MODE === 'DETAIL' ? 'btn-primary' : '') + '" onclick="CLAIM_ALL_BAR_MODE=\'DETAIL\'; renderClaimView()">기둥: 세부유형별 비중</button>' +
       '</div>'
     : '<span class="badge badge-info">기둥: 유형별 클레임 건수(우측축) / 선: PPM(좌측축)</span>';
 
   document.getElementById('view-claim').innerHTML =
     '<div class="page-hdr">' +
       '<div>' +
-        '<h2 class="page-h2">2026 회계연도 클레임 발생률(PPM) · 건수 비중 및 부문별 분석</h2>' +
-        '<div class="page-desc">월별 클레임 건수는 유형별 색상 누적기둥(우측 축)으로, 발생률(PPM)과 AI 예상 추세선은 선 그래프(좌측 축)로 동시 표출합니다.</div>' +
+        '<h2 class="page-h2">' + esc(CLAIM_DIV_YEAR) + ' 회계연도 클레임 발생률(PPM) · 계절성 예측 및 부문별 분석</h2>' +
+        '<div class="page-desc">전년도 특별원인 이상치(일회성 사고)를 통계적으로 보정한 순수 계절성 지수와 당해 추세를 결합하여 연말 예측선을 산출합니다.</div>' +
       '</div>' +
       '<div style="display:flex; gap:8px; align-items:center;">' +
-        '<select class="form-ctrl" style="width:130px;" onchange="CLAIM_DIV_YEAR=this.value; renderClaimView()">' +
+        '<select class="form-ctrl" style="width:135px;" onchange="CLAIM_DIV_YEAR=this.value; renderClaimView()">' +
           years.map(function(y) { return '<option value="' + esc(y) + '" ' + (CLAIM_DIV_YEAR === y ? 'selected' : '') + '>기준: ' + esc(y) + '</option>'; }).join('') +
         '</select>' +
         '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
-        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
       '</div>' +
     '</div>' +
     '<div class="tab-bar">' +
@@ -4073,13 +3922,13 @@ function renderClaimView() {
     '</div>' +
     '<div class="kpi-grid-4">' +
       '<div class="stat-card"><div class="stat-lbl">전사 연간 목표 PPM</div><div class="stat-val">' + cl.target_ppm + ' PPM 이하</div><div class="stat-sub">품질안전부문 관리기준</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">[' + (isAll ? '전사 통합' : (CLAIM_SCOPE_TAB === 'DAIRY' ? '유제품 부문' : '상온 부문')) + '] 누적 실적</div><div class="stat-val">' + curPpm + ' PPM</div><div class="stat-sub">누적 클레임 ' + curCnt.toLocaleString() + '건</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">회계연도 말(2월) AI 예측</div><div class="stat-val" style="color:' + (curPred > cl.target_ppm ? 'var(--err-fg)' : 'var(--yonsei-blue)') + ';">' + curPred + ' PPM</div><div class="stat-sub">추세 기울기 ' + curSlope + '</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">[' + (isAll ? '전사 통합' : (CLAIM_SCOPE_TAB === 'DAIRY' ? '유제품 부문' : '상온 부문')) + '] 현재 누적 실적</div><div class="stat-val">' + curPpm + ' PPM</div><div class="stat-sub">누적 클레임 ' + curCnt.toLocaleString() + '건</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">회계연도 말 최종 누적 예상</div><div class="stat-val" style="color:' + (curCumPred > cl.target_ppm ? 'var(--err-fg)' : 'var(--yonsei-blue)') + ';">' + curCumPred + ' PPM</div><div class="stat-sub">계절성 보정 · 2월 단월 예상 ' + curFebPred + ' PPM</div></div>' +
       '<div class="stat-card"><div class="stat-lbl">유제품 vs 상온 비교 (' + esc(CLAIM_DIV_YEAR) + ')</div><div class="stat-val" style="font-size:17.5px;">유제품 ' + (dairyDiv ? dairyDiv.total_ppm : 0) + ' / 상온 ' + (rtDiv ? rtDiv.total_ppm : 0) + '</div><div class="stat-sub">유제품 ' + (dairyDiv ? dairyDiv.total_cnt : 0) + '건 · 상온 ' + (rtDiv ? rtDiv.total_cnt : 0) + '건</div></div>' +
     '</div>' +
     '<div class="panel-card">' +
       '<div class="panel-title">' +
-        '<span>📈 [' + esc(scopeTitle) + '] 유형별 클레임 건수 누적기둥(건) & PPM 실선 · AI 예상 추세선</span>' +
+        '<span>📈 [' + esc(scopeTitle) + '] 유형별 클레임 건수 누적기둥(건) & PPM 실선 · 계절성 반영 예측선</span>' +
         barToggleBtns +
       '</div>' +
       '<div style="height:305px;"><canvas id="chartClaimTrend"></canvas></div>' +
@@ -4090,16 +3939,19 @@ function renderClaimView() {
   const yearCats = (cl.category_rows || []).filter(function(r) { return r['연도'] === CLAIM_DIV_YEAR && r['유형'] !== '합계'; });
 
   if (isAll) {
-    const tRows = cl.trend_rows || [];
+    const mRows = (curYrPack && curYrPack.monthly) ? curYrPack.monthly : (cl.trend_rows || []).map(function(r) {
+      return { '월': r['월'], '당해_PPM': r['2026년_PPM'], '당해_건수': r['2026년_건수'], '전년_PPM': r['2025년_PPM'], '_기록여부': r._기록여부 };
+    });
+
     tblBox.innerHTML =
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>1. 월별(3월~2월) 전사 클레임 건수 · 생산수량 · PPM 추이</span></div>' +
+        '<div class="panel-title"><span>1. 월별(3월~2월) 전사 클레임 건수 · PPM 추이 (' + esc(CLAIM_DIV_YEAR) + (prevYrLabel && prevYrLabel !== '전년' ? ' vs ' + esc(prevYrLabel) : '') + ')</span></div>' +
         '<div class="tbl-wrap"><table class="data-tbl">' +
-          '<thead><tr><th>구분</th>' + tRows.map(function(r) { return '<th>' + esc(r['월']) + '</th>'; }).join('') + '</tr></thead>' +
+          '<thead><tr><th>구분</th>' + mRows.map(function(r) { return '<th>' + esc(r['월']) + '</th>'; }).join('') + '</tr></thead>' +
           '<tbody>' +
-            '<tr style="background:#EFF6FF;"><td><b>2026년 PPM</b></td>' + tRows.map(function(r) { return '<td><b>' + (r._기록여부 ? r['2026년_PPM'] : '-') + '</b></td>'; }).join('') + '</tr>' +
-            '<tr><td><b>2026년 건수</b></td>' + tRows.map(function(r) { return '<td><b>' + (r._기록여부 ? r['2026년_건수'] + '건' : '-') + '</b></td>'; }).join('') + '</tr>' +
-            '<tr><td>2025년 PPM</td>' + tRows.map(function(r) { return '<td class="cell-gray">' + r['2025년_PPM'] + '</td>'; }).join('') + '</tr>' +
+            '<tr style="background:#EFF6FF;"><td><b>' + esc(CLAIM_DIV_YEAR) + ' PPM</b></td>' + mRows.map(function(r) { return '<td><b>' + (r._기록여부 ? r['당해_PPM'] : '-') + '</b></td>'; }).join('') + '</tr>' +
+            '<tr><td><b>' + esc(CLAIM_DIV_YEAR) + ' 건수</b></td>' + mRows.map(function(r) { return '<td><b>' + (r._기록여부 ? r['당해_건수'] + '건' : '-') + '</b></td>'; }).join('') + '</tr>' +
+            (prevYrLabel ? '<tr><td>' + esc(prevYrLabel) + ' PPM</td>' + mRows.map(function(r) { return '<td class="cell-gray">' + (r['전년_PPM'] || '-') + '</td>'; }).join('') + '</tr>' : '') +
           '</tbody></table></div>' +
       '</div>' +
       '<div class="panel-card">' +
@@ -4158,7 +4010,7 @@ function renderClaimView() {
 
   if (isAll) {
     const recFlags = months.map(function(m, idx) {
-      if (CLAIM_DIV_YEAR === '2026년' && cl.trend_rows && cl.trend_rows[idx]) return Boolean(cl.trend_rows[idx]._기록여부);
+      if (curYrPack && curYrPack.monthly && curYrPack.monthly[idx]) return Boolean(curYrPack.monthly[idx]._기록여부);
       return yearSumRow ? (Number(yearSumRow[m + '_생산수량'] || 0) > 0 || Number(yearSumRow[m + '_건수'] || 0) > 0) : false;
     });
 
@@ -4203,13 +4055,16 @@ function renderClaimView() {
 
     const ppmVals = months.map(function(m, mi) {
       if (!recFlags[mi]) return null;
-      return yearSumRow ? Number(yearSumRow[m + '_PPM'] || 0) : (cl.trend_rows[mi] ? cl.trend_rows[mi]['2026년_PPM'] : null);
+      return yearSumRow ? Number(yearSumRow[m + '_PPM'] || 0) : null;
     });
+
+    const actLineUse = curYrPack ? (curYrPack.act_line || []) : (cl.act_line || []);
+    const fcLineUse = curYrPack ? (curYrPack.fc_line || []) : (cl.fc_line || []);
 
     lineDatasets = [
       { type: 'line', label: CLAIM_DIV_YEAR + ' 실적 PPM', data: ppmVals, borderColor: '#003378', backgroundColor: '#003378', yAxisID: 'y', tension: 0.22, borderWidth: 3, pointRadius: 4 },
-      { type: 'line', label: '실적 추세선', data: CLAIM_DIV_YEAR === '2026년' ? (cl.act_line || []) : [], borderColor: '#0284C7', yAxisID: 'y', borderWidth: 2, pointRadius: 0, fill: false },
-      { type: 'line', label: 'AI 예상 추세선(2월말)', data: CLAIM_DIV_YEAR === '2026년' ? (cl.fc_line || []) : [], borderColor: '#7C3AED', borderDash: [6, 4], yAxisID: 'y', borderWidth: 2.6, pointRadius: 3, fill: false },
+      { type: 'line', label: '마감월 기준 추세선', data: actLineUse, borderColor: '#0284C7', yAxisID: 'y', borderWidth: 2, pointRadius: 0, fill: false },
+      { type: 'line', label: '계절성 보정 예측선(2월말)', data: fcLineUse, borderColor: '#7C3AED', borderDash: [6, 4], yAxisID: 'y', tension: 0.25, borderWidth: 2.6, pointRadius: 3, fill: false },
       { type: 'line', label: '목표 기준선(1.12 PPM)', data: months.map(function() { return cl.target_ppm; }), borderColor: '#EF4444', borderDash: [3, 3], yAxisID: 'y', pointRadius: 0, borderWidth: 1.6 }
     ];
   } else if (activeDiv && activeDiv.monthly) {
@@ -4236,8 +4091,8 @@ function renderClaimView() {
 
     lineDatasets = [
       { type: 'line', label: (CLAIM_SCOPE_TAB === 'DAIRY' ? '유제품 통합 PPM' : '상온 통합 PPM'), data: mList.map(function(m) { return m._기록여부 ? m['부문_통합_PPM'] : null; }), borderColor: '#003378', backgroundColor: '#003378', yAxisID: 'y', tension: 0.22, borderWidth: 3, pointRadius: 4 },
-      { type: 'line', label: '부문 실적 추세선', data: activeDiv.act_line || [], borderColor: '#0284C7', yAxisID: 'y', borderWidth: 2, pointRadius: 0, fill: false },
-      { type: 'line', label: 'AI 예상 추세선(2월말)', data: activeDiv.fc_line || [], borderColor: '#7C3AED', borderDash: [6, 4], yAxisID: 'y', borderWidth: 2.6, pointRadius: 3, fill: false },
+      { type: 'line', label: '부문 마감 추세선', data: activeDiv.act_line || [], borderColor: '#0284C7', yAxisID: 'y', borderWidth: 2, pointRadius: 0, fill: false },
+      { type: 'line', label: '계절성 보정 예측선(2월말)', data: activeDiv.fc_line || [], borderColor: '#7C3AED', borderDash: [6, 4], yAxisID: 'y', tension: 0.25, borderWidth: 2.6, pointRadius: 3, fill: false },
       { type: 'line', label: '전사 목표선(1.12 PPM)', data: months.map(function() { return cl.target_ppm; }), borderColor: '#EF4444', borderDash: [3, 3], yAxisID: 'y', pointRadius: 0, borderWidth: 1.6 }
     ];
   }
@@ -4338,7 +4193,7 @@ function renderCostView() {
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
         '<button class="btn btn-primary" onclick="switchView(\'kpi\')">← 2026 부문 8대 KPI로</button>' +
-        '<button class="btn" onclick="switchView(\'home\')">모닝 브리핑</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">통합 대시보드</button>' +
       '</div>' +
     '</div>' +
     '<div class="kpi-grid-4">' +
@@ -4538,7 +4393,7 @@ function renderDefectSubView() {
         '<button class="btn btn-primary" onclick="openClaimNcModal()">+ 클레임·부적합 신규 등록</button>' +
         '<button class="btn" onclick="switchView(\'lot\')">🔍 LOT 역추적 ›</button>' +
         '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
-        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
       '</div>' +
     '</div>' +
     '<div class="tab-bar">' +
@@ -4620,7 +4475,7 @@ function renderDefectSubView() {
 }
 
 // ==============================================================================
-// [VIEW 14] 부자재 관리 전용 화면 (부자재 폐기 건수 + 금일 입고·검수 목록 + 이전 검수 내역)
+// [VIEW 14] 부자재 관리 전용 화면 (기본 1번 탭: KPI 폐기건수·설명 직결 + 하위 검수내역 탭)
 // ==============================================================================
 let SUB_MAT_HIST_DATE = 'ALL';
 
@@ -4630,7 +4485,10 @@ function renderSubMatView() {
   const lb = BUNDLE.label_status;
   const lw = BUNDLE.law;
 
-  // 향후 구글 시트('부자재 입고검수 일보' 등) 연동 시 BUNDLE.sub_material 객체에서 자동 수신
+  if (SUB_MAT_TAB !== 'kpi' && SUB_MAT_TAB !== 'today' && SUB_MAT_TAB !== 'hist') {
+    SUB_MAT_TAB = 'kpi';
+  }
+
   const sm = BUNDLE.sub_material || {
     has_sheet: false,
     today_date: BUNDLE.loaded_date || '-',
@@ -4645,53 +4503,70 @@ function renderSubMatView() {
   document.getElementById('view-sub_mat').innerHTML =
     '<div class="page-hdr">' +
       '<div>' +
-        '<h2 class="page-h2">부자재 입고 검수 · 이전 내역 및 폐기 Zero 관리</h2>' +
-        '<div class="page-desc">연간 부자재 폐기 건수(KPI 5번)와 일일 부자재 입고 검수 목록 · 과거 누적 검수 이력을 통합 관제합니다.</div>' +
+        '<h2 class="page-h2">5. 부자재 관리 고도화 · 폐기 Zero 및 입고 검수 관리</h2>' +
+        '<div class="page-desc">연간 부자재 폐기 건수(KPI 5번 연동)와 사전 표시심의·법규 선제 대응 현황을 기본 표출하며, 부자재 입고 검수 내역 탭을 함께 제공합니다.</div>' +
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
-        '<button class="btn btn-primary" onclick="openManualKpiModal(\'kpi_10\')">⚙️ 부자재 폐기 건수 편집</button>' +
+        '<button class="btn btn-primary" onclick="openManualKpiModal(\'kpi_10\')">⚙️ 폐기 건수 · 내역 편집</button>' +
         '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
-        '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
       '</div>' +
     '</div>' +
     '<div class="kpi-grid-4">' +
       '<div class="stat-card" style="background:#F0FDF4; border-color:#86EFAC;">' +
-        '<div class="stat-lbl" style="color:#166534;">2026년 누적 부자재 폐기 건수</div>' +
+        '<div class="stat-lbl" style="color:#166534;">연간 부자재 폐기 목표</div>' +
+        '<div class="stat-val" style="color:var(--yonsei-blue);">' + esc(k10.target_text) + '</div>' +
+        '<div class="stat-sub" style="color:#15803D; font-weight:700;">오인쇄 · 법규 미반영 불용 Zero 기준</div>' +
+      '</div>' +
+      '<div class="stat-card" style="background:#F0FDF4; border-color:#86EFAC;">' +
+        '<div class="stat-lbl" style="color:#166534;">현재 누적 부자재 폐기 실적</div>' +
         '<div class="stat-val" style="color:var(--ok-fg);">' + esc(k10.actual_text) + '</div>' +
-        '<div class="stat-sub" style="color:#15803D; font-weight:700;">목표 : ' + esc(k10.target_text) + ' (' + esc(k10.sub_badge || '오인쇄·불용 Zero 유지') + ')</div>' +
+        '<div class="stat-sub" style="color:#15803D; font-weight:700;">' + esc(k10.sub_badge || '부자재 폐기 0건 유지 중') + '</div>' +
       '</div>' +
-      '<div class="stat-card">' +
-        '<div class="stat-lbl">금일 부자재 검수 건수 (' + esc(sm.today_date) + ')</div>' +
-        '<div class="stat-val">' + (sm.has_sheet ? (todayRows.length + '건') : '시트 연동 예정') + '</div>' +
-        '<div class="stat-sub">' + (sm.has_sheet ? ('적합 ' + sm.pass_cnt + '건 · 보류/부적합 ' + sm.hold_cnt + '건') : '구글 시트 연결 시 자동 집계') + '</div>' +
-      '</div>' +
-      '<div class="stat-card">' +
-        '<div class="stat-lbl">누적 부자재 검수 이력</div>' +
-        '<div class="stat-val">' + (sm.has_sheet ? (histRows.length.toLocaleString() + '건') : '0건') + '</div>' +
-        '<div class="stat-sub">일자별 입고 · 표시사항 · 외관 검수 DB</div>' +
+      '<div class="stat-card" style="cursor:pointer;" onclick="switchView(\'label\')">' +
+        '<div class="stat-lbl">2026년 표시사항 사전 심의</div>' +
+        '<div class="stat-val">' + lb.cnt_26_all + '건</div>' +
+        '<div class="stat-sub">현재 검토중 ' + lb.reviewing_cnt + '건 · 발주 전 더블체크</div>' +
       '</div>' +
       '<div class="stat-card" style="cursor:pointer;" onclick="switchView(\'law\')">' +
-        '<div class="stat-lbl">사전 표시심의 · 법규 불용방지</div>' +
-        '<div class="stat-val" style="font-size:18px;">심의 ' + lb.cnt_26_all + '건 / 법규 ' + lw.prep_1yr_cnt + '건</div>' +
-        '<div class="stat-sub">1년내 개정 법규 선제 반영으로 폐기 차단</div>' +
+        '<div class="stat-lbl">1년내 개정 법규 불용방지 점검</div>' +
+        '<div class="stat-val">' + lw.prep_1yr_cnt + '건</div>' +
+        '<div class="stat-sub">대시보드 추적 법규 ' + lw.active_cnt + '건 선제 관리</div>' +
       '</div>' +
     '</div>' +
     '<div class="tab-bar">' +
-      '<button class="tab-btn ' + (SUB_MAT_TAB === 'today' ? 'active' : '') + '" onclick="SUB_MAT_TAB=\'today\'; renderSubMatView()">📋 금일 부자재 검수 목록 (' + todayRows.length + '건)</button>' +
-      '<button class="tab-btn ' + (SUB_MAT_TAB === 'hist' ? 'active' : '') + '" onclick="SUB_MAT_TAB=\'hist\'; renderSubMatView()">📚 이전 부자재 검수 내역 조회 (' + histRows.length + '건)</button>' +
-      '<button class="tab-btn ' + (SUB_MAT_TAB === 'kpi' ? 'active' : '') + '" onclick="SUB_MAT_TAB=\'kpi\'; renderSubMatView()">🛡️ 부자재 폐기 Zero화 추진 관리 (KPI 5번)</button>' +
+      '<button class="tab-btn ' + (SUB_MAT_TAB === 'kpi' ? 'active' : '') + '" onclick="SUB_MAT_TAB=\'kpi\'; renderSubMatView()">🛡️ 부자재 폐기 Zero화 관리 내역 (기본 · KPI 연동)</button>' +
+      '<button class="tab-btn ' + (SUB_MAT_TAB === 'today' ? 'active' : '') + '" onclick="SUB_MAT_TAB=\'today\'; renderSubMatView()">📋 금일 부자재 검수 내역' + (sm.has_sheet ? (' (' + todayRows.length + '건)') : '') + '</button>' +
+      '<button class="tab-btn ' + (SUB_MAT_TAB === 'hist' ? 'active' : '') + '" onclick="SUB_MAT_TAB=\'hist\'; renderSubMatView()">📚 이전 부자재 검수 내역' + (sm.has_sheet ? (' (' + histRows.length + '건)') : '') + '</button>' +
     '</div>' +
     '<div id="subMatTabBox"></div>';
 
   const box = document.getElementById('subMatTabBox');
 
+  if (SUB_MAT_TAB === 'kpi') {
+    box.innerHTML =
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>' + esc(k10.notes_title || '부자재 폐기 Zero화 관리 내역') + '</span>' +
+          '<button class="btn btn-primary btn-sm" onclick="openManualKpiModal(\'kpi_10\')">수치 · 내역 편집</button>' +
+        '</div>' +
+        '<ul style="padding-left:18px; line-height:1.8; font-size:13.5px; color:#1E293B;">' +
+          (k10.notes || []).map(function(n) { return '<li>' + esc(n) + '</li>'; }).join('') +
+        '</ul>' +
+      '</div>' +
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>2026년 검토 포장재 유형별 사전 표시사항 심의 건수 TOP 10</span><button class="btn btn-sm" onclick="switchView(\'label\')">표시사항 현황 ›</button></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>검토 포장재 유형</th><th>2026년 사전 심의 건수</th></tr></thead><tbody>' +
+          ((lb.top_pkgs && lb.top_pkgs.length) ? lb.top_pkgs.map(function(p) {
+            return '<tr><td><b>' + esc(p['포장재유형']) + '</b></td><td><b>' + p['2026년_검토건수'] + '건</b></td></tr>';
+          }).join('') : '<tr><td colspan="2" class="cell-gray">데이터가 없습니다.</td></tr>') +
+        '</tbody></table></div>' +
+      '</div>';
+    return;
+  }
+
   if (SUB_MAT_TAB === 'today') {
     box.innerHTML =
-      (!sm.has_sheet ?
-        '<div class="panel-card" style="background:#EFF6FF; border-color:#BFDBFE; padding:12px 16px;">' +
-          '<div style="font-weight:800; color:var(--yonsei-blue); font-size:13.5px;">📌 일일 부자재 입고·검수 구글 시트 연동 준비 완료</div>' +
-          '<div style="font-size:12.5px; color:#1E3A8A; margin-top:3px;">추후 일일 부자재 검수용 구글 시트를 생성해 연결하면, 매일 검수한 품목·공급사·LOT·표시사항 일치 여부·판정 결과가 아래 표에 실시간으로 자동 표시됩니다.</div>' +
-        '</div>' : '') +
       '<div class="panel-card">' +
         '<div class="panel-title">' +
           '<span>금일(' + esc(sm.today_date) + ') 부자재 입고 · 외관 · 표시사항 검수 목록</span>' +
@@ -4714,73 +4589,50 @@ function renderSubMatView() {
               '<td class="' + pCls + '">' + esc(r['판정'] || '적합') + '</td>' +
               '<td class="td-left">' + esc(r['특이사항'] || '-') + '</td>' +
             '</tr>';
-          }).join('') : '<tr><td colspan="10" class="cell-gray" style="padding:26px;">' + (sm.has_sheet ? '금일 등록된 부자재 검수 내역이 없습니다.' : '일일 부자재 검수 구글 시트 연결 대기 중입니다.') + '</td></tr>') +
+          }).join('') : '<tr><td colspan="10" class="cell-gray" style="padding:26px;">금일 등록된 부자재 검수 내역이 없습니다. (향후 일일 부자재 검수 시트 연동 시 자동 표출)</td></tr>') +
           '</tbody></table></div>' +
       '</div>';
     return;
   }
 
-  if (SUB_MAT_TAB === 'hist') {
-    const hDates = Array.from(new Set(histRows.map(function(r) { return r['검수일자']; }).filter(Boolean))).sort().reverse();
-    const filteredHist = histRows.filter(function(r) {
-      return SUB_MAT_HIST_DATE === 'ALL' || r['검수일자'] === SUB_MAT_HIST_DATE;
-    });
+  const hDates = Array.from(new Set(histRows.map(function(r) { return r['검수일자']; }).filter(Boolean))).sort().reverse();
+  const filteredHist = histRows.filter(function(r) {
+    return SUB_MAT_HIST_DATE === 'ALL' || r['검수일자'] === SUB_MAT_HIST_DATE;
+  });
 
-    box.innerHTML =
-      '<div class="panel-card">' +
-        '<div class="panel-title">' +
-          '<span>이전 부자재 입고 · 검수 누적 이력 조회</span>' +
-          '<div style="display:flex; gap:8px; align-items:center;">' +
-            '<select class="form-ctrl" style="width:170px;" onchange="SUB_MAT_HIST_DATE=this.value; renderSubMatView()">' +
-              '<option value="ALL">전체 검수일자 (' + hDates.length + '일)</option>' +
-              hDates.map(function(d) {
-                return '<option value="' + esc(d) + '" ' + (SUB_MAT_HIST_DATE === d ? 'selected' : '') + '>검수일 ' + esc(d) + '</option>';
-              }).join('') +
-            '</select>' +
-            '<input type="text" class="form-ctrl" style="width:230px;" placeholder="부자재명 · 공급사 · LOT 검색" oninput="filterSimpleTable(this.value, \'subMatHistTbl\')" />' +
-          '</div>' +
-        '</div>' +
-        '<div class="tbl-wrap"><table class="data-tbl" id="subMatHistTbl">' +
-          '<thead><tr><th>검수일자</th><th>포장재 구분</th><th>부자재명 (품목명)</th><th>공급업체</th><th>입고수량 / LOT</th><th>외관 · 규격</th><th>표시사항 대조</th><th>검수자</th><th>최종판정</th><th>특이사항</th></tr></thead>' +
-          '<tbody>' +
-          (filteredHist.length ? filteredHist.slice(0, 300).map(function(r) {
-            const pCls = String(r['판정'] || '').indexOf('부적합') !== -1 ? 'cell-red' : 'cell-green';
-            return '<tr>' +
-              '<td><b>' + esc(r['검수일자'] || '-') + '</b></td>' +
-              '<td>' + esc(r['구분'] || '-') + '</td>' +
-              '<td class="td-left"><strong>' + esc(r['부자재명'] || '-') + '</strong></td>' +
-              '<td>' + esc(r['공급업체'] || '-') + '</td>' +
-              '<td>' + esc(r['입고수량_LOT'] || '-') + '</td>' +
-              '<td>' + esc(r['외관규격'] || '-') + '</td>' +
-              '<td>' + esc(r['표시사항'] || '-') + '</td>' +
-              '<td>' + esc(r['검수자'] || '-') + '</td>' +
-              '<td class="' + pCls + '">' + esc(r['판정'] || '적합') + '</td>' +
-              '<td class="td-left">' + esc(r['특이사항'] || '-') + '</td>' +
-            '</tr>';
-          }).join('') : '<tr><td colspan="10" class="cell-gray" style="padding:26px;">' + (sm.has_sheet ? '조건에 해당하는 이전 부자재 검수 내역이 없습니다.' : '일일 부자재 검수 구글 시트 연결 후 누적 이력이 자동 축적됩니다.') + '</td></tr>') +
-          '</tbody></table></div>' +
-      '</div>';
-    return;
-  }
-
-  // [부자재 폐기 Zero화 추진 관리 탭]
   box.innerHTML =
     '<div class="panel-card">' +
-      '<div class="panel-title"><span>' + esc(k10.notes_title || '부자재 폐기 Zero화 관리 내역') + '</span>' +
-        '<button class="btn btn-primary btn-sm" onclick="openManualKpiModal(\'kpi_10\')">폐기 건수 · 추진내역 편집</button>' +
+      '<div class="panel-title">' +
+        '<span>이전 부자재 입고 · 검수 누적 이력 조회</span>' +
+        '<div style="display:flex; gap:8px; align-items:center;">' +
+          '<select class="form-ctrl" style="width:170px;" onchange="SUB_MAT_HIST_DATE=this.value; renderSubMatView()">' +
+            '<option value="ALL">전체 검수일자 (' + hDates.length + '일)</option>' +
+            hDates.map(function(d) {
+              return '<option value="' + esc(d) + '" ' + (SUB_MAT_HIST_DATE === d ? 'selected' : '') + '>검수일 ' + esc(d) + '</option>';
+            }).join('') +
+          '</select>' +
+          '<input type="text" class="form-ctrl" style="width:230px;" placeholder="부자재명 · 공급사 · LOT 검색" oninput="filterSimpleTable(this.value, \'subMatHistTbl\')" />' +
+        '</div>' +
       '</div>' +
-      '<ul style="padding-left:18px; line-height:1.8; font-size:13.5px; color:#1E293B;">' +
-        (k10.notes || []).map(function(n) { return '<li>' + esc(n) + '</li>'; }).join('') +
-      '</ul>' +
-    '</div>' +
-    '<div class="panel-card">' +
-      '<div class="panel-title"><span>2026년 검토 포장재 유형별 사전 표시사항 심의 건수 TOP 10</span><button class="btn btn-sm" onclick="switchView(\'label\')">표시사항 현황 ›</button></div>' +
-      '<div class="tbl-wrap"><table class="data-tbl">' +
-        '<thead><tr><th>검토 포장재 유형</th><th>2026년 사전 심의 건수</th></tr></thead><tbody>' +
-        ((lb.top_pkgs && lb.top_pkgs.length) ? lb.top_pkgs.map(function(p) {
-          return '<tr><td><b>' + esc(p['포장재유형']) + '</b></td><td><b>' + p['2026년_검토건수'] + '건</b></td></tr>';
-        }).join('') : '<tr><td colspan="2" class="cell-gray">데이터가 없습니다.</td></tr>') +
-      '</tbody></table></div>' +
+      '<div class="tbl-wrap"><table class="data-tbl" id="subMatHistTbl">' +
+        '<thead><tr><th>검수일자</th><th>포장재 구분</th><th>부자재명 (품목명)</th><th>공급업체</th><th>입고수량 / LOT</th><th>외관 · 규격</th><th>표시사항 대조</th><th>검수자</th><th>최종판정</th><th>특이사항</th></tr></thead>' +
+        '<tbody>' +
+        (filteredHist.length ? filteredHist.slice(0, 300).map(function(r) {
+          const pCls = String(r['판정'] || '').indexOf('부적합') !== -1 ? 'cell-red' : 'cell-green';
+          return '<tr>' +
+            '<td><b>' + esc(r['검수일자'] || '-') + '</b></td>' +
+            '<td>' + esc(r['구분'] || '-') + '</td>' +
+            '<td class="td-left"><strong>' + esc(r['부자재명'] || '-') + '</strong></td>' +
+            '<td>' + esc(r['공급업체'] || '-') + '</td>' +
+            '<td>' + esc(r['입고수량_LOT'] || '-') + '</td>' +
+            '<td>' + esc(r['외관규격'] || '-') + '</td>' +
+            '<td>' + esc(r['표시사항'] || '-') + '</td>' +
+            '<td>' + esc(r['검수자'] || '-') + '</td>' +
+            '<td class="' + pCls + '">' + esc(r['판정'] || '적합') + '</td>' +
+            '<td class="td-left">' + esc(r['특이사항'] || '-') + '</td>' +
+          '</tr>';
+        }).join('') : '<tr><td colspan="10" class="cell-gray" style="padding:26px;">조회 가능한 이전 부자재 검수 내역이 없습니다. (향후 일일 부자재 검수 시트 연동 시 자동 축적)</td></tr>') +
+        '</tbody></table></div>' +
     '</div>';
 }
 
@@ -4901,7 +4753,7 @@ function openLawDetailModal(lawId) {
       '<textarea id="txtLawSumEdit" class="form-ctrl" rows="3">' + esc(item['실무조치요약']) + '</textarea>' +
     '</div>' +
     '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">' +
-      '<div><label class="form-lbl">모닝 브리핑 대시보드 노출</label>' +
+      '<div><label class="form-lbl">통합 대시보드 노출</label>' +
         '<select id="selLawDashMode" class="form-ctrl">' +
           '<option value="Pin" ' + (item.show_on_dashboard ? 'selected' : '') + '>대시보드에 노출 ([대시보드] 탭 저장)</option>' +
           '<option value="Hide" ' + (!item.show_on_dashboard ? 'selected' : '') + '>대시보드에서 숨김</option>' +

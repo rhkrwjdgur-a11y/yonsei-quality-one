@@ -3880,8 +3880,16 @@ def parse_schedule_tab_rows(rows: list) -> list:
     if not rows or len(rows) < 2:
         return []
 
-    hdr0_ns = [re.sub(r"\s+", "", str(c)) for c in rows[0]]
-    if "심사명" in hdr0_ns or "고유ID" in hdr0_ns or ("구분" in hdr0_ns and any("일자" in x or "날짜" in x for x in hdr0_ns)):
+    hdr_idx = -1
+    hdr0_ns = []
+    for idx, cand_r in enumerate(rows[:6]):
+        cand_ns = [re.sub(r"\s+", "", str(c)) for c in cand_r]
+        if "심사명" in cand_ns or "고유ID" in cand_ns or ("구분" in cand_ns and any("일자" in x or "날짜" in x for x in cand_ns)):
+            hdr_idx = idx
+            hdr0_ns = cand_ns
+            break
+
+    if hdr_idx >= 0:
         col_uid = next((i for i, h in enumerate(hdr0_ns) if "ID" in h.upper() or "고유" in h), -1)
         col_tp = next((i for i, h in enumerate(hdr0_ns) if "구분" in h or "분류" in h), -1)
         col_dt = next((i for i, h in enumerate(hdr0_ns) if "일자" in h or "날짜" in h or "일시" in h), -1)
@@ -3892,7 +3900,7 @@ def parse_schedule_tab_rows(rows: list) -> list:
         col_ts = next((i for i, h in enumerate(hdr0_ns) if "수정" in h), -1)
 
         out = []
-        for r_idx, r in enumerate(rows[1:], start=2):
+        for r_idx, r in enumerate(rows[hdr_idx + 1:], start=hdr_idx + 2):
             if not any(str(x).strip() for x in r):
                 continue
             def g(idx: int) -> str:
@@ -4511,32 +4519,45 @@ def sync_law_summary_db_worksheet(sh, all_laws: list, summary_db_map: Dict[str, 
 
 
 def parse_law_dashboard_tab(rows: list) -> Tuple[bool, Dict[str, dict]]:
-    if not rows:
-        return False, {}
-    hdr_ns = [re.sub(r"\s+", "", str(x)) for x in rows[0]]
-    has_valid_hdr = any(k in "".join(hdr_ns) for k in ["법규ID", "법규명", "시행일", "준비상태"])
-    if not has_valid_hdr:
+    if not rows or len(rows) < 2:
         return False, {}
 
-    c_id = next((i for i, h in enumerate(hdr_ns) if "ID" in h.upper()), 0)
-    c_nm = next((i for i, h in enumerate(hdr_ns) if "법규명" in h or "법령명" in h), 3)
-    c_prep = next((i for i, h in enumerate(hdr_ns) if "준비" in h or "상태" in h), 4)
-    c_sum = next((i for i, h in enumerate(hdr_ns) if "요약" in h or "내용" in h), 5)
+    hdr_idx = -1
+    hdr_ns = []
+    for idx, r in enumerate(rows[:5]):
+        cand = [re.sub(r"\s+", "", str(x)) for x in r]
+        if any(k in "".join(cand) for k in ["법규ID", "법규명", "법령명"]):
+            hdr_idx = idx
+            hdr_ns = cand
+            break
+    if hdr_idx < 0:
+        return False, {}
+
+    c_id = next((i for i, h in enumerate(hdr_ns) if "ID" in h.upper()), -1)
+    c_nm = next((i for i, h in enumerate(hdr_ns) if "법규명" in h or "법령명" in h or "고시명" in h), -1)
+    c_prep = next((i for i, h in enumerate(hdr_ns) if "준비" in h or "상태" in h), -1)
+    c_sum = next((i for i, h in enumerate(hdr_ns) if "요약" in h or "내용" in h), -1)
 
     pinned_map: Dict[str, dict] = {}
-    for r in rows[1:]:
+    for r in rows[hdr_idx + 1:]:
         if not any(str(x).strip() for x in r):
             continue
-        lid = str(r[c_id]).strip() if c_id < len(r) else ""
-        nm = str(r[c_nm]).strip() if c_nm < len(r) else ""
-        prep = str(r[c_prep]).strip() if c_prep < len(r) else "검토전"
+        lid = str(r[c_id]).strip() if (0 <= c_id < len(r)) else ""
+        nm = str(r[c_nm]).strip() if (0 <= c_nm < len(r)) else ""
+        if not lid and not nm:
+            continue
+        prep = str(r[c_prep]).strip() if (0 <= c_prep < len(r)) else "검토전"
         if prep not in LAW_PREP_LIST:
             prep = "검토전"
-        summ = str(r[c_sum]).strip() if c_sum < len(r) else ""
-        key = lid or re.sub(r"\s+", "", nm)
-        if key:
-            pinned_map[key] = {"prep": prep, "summary": summ, "law_name": nm}
-    return True, pinned_map
+        summ = str(r[c_sum]).strip() if (0 <= c_sum < len(r)) else ""
+        entry = {"prep": prep, "summary": summ, "law_name": nm}
+        if lid:
+            pinned_map[lid] = entry
+        norm_nm = re.sub(r"\s+", "", nm)
+        if norm_nm:
+            pinned_map[norm_nm] = entry
+
+    return (len(pinned_map) > 0), pinned_map
 
 
 def sync_law_dashboard_worksheet(sh, all_laws_enriched: list):
@@ -4654,7 +4675,7 @@ def fetch_law_info_sheet(sheet_urls_map: dict):
                 raw_parsed_items.append((t_name, tab_has_notice, last_ministry, law_nm, content_full, notice_raw, enf_raw, rel_raw, lid))
 
         # 서버 타임아웃 없이 한 번 동기화할 때마다 최대 4건씩 Gemini AI 요약을 생성하여 _법규요약DB에 영구 축적
-        ai_budget = 4
+        ai_budget = 0
         ai_used = 0
 
         for (t_name, tab_has_notice, last_ministry, law_nm, content_full, notice_raw, enf_raw, rel_raw, lid) in raw_parsed_items:
@@ -4796,7 +4817,17 @@ def apply_law_preferences(raw_laws: list, dash_initialized: bool, dash_tab_map: 
         cp["_sort_k"] = sort_key
         enriched.append(cp)
 
-    dashboard_list = [x for x in enriched if x["show_on_dashboard"]]
+   dashboard_list = [x for x in enriched if x["show_on_dashboard"]]
+    explicitly_hidden_all = bool(legacy_prefs) and all(v.get("mode") == "Hide" for v in legacy_prefs.values())
+    if not dashboard_list and enriched and not explicitly_hidden_all:
+        fallback_cands = [x for x in enriched if not x.get("예고여부") and (x.get("d_day") is None or x["d_day"] >= -30)]
+        if not fallback_cands:
+            fallback_cands = list(enriched)
+        fallback_cands.sort(key=lambda x: x["_sort_k"])
+        for fc in fallback_cands[:6]:
+            fc["show_on_dashboard"] = True
+        dashboard_list = [x for x in enriched if x["show_on_dashboard"]]
+
     dashboard_list.sort(key=lambda x: x["_sort_k"])
 
     all_sorted = sorted(enriched, key=lambda x: (0 if x["show_on_dashboard"] else 1, x["_sort_k"]))
@@ -5454,9 +5485,37 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
             sup_kpi_sheet, aud_kpi_sheet, sak_sched, err_sak = resolve_with_last_good("sak", f_sak.result(), 3)
             claim_nc_data, err_cnh = resolve_with_last_good("cnh", f_cnh.result(), 1)
 
-        audit_sched = sak_sched if (sak_sched is not None and len(sak_sched) > 0) else (legacy_sched if sak_sched is None else [])
-        if sak_sched is not None and len(sak_sched) == 0 and legacy_sched:
-            audit_sched = legacy_sched
+       audit_sched = sak_sched if (sak_sched is not None and len(sak_sched) > 0) else (legacy_sched if legacy_sched else [])
+        if not audit_sched:
+            fallback_scheds = []
+            for idx_h, hr in enumerate((aud_kpi_sheet or {}).get("history_rows", [])[:10]):
+                d_obj = parse_date_obj(hr.get("심사일", ""))
+                dt_s = d_obj.strftime("%Y-%m-%d") if d_obj else str(hr.get("심사일", "-"))
+                fallback_scheds.append({
+                    "고유ID": f"aud_{idx_h}",
+                    "구분": "방문심사",
+                    "심사일자": dt_s,
+                    "심사명": hr.get("심사업체", "-"),
+                    "진행현황": "심사종료",
+                    "점수": hr.get("점수", ""),
+                    "비고": hr.get("평가유형(H열)", ""),
+                    "수정일시": ""
+                })
+            for idx_v, vr in enumerate((sup_kpi_sheet or {}).get("visit_rows", [])[:10]):
+                d_obj = parse_date_obj(vr.get("점검일", ""))
+                dt_s = d_obj.strftime("%Y-%m-%d") if d_obj else str(vr.get("점검일", "-"))
+                fallback_scheds.append({
+                    "고유ID": f"sup_{idx_v}",
+                    "구분": "협력업체 방문",
+                    "심사일자": dt_s,
+                    "심사명": f"[{vr.get('계열사 구분', '')}] {vr.get('업체명', '-')}",
+                    "진행현황": "심사종료",
+                    "점수": "",
+                    "비고": vr.get("비고", ""),
+                    "수정일시": ""
+                })
+            fallback_scheds.sort(key=lambda x: x.get("심사일자", ""), reverse=True)
+            audit_sched = fallback_scheds
 
         dairy_only_prods, rt_only_prods, master_prods = [], [], []
         seen_dairy, seen_rt, seen_all = set(), set(), set()

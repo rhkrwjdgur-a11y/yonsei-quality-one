@@ -6700,7 +6700,7 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
 
 
 @app.post("/api/law-ai-summary")
-def api_generate_law_ai_summary(body: LawAiReqPayload):
+def api_generate_law_ai_summary(body: LawAiReqPayload, _u: dict = Depends(require_auth_user)):
     bundle = build_full_dashboard_bundle(force_refresh=False)
     all_laws = bundle.get("law", {}).get("all_laws", [])
     target = next((x for x in all_laws if x.get("law_id") == body.law_id), None)
@@ -6714,7 +6714,7 @@ def api_generate_law_ai_summary(body: LawAiReqPayload):
 
 
 @app.post("/api/audit-schedule")
-def api_save_audit_schedule(body: AuditSchedulePayload):
+def api_save_audit_schedule(body: AuditSchedulePayload, _u: dict = Depends(require_auth_user)):
     sheet_urls_map = get_sheet_urls_map()
     sh, err = open_sheet_isolated(sheet_urls_map, "sup_audit_kpi")
     using_sak = True
@@ -6836,7 +6836,7 @@ def _read_and_write_special_board(updater_fn):
 
 
 @app.post("/api/special-boards")
-def api_save_special_boards(body: SpecialBoardPayload):
+def api_save_special_boards(body: SpecialBoardPayload, _u: dict = Depends(require_auth_user)):
     sheet_urls_map = get_sheet_urls_map()
 
     current_lbl_memo = ""
@@ -6899,7 +6899,7 @@ def api_save_special_boards(body: SpecialBoardPayload):
 
 
 @app.post("/api/law-pref")
-def api_save_law_pref(body: LawPrefPayload):
+def api_save_law_pref(body: LawPrefPayload, _u: dict = Depends(require_auth_user)):
     sheet_urls_map = get_sheet_urls_map()
     sh_law, err_law = open_sheet_isolated(sheet_urls_map, "law_info")
     if sh_law is None:
@@ -7012,7 +7012,7 @@ def api_save_law_pref(body: LawPrefPayload):
 
 
 @app.post("/api/label-pin")
-def api_save_label_pin(body: LabelPinPayload):
+def api_save_label_pin(body: LabelPinPayload, _u: dict = Depends(require_auth_user)):
     def _upd(b_map: dict, _now_s: str):
         try:
             pins = json.loads(b_map.get("label_pins_json", "[]"))
@@ -7043,7 +7043,7 @@ def api_save_label_pin(body: LabelPinPayload):
 
 
 @app.post("/api/claim-nc-history")
-def api_save_claim_nc_history(body: ClaimNcHistPayload):
+def api_save_claim_nc_history(body: ClaimNcHistPayload, _u: dict = Depends(require_auth_user)):
     sheet_urls_map = get_sheet_urls_map()
     sh, err = open_sheet_isolated(sheet_urls_map, "claim_nc_hist")
     if sh is None:
@@ -7124,7 +7124,7 @@ def api_save_claim_nc_history(body: ClaimNcHistPayload):
 
 
 @app.post("/api/manual-kpi")
-def api_save_manual_kpi(body: ManualKpiPayload):
+def api_save_manual_kpi(body: ManualKpiPayload, _u: dict = Depends(require_auth_user)):
     if body.kpi_key not in DEFAULT_MANUAL_KPIS:
         raise HTTPException(status_code=400, detail="유효하지 않은 KPI 키입니다.")
 
@@ -7186,7 +7186,7 @@ def api_save_manual_kpi(body: ManualKpiPayload):
 
 
 @app.post("/api/ai-briefing")
-def api_generate_ai_briefing():
+def api_generate_ai_briefing(_u: dict = Depends(require_auth_user)):
     bundle = build_full_dashboard_bundle(force_refresh=False)
     if not bundle.get("ok"):
         raise HTTPException(status_code=500, detail="데이터가 준비되지 않았습니다.")

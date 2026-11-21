@@ -1762,9 +1762,9 @@
           </div>
         </div>
 
-        <!-- Q3: 방문심사 · 협력업체 방문 일정 현황 -->
+       <!-- Q3: 방문심사 · 협력업체 방문 일정 현황 -->
         <div class="quad-card">
-          <div class="quad-hdr">function renderHome() {
+          <div class="quad-hdr">
             <div class="quad-title">● 방문심사 · 협력업체 방문 일정 현황</div>
             <div class="quad-actions">
               <button class="link-chip" onclick="switchView('audit', 'schedule')">일정 등록 · 관리 ›</button>
@@ -2425,7 +2425,17 @@ function renderHome() {
     setHtml('q4BodyBox', '<div style="color:var(--err-fg); font-size:12px; padding:8px;">이력 표시 오류: ' + esc(err4.message) + '</div>');
   }
 }
-
+async function quickChangeAuditStatus(uid, newStatus) {
+  try {
+    const res = await apiPost('/api/audit-schedule', { action: 'quick_status', uid: uid, status: newStatus });
+    BUNDLE.audit.summary = res.summary;
+    BUNDLE.audit.schedules = res.schedules;
+    renderHome();
+    showToast('방문심사 진행단계가 [' + newStatus + ']로 저장되었습니다.');
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
+}
 // ==============================================================================
 // [VIEW 3] 표시사항 진행 현황 (통계 탭 우선 진입)
 // ==============================================================================

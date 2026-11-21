@@ -3,6 +3,7 @@
 # Q-Safety 백엔드 통합 엔진 (진입점 · 상수 · 인증 · 주석매칭 · 원가절감 & 클레임 파서)
 # ==============================================================================
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -15,7 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import gspread
 import requests
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from google.auth.transport.requests import Request
@@ -5930,6 +5931,403 @@ class ClaimNcHistPayload(BaseModel):
     final_judge: Optional[str] = "판정대기"
     show_dash: Optional[str] = "Y"
 
+# ==============================================================================
+# '원가절감 현황' 시트 내 [로그인] 탭 연동 인증 · 비밀번호 변경 · 관리자 계정관리 엔진
+# ==============================================================================
+LOGIN_TAB_NAME = "로그인"
+AUTH_USER_COLS = ["사번", "성명", "직급", "소속_직책", "비밀번호", "권한", "상태", "최근접속일시", "비번변경일시"]
+
+INITIAL_AUTH_USERS = [
+    {"사번": "19930503", "성명": "오재필", "직급": "부장", "소속_직책": "품질안전부문 부문장", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20120102", "성명": "김상원", "직급": "부장", "소속_직책": "식품안전팀 팀장", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20081101", "성명": "조준희", "직급": "과장", "소속_직책": "식품안전팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20150902", "성명": "박병규", "직급": "대리", "소속_직책": "식품안전팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20190901", "성명": "김재호", "직급": "주임", "소속_직책": "식품안전팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20220403", "성명": "곽정혁", "직급": "주임", "소속_직책": "식품안전팀 팀원", "비밀번호": "000", "권한": "관리자", "상태": "정상"},
+    {"사번": "20251101", "성명": "김한조", "직급": "차장", "소속_직책": "품질관리팀 팀장", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "19930401", "성명": "성미희", "직급": "차장", "소속_직책": "품질관리팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20060102", "성명": "한의진", "직급": "과장", "소속_직책": "품질관리팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "19970402", "성명": "서민우", "직급": "대리", "소속_직책": "품질관리팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20060601", "성명": "곽희산", "직급": "대리", "소속_직책": "품질관리팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20120701", "성명": "이승재", "직급": "대리", "소속_직책": "품질관리팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20251104", "성명": "윤주한", "직급": "사원", "소속_직책": "품질관리팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20220101", "성명": "권석민", "직급": "사원", "소속_직책": "품질관리팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20221202", "성명": "장영진", "직급": "사원", "소속_직책": "품질관리팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20240202", "성명": "임경현", "직급": "사원", "소속_직책": "품질관리팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20241102", "성명": "조유건", "직급": "사원", "소속_직책": "품질관리팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20250908", "성명": "전찬우", "직급": "사원", "소속_직책": "품질관리팀", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20260401", "성명": "이지민", "직급": "사원", "소속_직책": "품질관리팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20260609", "성명": "김유진", "직급": "사원", "소속_직책": "품질관리팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"},
+    {"사번": "20260610", "성명": "유지운", "직급": "사원", "소속_직책": "품질관리팀 팀원", "비밀번호": "000", "권한": "실무자", "상태": "정상"}
+]
+
+_AUTH_CACHE_LOCK = threading.Lock()
+_AUTH_CACHE: Dict[str, Any] = {"ts": 0.0, "sheet_ok": False, "users": []}
+AUTH_MICRO_TTL = 15.0
+
+
+def _get_auth_secret() -> bytes:
+    env_k = os.environ.get("AUTH_SECRET_KEY", "").strip()
+    if env_k:
+        return env_k.encode("utf-8")
+    seed = os.environ.get("GOOGLE_CREDENTIALS_JSON", "qsafety-yonsei-2026")
+    return hashlib.sha256((seed + "|qsafety-login-v2").encode("utf-8")).hexdigest().encode("utf-8")
+
+
+def _normalize_pw_str(raw_pw: Any) -> str:
+    """구글 시트에서 '000'이 숫자 '0'으로 자동 변환된 경우에도 '000'으로 정상 복원"""
+    s = str(raw_pw if raw_pw is not None else "").strip()
+    if s.startswith("'"):
+        s = s[1:]
+    if s in ("", "0"):
+        return "000"
+    return s
+
+
+def _format_cell_keep_leading_zero(val: str) -> str:
+    """구글 시트 USER_ENTERED 저장 시 0으로 시작하는 비밀번호/사번(예: 000, 0123) 앞자리 0 보존"""
+    s = str(val or "").strip()
+    if s and s.isdigit() and s.startswith("0"):
+        return "'" + s
+    return s
+
+
+def _get_or_create_cost_login_ws():
+    sheet_urls_map = get_sheet_urls_map()
+    sh, err = open_sheet_isolated(sheet_urls_map, "cost")
+    if sh is None:
+        return None, err
+    ws_all = api_call_with_retry(sh.worksheets)
+    ws_login = next((w for w in ws_all if w.title.strip() == LOGIN_TAB_NAME), None)
+    if ws_login is None:
+        ws_login = api_call_with_retry(sh.add_worksheet, title=LOGIN_TAB_NAME, rows=100, cols=10)
+    return ws_login, None
+
+
+def _build_login_sheet_payload(users_list: List[dict]) -> list:
+    payload = [AUTH_USER_COLS]
+    for u in users_list:
+        pw_clean = _normalize_pw_str(u.get("비밀번호", "000"))
+        payload.append([
+            _format_cell_keep_leading_zero(u.get("사번", "")),
+            str(u.get("성명", "")).strip(),
+            str(u.get("직급", "")).strip(),
+            str(u.get("소속_직책", "")).strip(),
+            _format_cell_keep_leading_zero(pw_clean),
+            str(u.get("권한", "실무자")).strip(),
+            str(u.get("상태", "정상")).strip(),
+            str(u.get("최근접속일시", "")).strip(),
+            str(u.get("비번변경일시", "")).strip()
+        ])
+    return payload
+
+
+def create_signed_token(emp_no: str, days: int = 14) -> str:
+    exp_ts = int(time.time()) + (days * 86400)
+    msg = f"{emp_no}.{exp_ts}"
+    sig = hmac.new(_get_auth_secret(), msg.encode("utf-8"), hashlib.sha256).hexdigest()[:32]
+    return f"{msg}.{sig}"
+
+
+def verify_signed_token_str(token_str: str) -> Optional[str]:
+    s = str(token_str or "").strip()
+    parts = s.split(".")
+    if len(parts) != 3:
+        return None
+    emp_no, exp_s, sig = parts
+    if not emp_no or not exp_s.isdigit():
+        return None
+    if int(exp_s) < int(time.time()):
+        return None
+    expected = hmac.new(_get_auth_secret(), f"{emp_no}.{exp_s}".encode("utf-8"), hashlib.sha256).hexdigest()[:32]
+    if not hmac.compare_digest(sig, expected):
+        return None
+    return emp_no
+
+
+def load_auth_users_live(force: bool = False) -> Tuple[List[dict], bool]:
+    now_t = time.time()
+    if not force and _AUTH_CACHE["users"] and (now_t - _AUTH_CACHE["ts"]) < AUTH_MICRO_TTL:
+        return _AUTH_CACHE["users"], _AUTH_CACHE["sheet_ok"]
+
+    with _AUTH_CACHE_LOCK:
+        if not force and _AUTH_CACHE["users"] and (time.time() - _AUTH_CACHE["ts"]) < AUTH_MICRO_TTL:
+            return _AUTH_CACHE["users"], _AUTH_CACHE["sheet_ok"]
+
+        ws_login, _ = _get_or_create_cost_login_ws()
+        if ws_login is not None:
+            try:
+                rows = get_values_formatted(ws_login)
+                if len(rows) < 2:
+                    seed_users = [{**u, "최근접속일시": "", "비번변경일시": ""} for u in INITIAL_AUTH_USERS]
+                    safe_ws_update(ws_login, _build_login_sheet_payload(seed_users))
+                    _AUTH_CACHE["users"] = seed_users
+                    _AUTH_CACHE["sheet_ok"] = True
+                    _AUTH_CACHE["ts"] = time.time()
+                    return seed_users, True
+
+                recs = rows_to_records(rows)
+                users = []
+                for r in recs:
+                    emp = re.sub(r"\s+", "", str(r.get("사번", ""))).lstrip("'")
+                    nm = str(r.get("성명", "")).strip()
+                    if not emp or not nm:
+                        continue
+                    users.append({
+                        "사번": emp,
+                        "성명": nm,
+                        "직급": str(r.get("직급", "")).strip(),
+                        "소속_직책": str(r.get("소속_직책", "")).strip(),
+                        "비밀번호": _normalize_pw_str(r.get("비밀번호", "000")),
+                        "권한": "관리자" if (str(r.get("권한", "")).strip() == "관리자" or emp == "20220403") else "실무자",
+                        "상태": str(r.get("상태", "정상")).strip() or "정상",
+                        "최근접속일시": str(r.get("최근접속일시", "")).strip(),
+                        "비번변경일시": str(r.get("비번변경일시", "")).strip()
+                    })
+                if users:
+                    _AUTH_CACHE["users"] = users
+                    _AUTH_CACHE["sheet_ok"] = True
+                    _AUTH_CACHE["ts"] = time.time()
+                    return users, True
+            except Exception:
+                pass
+
+        if not _AUTH_CACHE["users"]:
+            _AUTH_CACHE["users"] = [{**u, "최근접속일시": "", "비번변경일시": ""} for u in INITIAL_AUTH_USERS]
+            _AUTH_CACHE["sheet_ok"] = False
+            _AUTH_CACHE["ts"] = time.time()
+        return _AUTH_CACHE["users"], _AUTH_CACHE["sheet_ok"]
+
+
+def save_auth_users_to_sheet(users_list: List[dict]) -> bool:
+    _AUTH_CACHE["users"] = users_list
+    _AUTH_CACHE["ts"] = time.time()
+    ws_login, _ = _get_or_create_cost_login_ws()
+    if ws_login is None:
+        _AUTH_CACHE["sheet_ok"] = False
+        return False
+    try:
+        api_call_with_retry(ws_login.clear)
+        safe_ws_update(ws_login, _build_login_sheet_payload(users_list))
+        _AUTH_CACHE["sheet_ok"] = True
+        return True
+    except Exception:
+        return False
+
+
+def _public_user_info(u: dict) -> dict:
+    return {
+        "사번": u.get("사번", ""),
+        "성명": u.get("성명", ""),
+        "직급": u.get("직급", ""),
+        "소속_직책": u.get("소속_직책", ""),
+        "권한": u.get("권한", "실무자"),
+        "상태": u.get("상태", "정상"),
+        "초기비번여부": (_normalize_pw_str(u.get("비밀번호", "000")) == "000"),
+        "최근접속일시": u.get("최근접속일시", ""),
+        "비번변경일시": u.get("비번변경일시", "")
+    }
+
+
+def require_auth_user(x_qsafety_token: Optional[str] = Header(default=None)) -> dict:
+    emp_no = verify_signed_token_str(x_qsafety_token or "")
+    if not emp_no:
+        raise HTTPException(status_code=401, detail="로그인이 필요하거나 세션이 만료되었습니다.")
+    users, _ = load_auth_users_live(force=False)
+    matched = next((u for u in users if u["사번"] == emp_no), None)
+    if not matched or matched.get("상태") != "정상":
+        raise HTTPException(status_code=401, detail="접속 권한이 없거나 승인 대기·차단된 사번입니다.")
+    return matched
+
+
+class AuthLoginPayload(BaseModel):
+    emp_no: str
+    password: str
+    remember: bool = True
+
+
+class AuthChangePwPayload(BaseModel):
+    current_pw: str
+    new_pw: str
+
+
+class AuthRequestPayload(BaseModel):
+    name: str
+    emp_no: str
+    rank: Optional[str] = ""
+    dept: Optional[str] = ""
+
+
+class AuthManagePayload(BaseModel):
+    action: str  # approve | block | activate | reset_pw | delete | add
+    emp_no: str
+    name: Optional[str] = ""
+    rank: Optional[str] = ""
+    dept: Optional[str] = ""
+    role: Optional[str] = "실무자"
+
+
+@app.post("/api/auth/login")
+def api_auth_login(body: AuthLoginPayload):
+    in_emp = re.sub(r"\s+", "", str(body.emp_no or ""))
+    in_pw = str(body.password if body.password is not None else "").strip()
+    if not in_emp or not in_pw:
+        raise HTTPException(status_code=400, detail="사번과 비밀번호를 모두 입력해 주세요.")
+
+    users, _ = load_auth_users_live(force=True)
+    user = next((u for u in users if u["사번"] == in_emp), None)
+    if not user:
+        raise HTTPException(status_code=401, detail="등록되지 않은 사번입니다. 하단 [신규 계정 신청]을 이용해 주세요.")
+
+    saved_pw = _normalize_pw_str(user.get("비밀번호", "000"))
+    pw_ok = (in_pw == saved_pw) or (saved_pw == "000" and in_pw == "000")
+    if not pw_ok:
+        raise HTTPException(status_code=401, detail="비밀번호가 일치하지 않습니다. (초기 비밀번호: 000)")
+
+    if user.get("상태") == "승인대기":
+        raise HTTPException(status_code=403, detail="현재 관리자(곽정혁 주임) 승인 대기 중인 사번입니다.")
+    if user.get("상태") != "정상":
+        raise HTTPException(status_code=403, detail="접속이 제한된 계정입니다. 관리자에게 문의해 주세요.")
+
+    user["최근접속일시"] = now_kst().strftime("%Y-%m-%d %H:%M")
+    save_auth_users_to_sheet(users)
+
+    tok = create_signed_token(in_emp, days=(14 if body.remember else 1))
+    pending_cnt = sum(1 for x in users if x.get("상태") == "승인대기") if user["권한"] == "관리자" else 0
+    return {"ok": True, "token": tok, "user": _public_user_info(user), "pending_cnt": pending_cnt}
+
+
+@app.post("/api/auth/change-password")
+def api_auth_change_password(body: AuthChangePwPayload, cur_user: dict = Depends(require_auth_user)):
+    cur_in = str(body.current_pw or "").strip()
+    new_in = str(body.new_pw or "").strip()
+    if not cur_in or not new_in:
+        raise HTTPException(status_code=400, detail="현재 비밀번호와 새 비밀번호를 모두 입력해 주세요.")
+    if len(new_in) < 3:
+        raise HTTPException(status_code=400, detail="새 비밀번호는 3자리 이상으로 입력해 주세요.")
+
+    users, _ = load_auth_users_live(force=True)
+    target = next((u for u in users if u["사번"] == cur_user["사번"]), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="계정 정보를 찾을 수 없습니다.")
+
+    saved_pw = _normalize_pw_str(target.get("비밀번호", "000"))
+    if cur_in != saved_pw:
+        raise HTTPException(status_code=400, detail="현재 비밀번호가 일치하지 않습니다.")
+
+    target["비밀번호"] = new_in
+    target["비번변경일시"] = now_kst().strftime("%Y-%m-%d %H:%M")
+    sheet_saved = save_auth_users_to_sheet(users)
+    if not sheet_saved:
+        raise HTTPException(status_code=500, detail="시트 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.")
+
+    return {
+        "ok": True,
+        "message": "'원가절감 현황' 시트의 [로그인] 탭에 새 비밀번호가 저장되었습니다.",
+        "user": _public_user_info(target)
+    }
+
+
+@app.post("/api/auth/request-access")
+def api_auth_request_access(body: AuthRequestPayload):
+    in_emp = re.sub(r"\s+", "", str(body.emp_no or ""))
+    in_nm = str(body.name or "").strip()
+    if not in_emp or not in_nm:
+        raise HTTPException(status_code=400, detail="성명과 사번은 필수 입력 항목입니다.")
+
+    users, _ = load_auth_users_live(force=True)
+    exist = next((u for u in users if u["사번"] == in_emp), None)
+    if exist:
+        if exist.get("상태") == "정상":
+            raise HTTPException(status_code=400, detail="이미 등록된 사번입니다. 초기 비밀번호(000)로 로그인해 주세요.")
+        raise HTTPException(status_code=400, detail=f"이미 등록된 사번입니다 (현재 상태: {exist.get('상태')}).")
+
+    users.append({
+        "사번": in_emp,
+        "성명": in_nm,
+        "직급": str(body.rank or "").strip() or "-",
+        "소속_직책": str(body.dept or "").strip() or "-",
+        "비밀번호": "000",
+        "권한": "실무자",
+        "상태": "승인대기",
+        "최근접속일시": "",
+        "비번변경일시": ""
+    })
+    save_auth_users_to_sheet(users)
+    return {"ok": True, "message": "계정 신청이 완료되었습니다. 관리자 승인 후 초기 비밀번호(000)로 접속 가능합니다."}
+
+
+@app.get("/api/auth/me")
+def api_auth_me(cur_user: dict = Depends(require_auth_user)):
+    users, sheet_ok = load_auth_users_live(force=False)
+    pending_cnt = sum(1 for x in users if x.get("상태") == "승인대기") if cur_user["권한"] == "관리자" else 0
+    return {"ok": True, "user": _public_user_info(cur_user), "pending_cnt": pending_cnt, "sheet_ok": sheet_ok}
+
+
+@app.get("/api/auth/users")
+def api_auth_list_users(cur_user: dict = Depends(require_auth_user)):
+    if cur_user.get("권한") != "관리자":
+        raise HTTPException(status_code=403, detail="관리자만 접근할 수 있습니다.")
+    users, sheet_ok = load_auth_users_live(force=True)
+    return {"ok": True, "users": [_public_user_info(u) for u in users], "sheet_ok": sheet_ok}
+
+
+@app.post("/api/auth/manage")
+def api_auth_manage_user(body: AuthManagePayload, cur_user: dict = Depends(require_auth_user)):
+    if cur_user.get("권한") != "관리자":
+        raise HTTPException(status_code=403, detail="관리자만 계정을 변경할 수 있습니다.")
+
+    target_emp = re.sub(r"\s+", "", str(body.emp_no or ""))
+    if not target_emp:
+        raise HTTPException(status_code=400, detail="사번을 확인해 주세요.")
+    if target_emp == cur_user["사번"] and body.action in ("block", "delete"):
+        raise HTTPException(status_code=400, detail="본인 관리자 계정은 차단하거나 삭제할 수 없습니다.")
+
+    users, _ = load_auth_users_live(force=True)
+    msg = "계정 변경 사항이 [로그인] 탭에 즉시 반영되었습니다."
+
+    if body.action == "add":
+        if any(u["사번"] == target_emp for u in users):
+            raise HTTPException(status_code=400, detail="이미 등록된 사번입니다.")
+        if not (body.name or "").strip():
+            raise HTTPException(status_code=400, detail="성명을 입력해 주세요.")
+        users.append({
+            "사번": target_emp,
+            "성명": body.name.strip(),
+            "직급": (body.rank or "").strip() or "-",
+            "소속_직책": (body.dept or "").strip() or "-",
+            "비밀번호": "000",
+            "권한": "관리자" if body.role == "관리자" else "실무자",
+            "상태": "정상",
+            "최근접속일시": "",
+            "비번변경일시": ""
+        })
+        msg = f"{body.name.strip()}({target_emp}) 계정이 초기 비밀번호(000)로 등록되었습니다."
+    elif body.action in ("approve", "activate"):
+        for u in users:
+            if u["사번"] == target_emp:
+                u["상태"] = "정상"
+    elif body.action == "block":
+        for u in users:
+            if u["사번"] == target_emp:
+                u["상태"] = "차단"
+    elif body.action == "reset_pw":
+        for u in users:
+            if u["사번"] == target_emp:
+                u["비밀번호"] = "000"
+                u["비번변경일시"] = now_kst().strftime("%Y-%m-%d %H:%M") + " (초기화)"
+        msg = f"사번 {target_emp}의 비밀번호가 '000'으로 초기화되었습니다."
+    elif body.action == "delete":
+        users = [u for u in users if u["사번"] != target_emp]
+
+    sheet_saved = save_auth_users_to_sheet(users)
+    return {
+        "ok": True,
+        "sheet_ok": sheet_saved,
+        "users": [_public_user_info(u) for u in users],
+        "pending_cnt": sum(1 for x in users if x.get("상태") == "승인대기"),
+        "message": msg
+    }
 
 def find_public_file(filename: str) -> Optional[str]:
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

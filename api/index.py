@@ -1611,49 +1611,69 @@ def parse_rt_process_rows(tab_title_raw: str, rows: list):
 
     ccp3b_records = []
     r_3b_colhdr = r_ccp3b_hdr
-    for sub_i in range(r_ccp3b_hdr, min(r_ccp3b_hdr + 3, r_ster_hdr)):
-        if sum(1 for c in rows[sub_i][:18] if re.match(r"^[A-F]호기$", str(c).strip())) >= 3:
+    for sub_i in range(r_ccp3b_hdr, min(r_ccp3b_hdr + 4, r_ster_hdr)):
+        if sum(1 for c in rows[sub_i][:26] if re.match(r"^[A-F]\s*호기$", str(c).strip())) >= 2:
             r_3b_colhdr = sub_i
             break
 
-    hdr_3b = [str(x).strip() for x in rows[r_3b_colhdr][:18]]
+    hdr_3b = [re.sub(r"\s+", "", str(x)) for x in rows[r_3b_colhdr][:26]]
     ho_pos_list = sorted([(idx, cell) for idx, cell in enumerate(hdr_3b) if re.match(r"^[A-F]호기$", cell)], key=lambda x: x[0])
 
+    # 우측 요약표 침범 방지를 위해 F호기 다음 끝 열을 합리적 폭(최대 +4열)으로 설정
     first_ho_col = ho_pos_list[0][0] if ho_pos_list else 8
     ho_col_spans = {}
     for i_p, (c_start, h_lbl) in enumerate(ho_pos_list):
-        c_end = ho_pos_list[i_p + 1][0] if i_p + 1 < len(ho_pos_list) else 17
+        if i_p + 1 < len(ho_pos_list):
+            c_end = ho_pos_list[i_p + 1][0]
+        else:
+            c_end = min(c_start + 3, 24)
         ho_col_spans[h_lbl] = (c_start, c_end)
 
     last_item_3b = ""
+    last_std_3b = ""
     for r in rows[r_3b_colhdr + 1 : r_ster_hdr]:
-        r_pad = list(r) + [""] * max(0, 18 - len(r))
-        if not any(str(x).strip() for x in r_pad[1:17]):
+        r_pad = list(r) + [""] * max(0, 26 - len(r))
+        if not any(str(x).strip() for x in r_pad[1:22]):
             continue
         item_nm = str(r_pad[1]).strip()
+        if re.sub(r"\s+", "", item_nm) in ["멸균기", "구분", "점검항목"]:
+            continue
         if item_nm:
             last_item_3b = item_nm
 
         left_meta = [str(x).strip() for x in r_pad[2:first_ho_col] if str(x).strip() and str(x).strip() != item_nm]
-        std_parts = [x for x in left_meta if any(u in x for u in ["~", "%", "℃", "㎕", "이상", "이하"])]
+        std_parts = [x for x in left_meta if any(u in x for u in ["~", "%", "℃", "㎕", "이상", "이하", "±"])]
         eq_parts = [x for x in left_meta if x not in std_parts]
 
         std_nm = " ".join(std_parts)
-        equip_nm = " ".join(eq_parts)
-        if not last_item_3b and not std_nm:
+        if std_nm:
+            last_std_3b = std_nm
+        use_std = std_nm or last_std_3b or "-"
+        equip_nm = " ".join(eq_parts) or "-"
+
+        if not last_item_3b and use_std == "-":
             continue
 
-        rec_3b = {"항목": last_item_3b, "관리기준": std_nm or "-", "적용설비": equip_nm or "-", "_cls_map": {}}
+        rec_3b = {"항목": last_item_3b or "무균포장살균", "관리기준": use_std, "적용설비": equip_nm, "_cls_map": {}}
+        has_any_ho_val = False
         for ho_lbl in ["A호기", "B호기", "C호기", "D호기", "E호기", "F호기"]:
             if ho_lbl in ho_col_spans:
                 cs, ce = ho_col_spans[ho_lbl]
-                vals_in_span = [str(x).strip() for x in r_pad[cs:ce] if str(x).strip() not in ["", "-"]]
+                vals_in_span = []
+                for x in r_pad[cs:ce]:
+                    xs = str(x).strip()
+                    if xs not in ["", "-"] and xs not in vals_in_span:
+                        vals_in_span.append(xs)
                 v_txt = " / ".join(vals_in_span) if vals_in_span else "-"
             else:
                 v_txt = "-"
+            if v_txt != "-":
+                has_any_ho_val = True
             rec_3b[ho_lbl] = v_txt
             rec_3b["_cls_map"][ho_lbl] = eval_ccp3b_cell(v_txt, rec_3b["관리기준"])
-        ccp3b_records.append(rec_3b)
+
+        if has_any_ho_val or std_nm:
+            ccp3b_records.append(rec_3b)
 
     sv_std_by_prod = {}
     for r in rows[r_ster_hdr:]:
@@ -3431,21 +3451,22 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
                             missing_db_p_rows.append(new_p_rec)
 
                 if dt_iso not in db_c_dates:
-                    for sr in parsed_t.get("ster_records", []):
-                        if sr.get("확인시간") == "기록대기":
+                    for c3 in parsed_t.get("ccp3b_records", []):
+                        ho_kv = " / ".join([f"{h}:{c3.get(h, '-')}" for h in ["A호기", "B호기", "C호기", "D호기", "E호기", "F호기"] if c3.get(h, "-") not in ("", "-")])
+                        if not ho_kv:
                             continue
-                        new_c_rec = {
+                        new_3b_rec = {
                             "생산일자": dt_iso,
                             "원본탭명": parsed_t["tab_title"],
-                            "기록분류": "CCP-1B/2P(멸균)",
-                            "설비_호기": sr.get("멸균기_포장", "-"),
-                            "세부항목": sr.get("매칭 제품명", "-"),
-                            "기록내용_수치": f"{sr.get('확인시간', '-')} / {sr.get('멸균온도', '-')}",
-                            "특이사항": sr.get("특이사항", "이상없음"),
+                            "기록분류": "CCP-3B(무균포장살균)",
+                            "설비_호기": c3.get("적용설비", "-"),
+                            "세부항목": f"{c3.get('항목', '')} ({c3.get('관리기준', '-')})",
+                            "기록내용_수치": ho_kv,
+                            "특이사항": "적합",
                             "저장일시": now_saved_str
                         }
-                        rt_hist_c.append(new_c_rec)
-                        missing_db_c_rows.append(new_c_rec)
+                        rt_hist_c.append(new_3b_rec)
+                        missing_db_c_rows.append(new_3b_rec)
             except Exception:
                 continue
 
@@ -4817,7 +4838,7 @@ def apply_law_preferences(raw_laws: list, dash_initialized: bool, dash_tab_map: 
         cp["_sort_k"] = sort_key
         enriched.append(cp)
 
-   dashboard_list = [x for x in enriched if x["show_on_dashboard"]]
+    dashboard_list = [x for x in enriched if x["show_on_dashboard"]]
     explicitly_hidden_all = bool(legacy_prefs) and all(v.get("mode") == "Hide" for v in legacy_prefs.values())
     if not dashboard_list and enriched and not explicitly_hidden_all:
         fallback_cands = [x for x in enriched if not x.get("예고여부") and (x.get("d_day") is None or x["d_day"] >= -30)]
@@ -5485,7 +5506,7 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
             sup_kpi_sheet, aud_kpi_sheet, sak_sched, err_sak = resolve_with_last_good("sak", f_sak.result(), 3)
             claim_nc_data, err_cnh = resolve_with_last_good("cnh", f_cnh.result(), 1)
 
-       audit_sched = sak_sched if (sak_sched is not None and len(sak_sched) > 0) else (legacy_sched if legacy_sched else [])
+        audit_sched = sak_sched if (sak_sched is not None and len(sak_sched) > 0) else (legacy_sched if legacy_sched else [])
         if not audit_sched:
             fallback_scheds = []
             for idx_h, hr in enumerate((aud_kpi_sheet or {}).get("history_rows", [])[:10]):
@@ -6554,10 +6575,54 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
                     c3_copy["_target_hos"] = target_hos
                     matched_rt_ccp3b.append(c3_copy)
 
-            # 시트 탭이 삭제되어 _이력DB_상온CCP에만 남은 과거 데이터 폴백 파싱
+            # 시트 탭이 삭제되어 _이력DB_상온CCP에만 남은 과거 데이터 폴백 파싱 (멸균기 + CCP-3B 포장기 동시 복원)
             if not ster_added_for_dt:
                 day_c_rows = [c for c in rt_hc if str(c.get("생산일자", "")).strip() == dt_s]
+                ccp3b_fb_Added = False
+                if dv and dv.get("ccp3b_records") and not any(x.get("생산일자") == dt_s for x in matched_rt_ccp3b):
+                    for c3 in dv["ccp3b_records"]:
+                        c3_copy = dict(c3)
+                        c3_copy["생산일자"] = dt_s
+                        c3_copy["_target_hos"] = target_hos
+                        matched_rt_ccp3b.append(c3_copy)
+                        ccp3b_fb_Added = True
+
                 for c in day_c_rows:
+                    rcat_s = str(c.get("기록분류", "")).strip()
+                    # CCP-3B 무균포장기 행인 경우 포장기 전용 배열로 복원
+                    if ("3B" in rcat_s or "포장" in rcat_s) and not ccp3b_fb_Added:
+                        sub_it = str(c.get("세부항목") or c.get("항목") or "과산화수소·살균온도").strip()
+                        eq_3b = str(c.get("설비_호기") or c.get("적용설비") or "-").strip()
+                        raw_3b_v = str(c.get("기록내용_수치") or "").strip()
+                        rec_fb = {
+                            "생산일자": dt_s,
+                            "항목": sub_it,
+                            "관리기준": str(c.get("관리기준") or "-").strip(),
+                            "적용설비": eq_3b,
+                            "A호기": "-", "B호기": "-", "C호기": "-", "D호기": "-", "E호기": "-", "F호기": "-",
+                            "_cls_map": {},
+                            "_target_hos": target_hos
+                        }
+                        any_3b = False
+                        for h_nm in ["A호기", "B호기", "C호기", "D호기", "E호기", "F호기"]:
+                            hv = str(c.get(h_nm) or "").strip()
+                            if hv and hv != "-":
+                                rec_fb[h_nm] = hv
+                                rec_fb["_cls_map"][h_nm] = eval_ccp3b_cell(hv, rec_fb["관리기준"])
+                                any_3b = True
+                        for m_h in re.finditer(r"([A-F]호기)\s*[:=]\s*([^/,;]+)", raw_3b_v):
+                            hk, hval = m_h.group(1), m_h.group(2).strip()
+                            rec_fb[hk] = hval
+                            rec_fb["_cls_map"][hk] = eval_ccp3b_cell(hval, rec_fb["관리기준"])
+                            any_3b = True
+                        if not any_3b and raw_3b_v and raw_3b_v != "-" and target_hos:
+                            rec_fb[target_hos[0]] = raw_3b_v
+                            rec_fb["_cls_map"][target_hos[0]] = "cell-green"
+                            any_3b = True
+                        if any_3b:
+                            matched_rt_ccp3b.append(rec_fb)
+                        continue
+
                     eq_v = (
                         c.get("설비_호기") or c.get("멸균기_포장") or c.get("멸균기")
                         or c.get("포장호기") or c.get("호기") or "-"
@@ -6577,19 +6642,20 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
                     flt_v = c.get("여과망_서명") or c.get("여과망") or c.get("판정") or "-"
                     rem_v = str(c.get("특이사항", "")).strip() or "없음"
 
-                    # 단일 요약 컬럼('기록내용_수치' 등)에 합쳐져 저장된 경우 시간/온도 자동 분리
                     raw_val_col = str(c.get("기록내용_수치") or c.get("실측치") or c.get("측정값") or "").strip()
                     if raw_val_col and temp_v == "-":
                         m_tm = re.search(r"(\d{1,2}:\d{2})", raw_val_col)
                         m_tp = re.search(r"(\d{2,3}(?:\.\d+)?\s*℃[^/]*)", raw_val_col)
+                        m_pr = re.search(r"(\d{2,3}(?:\.\d+)?\s*bar)", raw_val_col, re.IGNORECASE)
+                        m_hd = re.search(r"(\d+(?:\.\d+)?\s*초)", raw_val_col)
                         if m_tm and time_v == "-":
                             time_v = m_tm.group(1)
-                        if m_tp:
-                            temp_v = m_tp.group(1).strip()
-                        else:
-                            temp_v = raw_val_col
+                        temp_v = m_tp.group(1).strip() if m_tp else raw_val_col
+                        if m_pr and press_v == "-":
+                            press_v = m_pr.group(1)
+                        if m_hd and hold_v == "-":
+                            hold_v = m_hd.group(1)
 
-                    # 모든 핵심 수치가 비어 있고 특이사항만 '없음'인 빈 행은 제외
                     if all(str(x).strip() in ("", "-") for x in [eq_v, prod_v, time_v, temp_v, press_v, hold_v]) and rem_v in ("없음", "-"):
                         continue
 

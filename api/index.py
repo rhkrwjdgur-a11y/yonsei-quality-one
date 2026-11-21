@@ -8016,7 +8016,7 @@ def api_generate_ai_briefing(_u: dict = Depends(require_auth_user)):
     ]
 
    sec1_items = []
-    exp_alerts_live = ps.get("exp_alerts", [])
+   exp_alerts_live = ps.get("exp_alerts", [])
     if exp_alerts_live:
         for ea in exp_alerts_live[:3]:
             sec1_items.append(f"소비기한 검증 확인 필요 : {ea.get('msg', '')}")

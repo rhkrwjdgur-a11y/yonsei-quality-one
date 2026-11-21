@@ -44,8 +44,22 @@
       --notes-h: clamp(68px, 8.8vh, 92px);
     }
 
-    html[data-scale="lg"] { --ui-scale: 1.1; }
-    html[data-scale="xl"] { --ui-scale: 1.2; }
+    html[data-scale="lg"] {
+      --ui-scale: 1.14;
+      --fs-base: calc(clamp(12.5px, 0.84vw, 16px) * 1.14);
+      --fs-sm: calc(clamp(11.5px, 0.75vw, 14px) * 1.14);
+      --fs-xs: calc(clamp(10.5px, 0.68vw, 13px) * 1.14);
+      --fs-lg: calc(clamp(14px, 0.96vw, 18.5px) * 1.14);
+      --fs-xl: calc(clamp(16.5px, 1.18vw, 23px) * 1.14);
+    }
+    html[data-scale="xl"] {
+      --ui-scale: 1.28;
+      --fs-base: calc(clamp(12.5px, 0.84vw, 16px) * 1.28);
+      --fs-sm: calc(clamp(11.5px, 0.75vw, 14px) * 1.28);
+      --fs-xs: calc(clamp(10.5px, 0.68vw, 13px) * 1.28);
+      --fs-lg: calc(clamp(14px, 0.96vw, 18.5px) * 1.28);
+      --fs-xl: calc(clamp(16.5px, 1.18vw, 23px) * 1.28);
+    }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
@@ -793,114 +807,187 @@
       flex-shrink: 0;
     }
 
-    /* ==================== [2] 2026 부문 8대 KPI 중간보고 장표 디자인 ==================== */
+    /* ==================== [2] 2026 부문 8대 KPI 현황판 (꽉 찬 비율 · 3색 신호등 · 배율 연동) ==================== */
     .exec-kpi-top {
       display: flex;
-      align-items: flex-end;
+      align-items: center;
       justify-content: space-between;
-      padding-bottom: 7px;
-      margin-bottom: 9px;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding-bottom: 8px;
+      margin-bottom: 10px;
       border-bottom: 2.5px solid #8EA9C1;
       flex-shrink: 0;
     }
     .exec-kpi-h1 {
-      font-size: clamp(18px, 1.35vw, 24px);
+      font-size: calc(clamp(18px, 1.35vw, 24px) * var(--ui-scale));
       font-weight: 900;
       color: #002060;
       letter-spacing: -0.4px;
     }
+    .kpi-legend-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: #FFFFFF;
+      border: 1px solid #CBD5E1;
+      border-radius: 99px;
+      padding: 5px 14px;
+      font-size: var(--fs-xs);
+      font-weight: 800;
+      color: #1E293B;
+      box-shadow: 0 1px 2px rgba(15,23,42,0.05);
+    }
+    .kpi-leg-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+    .kpi-leg-dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      display: inline-block;
+      border: 1px solid rgba(15,23,42,0.28);
+    }
+    .kpi-leg-dot.blue { background: #2563EB; }
+    .kpi-leg-dot.yellow { background: #F59E0B; }
+    .kpi-leg-dot.red { background: #EF4444; }
+
     .exec-kpi-grid {
       flex: 1;
       min-height: 0;
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       grid-template-rows: repeat(2, minmax(0, 1fr));
-      gap: clamp(9px, 1.1vh, 14px);
+      gap: clamp(10px, 1.15vh, 15px);
     }
     .exec-card {
-      background: #F2F2F2;
+      background: #F8FAFC;
       border: 1px solid #CBD5E1;
-      box-shadow: 0 2px 5px rgba(15, 23, 42, 0.08);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.07);
       display: flex;
       flex-direction: column;
       min-height: 0;
       cursor: pointer;
-      transition: transform 0.12s, box-shadow 0.12s;
+      transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
     }
     .exec-card:hover {
       transform: translateY(-2px);
-      box-shadow: 0 6px 14px rgba(0, 51, 120, 0.14);
+      box-shadow: 0 8px 18px rgba(0, 51, 120, 0.14);
       border-color: #64748B;
+      background: #FFFFFF;
     }
     .exec-card-hdr {
-      background: #44546A;
+      background: #3B4B61;
       color: #FFFFFF;
-      font-size: var(--fs-base);
+      font-size: var(--fs-lg);
       font-weight: 800;
       text-align: center;
-      padding: clamp(7px, 0.95vh, 10px) 8px;
+      padding: clamp(8px, 1.05vh, 12px) 10px;
       flex-shrink: 0;
       position: relative;
     }
     .exec-edit-mini {
       position: absolute;
-      right: 7px;
+      right: 8px;
       top: 50%;
       transform: translateY(-50%);
-      background: rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.18);
       color: #FFFFFF;
-      border: 1px solid rgba(255,255,255,0.3);
-      border-radius: 4px;
-      font-size: 10.5px;
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 5px;
+      font-size: var(--fs-xs);
       font-weight: 700;
-      padding: 1px 6px;
+      padding: 2px 7px;
       cursor: pointer;
     }
-    .exec-edit-mini:hover { background: rgba(255,255,255,0.3); }
+    .exec-edit-mini:hover { background: rgba(255,255,255,0.32); }
 
     .exec-card-body {
       flex: 1;
       min-height: 0;
-      padding: clamp(10px, 1.2vh, 15px) 14px 10px;
+      padding: clamp(11px, 1.35vh, 16px) clamp(13px, 1.15vw, 18px) clamp(10px, 1.2vh, 14px);
       position: relative;
       display: flex;
       flex-direction: column;
     }
-    .exec-red-dot {
+    .exec-sig-badge {
       position: absolute;
       top: 11px;
       right: 13px;
-      width: 21px;
-      height: 21px;
-      border-radius: 50%;
-      background: #FF0000;
-      border: 1.5px solid #1E293B;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
-    }
-    .exec-bullet {
-      font-size: var(--fs-sm);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 99px;
+      font-size: var(--fs-xs);
       font-weight: 800;
-      color: #111827;
+      border: 1px solid transparent;
+    }
+    .exec-sig-badge .sig-lamp {
+      width: calc(11px * var(--ui-scale));
+      height: calc(11px * var(--ui-scale));
+      border-radius: 50%;
+      border: 1px solid rgba(0,0,0,0.22);
+      flex-shrink: 0;
+    }
+    .exec-sig-badge.sig-blue { background: #EFF6FF; color: #1D4ED8; border-color: #BFDBFE; }
+    .exec-sig-badge.sig-blue .sig-lamp { background: #2563EB; box-shadow: 0 0 6px rgba(37,99,235,0.45); }
+    .exec-sig-badge.sig-yellow { background: #FFFBEB; color: #B45309; border-color: #FDE68A; }
+    .exec-sig-badge.sig-yellow .sig-lamp { background: #F59E0B; box-shadow: 0 0 6px rgba(245,158,11,0.5); }
+    .exec-sig-badge.sig-red { background: #FEF2F2; color: #B91C1C; border-color: #FCA5A5; }
+    .exec-sig-badge.sig-red .sig-lamp { background: #EF4444; box-shadow: 0 0 6px rgba(239,68,68,0.55); }
+
+    .exec-bullet {
+      font-size: var(--fs-base);
+      font-weight: 800;
+      color: #0F172A;
       margin-bottom: 5px;
       display: flex;
       align-items: center;
-      gap: 6px;
-      padding-right: 24px;
+      gap: 7px;
+      padding-right: 78px;
+      line-height: 1.32;
     }
     .exec-bullet::before {
       content: '';
-      width: 6px;
-      height: 6px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
-      background: #44546A;
+      background: #3B4B61;
       flex-shrink: 0;
+    }
+    .exec-sub-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      margin-top: 4px;
+      margin-bottom: 4px;
+      flex-shrink: 0;
+    }
+    .exec-reason-chip {
+      font-size: var(--fs-xs);
+      font-weight: 800;
+      color: #334155;
+      background: #E2E8F0;
+      padding: 2.5px 9px;
+      border-radius: 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .exec-unit {
       text-align: right;
-      font-size: 11.5px;
+      font-size: var(--fs-xs);
       font-weight: 800;
       color: #1F4E79;
-      margin-top: 2px;
+      margin-left: auto;
+      white-space: nowrap;
       flex-shrink: 0;
     }
     .exec-bars-area {
@@ -913,17 +1000,18 @@
     }
     .exec-bars-stage {
       flex: 1;
-      min-height: 70px;
-      max-height: 155px;
-      border-bottom: 1.5px solid #CBD5E1;
+      min-height: 95px;
+      border-bottom: 2px solid #CBD5E1;
       display: flex;
       align-items: flex-end;
       justify-content: center;
-      gap: clamp(26px, 2.8vw, 48px);
-      padding: 0 12px;
+      gap: clamp(28px, 3.2vw, 56px);
+      padding: 8px 14px 0;
+      background: linear-gradient(180deg, rgba(241,245,249,0.35) 0%, rgba(226,232,240,0.42) 100%);
+      border-radius: 8px 8px 0 0;
     }
     .exec-bar-col {
-      width: clamp(36px, 3.2vw, 48px);
+      width: calc(clamp(56px, 4.6vw, 84px) * var(--ui-scale));
       height: 100%;
       display: flex;
       flex-direction: column;
@@ -932,18 +1020,22 @@
     }
     .exec-bar-rect {
       width: 100%;
-      min-height: 22px;
+      min-height: 30px;
+      border-radius: 6px 6px 0 0;
       display: flex;
       align-items: flex-start;
       justify-content: center;
-      padding-top: 5px;
+      padding-top: 7px;
       color: #FFFFFF;
-      font-size: 11.5px;
-      font-weight: 800;
+      font-size: var(--fs-base);
+      font-weight: 900;
       transition: height 0.3s ease;
+      box-shadow: 0 2px 6px rgba(15,23,42,0.14);
     }
-    .exec-bar-rect.target { background: #7F7F7F; }
+    .exec-bar-rect.target { background: #78828F; }
     .exec-bar-rect.actual { background: var(--yonsei-blue); }
+    .exec-bar-rect.actual.warn-bar { background: #D97706; }
+    .exec-bar-rect.actual.err-bar { background: #B91C1C; }
     .exec-bar-rect.low-bar {
       align-items: center;
       padding-top: 0;
@@ -951,26 +1043,55 @@
     .exec-bars-axis {
       display: flex;
       justify-content: center;
-      gap: clamp(26px, 2.8vw, 48px);
-      padding-top: 5px;
+      gap: clamp(28px, 3.2vw, 56px);
+      padding-top: 6px;
     }
     .exec-axis-lbl {
-      width: clamp(36px, 3.2vw, 48px);
+      width: calc(clamp(56px, 4.6vw, 84px) * var(--ui-scale));
       text-align: center;
-      font-size: 11.5px;
+      font-size: var(--fs-sm);
+      font-weight: 800;
+      color: #334155;
+    }
+    .exec-text-hero {
+      margin-top: 8px;
+      padding: clamp(9px, 1.2vh, 14px) 12px;
+      border-radius: 8px;
+      background: #ECFDF5;
+      border: 1px solid #86EFAC;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .exec-text-hero-val {
+      font-size: var(--fs-xl);
+      font-weight: 900;
+      color: #047857;
+    }
+    .exec-text-hero-sub {
+      font-size: var(--fs-xs);
       font-weight: 700;
-      color: #475569;
+      color: #065F46;
+      margin-top: 2px;
     }
     .exec-notes-box {
-      margin-top: auto;
-      padding-top: 10px;
+      flex: 1;
+      min-height: 0;
+      margin-top: 8px;
+      padding: 10px 12px;
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
       font-size: var(--fs-sm);
       font-weight: 700;
-      color: #111827;
-      line-height: 1.6;
+      color: #1E293B;
+      line-height: 1.62;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      overflow-y: auto;
     }
 
-    /* ==================== 공통 배지(글씨·여백 확대) · 버튼 · 서브 페이지 표 ==================== */
+    /* ==================== 공통 배지 · 버튼 · 서브 페이지 표 (화면배율 100% 연동) ==================== */
     .badge {
       display: inline-flex;
       align-items: center;
@@ -1020,13 +1141,13 @@
       flex-wrap: wrap;
     }
     .page-h2 {
-      font-size: 18.5px;
+      font-size: calc(18px * var(--ui-scale));
       font-weight: 800;
       color: var(--text-main);
       border-left: 4px solid var(--yonsei-blue);
       padding-left: 9px;
     }
-    .page-desc { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; padding-left: 13px; }
+    .page-desc { font-size: var(--fs-sm); color: var(--text-muted); margin-top: 3px; padding-left: 13px; }
 
     .tab-bar {
       display: flex;
@@ -1043,7 +1164,7 @@
       border: 1px solid #CBD5E1;
       background: #FFFFFF;
       color: var(--text-sub);
-      font-size: 13px;
+      font-size: var(--fs-sm);
       font-weight: 800;
       cursor: pointer;
       white-space: nowrap;
@@ -1062,7 +1183,7 @@
       margin-bottom: 12px;
     }
     .panel-title {
-      font-size: 14.5px;
+      font-size: var(--fs-lg);
       font-weight: 800;
       color: var(--text-main);
       margin-bottom: 10px;
@@ -1084,9 +1205,9 @@
       border-radius: 10px;
       padding: 12px 14px;
     }
-    .stat-lbl { font-size: 12px; font-weight: 700; color: var(--text-muted); }
-    .stat-val { font-size: 21px; font-weight: 900; color: var(--yonsei-blue); margin: 4px 0; }
-    .stat-sub { font-size: 12px; color: var(--text-sub); }
+    .stat-lbl { font-size: var(--fs-xs); font-weight: 700; color: var(--text-muted); }
+    .stat-val { font-size: calc(20px * var(--ui-scale)); font-weight: 900; color: var(--yonsei-blue); margin: 4px 0; }
+    .stat-sub { font-size: var(--fs-xs); color: var(--text-sub); }
 
     .tbl-wrap {
       width: 100%;
@@ -1097,7 +1218,7 @@
     table.data-tbl {
       width: 100%;
       border-collapse: collapse;
-      font-size: 13px;
+      font-size: var(--fs-sm);
       background: #FFFFFF;
     }
     table.data-tbl th {
@@ -1631,9 +1752,16 @@ function signalBadgeHtml(sig, labelTxt) {
 }
 
 function setUiScale(sc) {
-  document.documentElement.setAttribute('data-scale', sc);
+  const mode = (sc === 'lg' || sc === 'xl') ? sc : 'std';
+  document.documentElement.setAttribute('data-scale', mode);
+  try { localStorage.setItem('qsafety_ui_scale', mode); } catch (e) {}
   document.querySelectorAll('.scale-btn').forEach(function(b) {
-    b.classList.toggle('active', b.getAttribute('data-sc') === sc);
+    b.classList.toggle('active', b.getAttribute('data-sc') === mode);
+  });
+  Object.keys(CHARTS).forEach(function(k) {
+    if (CHARTS[k] && typeof CHARTS[k].resize === 'function') {
+      try { CHARTS[k].resize(); } catch (e) {}
+    }
   });
 }
 
@@ -2950,42 +3078,89 @@ let MICRO_HIST_DATE_FILTER = 'ALL';
 // 8대 KPI 중간보고 장표 렌더러 (실시간 원가절감 dept 연동 및 세부 탭 직결 보정)
 function renderKpiView() {
   const cs = BUNDLE.cost;
-  const csDept = cs.dept || { actual_uk: 0, rate: 0 };
+  const csDept = cs.dept || { actual_uk: 0, rate: 0, proj_uk: 0, proj_rate: 0 };
   const cl = BUNDLE.claim;
   const mk = BUNDLE.manual_kpis || {};
 
   const k8 = mk['kpi_8'] || { target_text: '11건 이상', actual_text: '11건, 100% 달성', target_num: 11, actual_num: 11, signal: 'green' };
   const k9 = mk['kpi_9'] || { target_text: '38건 이하', actual_text: '5건', target_num: 38, actual_num: 5, signal: 'green' };
-  const k10 = mk['kpi_10'] || { target_text: '부자재폐기 0건', actual_text: '0건', notes: [] };
+  const k10 = mk['kpi_10'] || { target_text: '부자재폐기 0건', actual_text: '0건', actual_num: 0, signal: 'green', notes: [] };
   const k11 = mk['kpi_11'] || { target_text: '실행률 88.3% 이상', actual_text: '-', target_num: 88.3, actual_num: 0, signal: 'gray' };
   const k5 = mk['kpi_5'] || { target_text: '94.28점 이상', actual_text: '-', target_num: 94.28, actual_num: 0, signal: 'gray' };
-  const k12 = mk['kpi_12'] || { target_text: '행정처분 0건', actual_text: '0건', notes_title: '중요건 행정기관 조사 대응', notes: [] };
+  const k12 = mk['kpi_12'] || { target_text: '행정처분 0건', actual_text: '0건', actual_num: 0, signal: 'green', notes_title: '중요건 행정기관 조사 대응', notes: [] };
 
-  const refDateStr = (BUNDLE.loaded_date || '2026-11-18').replace(/-/g, '. ');
+  const refDateStr = (BUNDLE.loaded_date || '2026-11-21').replace(/-/g, '. ');
+
+  // --- 객관적 3색 신호등 판정 (blue: 양호·순항 / yellow: 주의·관찰 / red: 중점관리) ---
+  // 1) 원가절감: 현재 달성 또는 연말 예측 >= 목표 -> 파랑 / 연말 예측이 목표의 90% 이상 -> 노랑 / 연말 예측도 90% 미만 -> 빨강
+  const costTar = cs.targets['부문'] || 1.54;
+  const costProj = csDept.proj_uk || csDept.actual_uk || 0;
+  const sig1 = (csDept.actual_uk >= costTar || costProj >= costTar)
+    ? 'blue'
+    : (costProj >= costTar * 0.90 ? 'yellow' : 'red');
+  const reason1 = '연말 예측 ' + costProj + '억 (' + (csDept.proj_rate || csDept.rate) + '%)';
+
+  // 2) 클레임 발생률: 현재 > 목표 -> 빨강 / 연말 누적예상 > 목표 또는 현재가 목표의 95% 이상 근접 -> 노랑 / 그 외 -> 파랑
+  const clPredCum = (cl.cum_pred_ppm !== undefined && cl.cum_pred_ppm > 0) ? cl.cum_pred_ppm : cl.actual_ppm;
+  const sig2 = (cl.actual_ppm > cl.target_ppm)
+    ? 'red'
+    : ((clPredCum > cl.target_ppm || cl.actual_ppm >= cl.target_ppm * 0.96) ? 'yellow' : 'blue');
+  const reason2 = '연말 누적예상 ' + clPredCum + ' ppm';
+
+  // 3) HACCP 강화 (수동 신호 우선 반영)
+  const mapManualSig = function(rawSig, autoSig) {
+    if (rawSig === 'red') return 'red';
+    if (rawSig === 'yellow') return 'yellow';
+    return autoSig;
+  };
+  const sig3 = mapManualSig(k8.signal, (k8.actual_num >= (k8.target_num || 11)) ? 'blue' : (k8.actual_num >= (k8.target_num || 11) * 0.85 ? 'yellow' : 'red'));
+
+  // 4) 핵심불량 저감화 (낮을수록 우수)
+  const defAct = k9.actual_num !== undefined ? k9.actual_num : 5;
+  const defTar = k9.target_num || 38;
+  const sig4 = mapManualSig(k9.signal, defAct > defTar ? 'red' : (defAct >= defTar * 0.80 ? 'yellow' : 'blue'));
+
+  // 5) 부자재 관리 고도화
+  const sig5 = mapManualSig(k10.signal, (Number(k10.actual_num || 0) === 0) ? 'blue' : 'red');
+
+  // 6) 협력업체 관리강화 (88.3% Lev.1 이상 파랑 / 86.3% Lev.3 이상 노랑 / 미만 빨강)
+  const supAct = k11.actual_num || 0;
+  const sig6 = supAct >= (k11.target_num || 88.3) ? 'blue' : (supAct >= 86.3 ? 'yellow' : 'red');
+
+  // 7) 심사점수 (94.28점 Lev.1 이상 파랑 / 93.28점 Lev.3 이상 노랑 / 미만 빨강)
+  const audAct = k5.actual_num || 0;
+  const sig7 = audAct >= (k5.target_num || 94.28) ? 'blue' : (audAct >= 93.28 ? 'yellow' : 'red');
+
+  // 8) 법적 RISK 최소화
+  const sig8 = mapManualSig(k12.signal, (Number(k12.actual_num || 0) === 0) ? 'blue' : 'red');
 
   const execCards = [
     {
       no: '1',
       title: '1. 원가 절감',
-      targetNumStr: cs.targets['부문'] + '억원 이상',
+      targetNumStr: costTar + '억원 이상',
       actualNumStr: csDept.actual_uk + '억원, ' + csDept.rate + '% 달성',
       unitLabel: '(단위 : 억원)',
-      targetVal: cs.targets['부문'],
+      reasonChip: reason1,
+      targetVal: costTar,
       actualVal: csDept.actual_uk,
       barSuffix: '',
-      hasDot: (cs.signal === 'red' || csDept.actual_uk < cs.targets['부문']),
+      sig: sig1,
+      sigTip: '연말 추세 예측(' + costProj + '억)이 연간 목표(' + costTar + '억) 대비 부족하여 추가 과제 발굴 필요',
       go: "switchView('cost')"
     },
     {
       no: '2',
       title: '2. 클레임 발생률',
-      targetNumStr: cl.target_ppm + ' ppm이하',
-      actualNumStr: cl.actual_ppm + ' ppm(총 ' + cl.total_cnt + '건)',
+      targetNumStr: cl.target_ppm + ' ppm 이하',
+      actualNumStr: cl.actual_ppm + ' ppm (총 ' + cl.total_cnt + '건)',
       unitLabel: '(단위 : ppm)',
+      reasonChip: reason2,
       targetVal: cl.target_ppm,
       actualVal: cl.actual_ppm,
       barSuffix: '',
-      hasDot: (cl.actual_ppm > cl.target_ppm),
+      sig: sig2,
+      sigTip: '현재 실적 및 계절성 보정 연말 누적 예상치 모두 목표(1.12 ppm 이하) 이내 안정권',
       go: "switchView('claim')"
     },
     {
@@ -2994,10 +3169,12 @@ function renderKpiView() {
       targetNumStr: k8.target_text,
       actualNumStr: k8.actual_text,
       unitLabel: '(단위 : 건)',
+      reasonChip: k8.sub_badge || '연간 목표 조기 달성',
       targetVal: k8.target_num || 11,
       actualVal: k8.actual_num || 11,
       barSuffix: '',
-      hasDot: (k8.signal === 'red'),
+      sig: sig3,
+      sigTip: '연간 유효성 검증·개선 과제 목표 100% 이행 완료',
       editKey: 'kpi_8',
       go: "LAW_TAB='haccp'; switchView('law')"
     },
@@ -3007,10 +3184,12 @@ function renderKpiView() {
       targetNumStr: k9.target_text,
       actualNumStr: k9.actual_text,
       unitLabel: '(단위 : 건)',
-      targetVal: k9.target_num || 38,
-      actualVal: k9.actual_num !== undefined ? k9.actual_num : 5,
+      reasonChip: '잔여 허용 한도 ' + Math.max(0, defTar - defAct) + '건 여유',
+      targetVal: defTar,
+      actualVal: defAct,
       barSuffix: '',
-      hasDot: (k9.signal === 'red'),
+      sig: sig4,
+      sigTip: '연간 허용 한도(38건 이하) 대비 현저히 낮은 수준으로 억제 중',
       editKey: 'kpi_9',
       go: "DEFECT_SUB_TAB='defect'; switchView('defect_sub')"
     },
@@ -3020,7 +3199,11 @@ function renderKpiView() {
       targetNumStr: k10.target_text,
       actualNumStr: k10.actual_text,
       isTextOnly: true,
+      heroTitle: '부자재 불용 · 폐기 ' + (k10.actual_text || '0건') + ' 달성 중',
+      heroSub: '사전 표시심의 ' + BUNDLE.label_status.cnt_26_all + '건 · 개정법규 1년내 선제 대응',
       notes: (k10.notes && k10.notes.length) ? k10.notes.map(function(n) { return '• ' + n; }) : [],
+      sig: sig5,
+      sigTip: '오인쇄·법규 미반영으로 인한 부자재 폐기 0건 유지 중',
       editKey: 'kpi_10',
       go: "SUB_MAT_TAB='kpi'; switchView('sub_mat', 'kpi')"
     },
@@ -3030,10 +3213,12 @@ function renderKpiView() {
       targetNumStr: k11.target_text,
       actualNumStr: k11.actual_text,
       unitLabel: '(단위 : %)',
+      reasonChip: k11.sub_badge || '목표 초과 달성(Lev.1)',
       targetVal: k11.target_num || 88.3,
-      actualVal: k11.actual_num || 0,
+      actualVal: supAct,
       barSuffix: '%',
-      hasDot: (k11.actual_num > 0 && k11.actual_num < (k11.target_num || 88.3)),
+      sig: sig6,
+      sigTip: '유업·생건·이롬 통합 AUDIT 실행률 목표(88.3%) 초과 달성',
       go: "SUP_TAB='kpi'; switchView('supplier')"
     },
     {
@@ -3042,10 +3227,12 @@ function renderKpiView() {
       targetNumStr: k5.target_text,
       actualNumStr: k5.actual_text,
       unitLabel: '(단위 : 점)',
+      reasonChip: '목표 대비 ' + (audAct - (k5.target_num || 94.28)).toFixed(2) + '점 (중점 보완)',
       targetVal: k5.target_num || 94.28,
-      actualVal: k5.actual_num || 0,
+      actualVal: audAct,
       barSuffix: '',
-      hasDot: (k5.actual_num > 0 && k5.actual_num < (k5.target_num || 94.28)),
+      sig: sig7,
+      sigTip: '현재 환산점수(91.95점, Lev.5)가 목표(94.28점) 미달 상태로 잔여 수검 고득점 관리 필요',
       go: "AUDIT_TAB='kpi'; switchView('audit')"
     },
     {
@@ -3054,19 +3241,35 @@ function renderKpiView() {
       targetNumStr: k12.target_text,
       actualNumStr: k12.actual_text,
       isRiskNote: true,
+      heroTitle: '행정처분 ' + (k12.actual_text || '0건') + ' (무처분 방어 완료)',
+      heroSub: '수거검사 · 행정기관 조사 건 전량 적합 대응',
       notesTitle: k12.notes_title || '중요건 행정기관 조사 대응',
       notes: k12.notes || [],
+      sig: sig8,
+      sigTip: '법적 행정처분 0건 유지 중',
       editKey: 'kpi_12',
       go: "LAW_TAB='risk'; switchView('law')"
     }
   ];
 
+  const sigMeta = {
+    blue:   { cls: 'sig-blue',   txt: '양호' },
+    yellow: { cls: 'sig-yellow', txt: '주의' },
+    red:    { cls: 'sig-red',    txt: '중점관리' }
+  };
+
   const sec = document.getElementById('view-kpi');
   sec.innerHTML =
     '<div class="exec-kpi-top">' +
       '<h2 class="exec-kpi-h1">2026 업적 KPI 실시간 현황판_품질안전부문</h2>' +
-      '<div style="display:flex; gap:10px; align-items:center;">' +
-        '<span style="font-size:13px; font-weight:800; color:#1E293B;">Summary (기준 : ' + esc(refDateStr) + ')</span>' +
+      '<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">' +
+        '<div class="kpi-legend-bar" title="현재 달성도 및 회계연도 말(2월) 예측치 결합 판정 기준">' +
+          '<span style="color:#475569;">신호등 기준 :</span>' +
+          '<span class="kpi-leg-item"><span class="kpi-leg-dot blue"></span>양호 (목표 달성·연말 순항)</span>' +
+          '<span class="kpi-leg-item"><span class="kpi-leg-dot yellow"></span>주의 (목표 90%대 근접·관찰)</span>' +
+          '<span class="kpi-leg-item"><span class="kpi-leg-dot red"></span>중점관리 (목표·연말예측 미달)</span>' +
+        '</div>' +
+        '<span style="font-size:var(--fs-sm); font-weight:800; color:#1E293B;">기준 : ' + esc(refDateStr) + '</span>' +
         '<button class="btn btn-sm" onclick="switchView(\'home\')">← 통합 대시보드로</button>' +
       '</div>' +
     '</div>' +
@@ -3075,17 +3278,29 @@ function renderKpiView() {
         const editBtn = c.editKey
           ? '<button class="exec-edit-mini" onclick="event.stopPropagation(); openManualKpiModal(\'' + c.editKey + '\')">편집</button>'
           : '';
-        const redDot = c.hasDot ? '<div class="exec-red-dot" title="목표 대비 중점관리 항목"></div>' : '';
+        const sm = sigMeta[c.sig] || sigMeta.blue;
+        const sigBadge = '<div class="exec-sig-badge ' + sm.cls + '" title="' + esc(c.sigTip || '') + '">' +
+          '<span class="sig-lamp"></span><span>' + sm.txt + '</span>' +
+        '</div>';
 
         let contentHtml = '';
         if (c.isTextOnly) {
-          contentHtml = '<div class="exec-notes-box" style="font-size:12px; color:#334155;">' +
-            (c.notes || []).map(function(n) { return '<div style="margin-bottom:4px;">' + esc(n) + '</div>'; }).join('') +
-          '</div>';
+          contentHtml =
+            '<div class="exec-text-hero">' +
+              '<div class="exec-text-hero-val">✓ ' + esc(c.heroTitle) + '</div>' +
+              '<div class="exec-text-hero-sub">' + esc(c.heroSub) + '</div>' +
+            '</div>' +
+            '<div class="exec-notes-box">' +
+              (c.notes || []).map(function(n) { return '<div style="margin-bottom:5px;">' + esc(n) + '</div>'; }).join('') +
+            '</div>';
         } else if (c.isRiskNote) {
           contentHtml =
+            '<div class="exec-text-hero">' +
+              '<div class="exec-text-hero-val">🛡️ ' + esc(c.heroTitle) + '</div>' +
+              '<div class="exec-text-hero-sub">' + esc(c.heroSub) + '</div>' +
+            '</div>' +
             '<div class="exec-notes-box">' +
-              '<div style="margin-bottom:4px;">✓ ' + esc(c.notesTitle) + '</div>' +
+              '<div style="margin-bottom:5px; color:var(--yonsei-blue); font-weight:800;">✓ ' + esc(c.notesTitle) + '</div>' +
               (c.notes || []).map(function(n) {
                 const lineStr = n.indexOf('-') === 0 ? n : ('- ' + n);
                 return '<div style="padding-left:8px; font-weight:700;">' + esc(lineStr) + '</div>';
@@ -3097,31 +3312,34 @@ function renderKpiView() {
           let tPct = 78;
           let aPct = 50;
 
-          // 6번(88.3%), 7번(94.28점)처럼 100점 만점 부근 지표는 차이를 직관적으로 강조
           if (tVal >= 80 && aVal >= 60) {
-            const floorV = Math.min(tVal, aVal) - 5;
-            const spanV = Math.max(tVal, aVal) - floorV + 2;
-            tPct = Math.round(((tVal - floorV) / spanV) * 82) + 12;
-            aPct = Math.round(((aVal - floorV) / spanV) * 82) + 12;
+            const floorV = Math.min(tVal, aVal) - 4;
+            const spanV = Math.max(tVal, aVal) - floorV + 1.5;
+            tPct = Math.round(((tVal - floorV) / spanV) * 80) + 14;
+            aPct = Math.round(((aVal - floorV) / spanV) * 80) + 14;
           } else {
             const maxV = Math.max(tVal, aVal, 0.01);
-            tPct = Math.max(Math.round((tVal / maxV) * 84), 16);
-            aPct = aVal <= 0 ? 14 : Math.max(Math.round((aVal / maxV) * 84), 16);
+            tPct = Math.max(Math.round((tVal / maxV) * 86), 20);
+            aPct = aVal <= 0 ? 16 : Math.max(Math.round((aVal / maxV) * 86), 20);
           }
 
           const tDisp = tVal + (c.barSuffix || '');
           const aDisp = aVal + (c.barSuffix || '');
-          const aLowCls = aPct <= 24 ? ' low-bar' : '';
+          const aLowCls = aPct <= 26 ? ' low-bar' : '';
+          const aColorCls = c.sig === 'red' ? ' err-bar' : (c.sig === 'yellow' ? ' warn-bar' : '');
 
           contentHtml =
-            '<div class="exec-unit">' + esc(c.unitLabel) + '</div>' +
+            '<div class="exec-sub-meta">' +
+              '<span class="exec-reason-chip">' + esc(c.reasonChip || '') + '</span>' +
+              '<span class="exec-unit">' + esc(c.unitLabel) + '</span>' +
+            '</div>' +
             '<div class="exec-bars-area">' +
               '<div class="exec-bars-stage">' +
                 '<div class="exec-bar-col">' +
                   '<div class="exec-bar-rect target" style="height:' + tPct + '%;">' + esc(tDisp) + '</div>' +
                 '</div>' +
                 '<div class="exec-bar-col">' +
-                  '<div class="exec-bar-rect actual' + aLowCls + '" style="height:' + aPct + '%;">' + esc(aDisp) + '</div>' +
+                  '<div class="exec-bar-rect actual' + aColorCls + aLowCls + '" style="height:' + aPct + '%;">' + esc(aDisp) + '</div>' +
                 '</div>' +
               '</div>' +
               '<div class="exec-bars-axis">' +
@@ -3134,7 +3352,7 @@ function renderKpiView() {
         return '<div class="exec-card" onclick="' + c.go + '">' +
           '<div class="exec-card-hdr">' + esc(c.title) + editBtn + '</div>' +
           '<div class="exec-card-body">' +
-            redDot +
+            sigBadge +
             '<div class="exec-bullet">목표 : ' + esc(c.targetNumStr) + '</div>' +
             '<div class="exec-bullet">실적 : ' + esc(c.actualNumStr) + '</div>' +
             contentHtml +

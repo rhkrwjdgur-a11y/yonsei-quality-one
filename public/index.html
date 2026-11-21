@@ -3774,13 +3774,93 @@ function renderKpiView() {
 }
 
 // ==============================================================================
-// [VIEW 9] 미생물 검사일보 (작업용 탭 구분 숨김 · 확정 판정일 버튼 통합 전환 + 전체 DB 검색)
+// [VIEW 9] 미생물 검사일보 (일자별 판정 일보 + 품목·OEM별 날짜별 검사 추이 + 전체 DB 검색)
 // ==============================================================================
-VIEW_TITLES.micro = '미생물 검사일보 판정 현황 및 일자별 이력 관제';
-let MICRO_SEL_KEY = ''; // ''(최신 확정일 자동) | 'YYYY-MM-DD' | 'TODAY_WAIT' | '_SEARCH_ALL'
+VIEW_TITLES.micro = '미생물 검사일보 판정 현황 및 품목 · OEM별 검사 추이';
+let MICRO_SEL_KEY = ''; // ''(최신 확정일) | 'YYYY-MM-DD' | 'TODAY_WAIT' | '_ITEM_TREND' | '_SEARCH_ALL'
+let MICRO_TREND_GRP = 'ALL'; // 'ALL' | 'EXPORT' | 'OEM' | 'SPECIAL' | 'DAIRY' | 'FERM'
+let MICRO_TREND_QUERY = '';
+
+const MICRO_QUICK_CHIPS = [
+  'Milk Talk', '명가유업', '서울F&B', '비락', '합동산업', '푸르밀',
+  '두유액', '유크림', '무항생제 목초우유', '오메가 밸런스', '저온살균우유', '유기농목장우유'
+];
+
+if (!window._microComboDocBound) {
+  window._microComboDocBound = true;
+  document.addEventListener('mousedown', function(e) {
+    const wrap = document.getElementById('microItemComboWrap');
+    const dd = document.getElementById('microItemDropdown');
+    if (dd && wrap && !wrap.contains(e.target)) {
+      dd.classList.remove('open');
+    }
+  });
+}
+
+function classifyMicroRowGroup(r) {
+  const pool = (String(r['업체_라인구분'] || '') + ' ' + String(r['대표품목명'] || '') + ' ' + String(r['대분류'] || '')).toLowerCase();
+  if (pool.indexOf('milk talk') !== -1 || pool.indexOf('milktalk') !== -1 || pool.indexOf('밀크톡') !== -1) {
+    return 'EXPORT';
+  }
+  if (/명가|서울f&b|서울에프앤비|비락|합동|푸르밀|oem/.test(pool)) {
+    return 'OEM';
+  }
+  if (/두유액|유크림|목초|오메가\s*밸런스|오메가밸런스|저온살균|유기농\s*목장|유기농목장|원액/.test(pool)) {
+    return 'SPECIAL';
+  }
+  if (String(r['대분류'] || '').indexOf('발효유') !== -1) {
+    return 'FERM';
+  }
+  return 'DAIRY';
+}
+
+function buildMicroSearchCatalog(histRows) {
+  const itemMap = {};
+  const vendorMap = {};
+
+  (histRows || []).forEach(function(r) {
+    const grp = classifyMicroRowGroup(r);
+    const vendor = String(r['업체_라인구분'] || '').trim();
+    const repNm = String(r['대표품목명'] || '').trim();
+
+    if (vendor && vendor !== '-' && ['자사 카톤', '자사 병/원액'].indexOf(vendor) === -1) {
+      const vk = '[업체] ' + vendor;
+      if (!vendorMap[vk]) vendorMap[vk] = { label: vk, rawKey: vendor, isVendor: true, grp: grp, cnt: 0 };
+      vendorMap[vk].cnt++;
+    }
+
+    if (repNm && repNm !== '-') {
+      const dispLbl = (vendor && vendor !== '-' && ['자사 카톤', '자사 병/원액'].indexOf(vendor) === -1)
+        ? ('[' + vendor + '] ' + repNm)
+        : repNm;
+      if (!itemMap[dispLbl]) itemMap[dispLbl] = { label: dispLbl, rawKey: repNm, vendor: vendor, isVendor: false, grp: grp, cnt: 0 };
+      itemMap[dispLbl].cnt++;
+    }
+
+    // 과거 (주1~12) 스냅샷에만 남아있는 단산·연관 품목까지 검색 목록에 보존
+    const aliasStr = String(r['연관품목_주석포함'] || '');
+    if (aliasStr.indexOf('|') !== -1) {
+      const fnPart = aliasStr.split('|').slice(1).join(',');
+      fnPart.split(',').forEach(function(sub) {
+        const cleanSub = sub.replace(/\s+/g, ' ').trim();
+        if (cleanSub && cleanSub.length >= 2 && cleanSub !== repNm) {
+          const sk = cleanSub + ' (공통원액 매칭)';
+          if (!itemMap[sk]) itemMap[sk] = { label: sk, rawKey: cleanSub, vendor: '', isVendor: false, isAlias: true, grp: grp, cnt: 0 };
+          itemMap[sk].cnt++;
+        }
+      });
+    }
+  });
+
+  const list = Object.values(vendorMap).concat(Object.values(itemMap));
+  list.sort(function(a, b) {
+    if (a.isVendor !== b.isVendor) return a.isVendor ? -1 : 1;
+    return a.label.localeCompare(b.label, 'ko');
+  });
+  return list;
+}
 
 function buildMicroReportByDate(judgeIso, histRows, liveTabs) {
-  // 1순위: 실시간 탭 중 실제 입력이 완료되고 판정일이 일치하는 탭이 있으면 그대로 사용
   const liveKeys = Object.keys(liveTabs || {});
   for (let i = 0; i < liveKeys.length; i++) {
     const lp = liveTabs[liveKeys[i]];
@@ -3799,7 +3879,6 @@ function buildMicroReportByDate(judgeIso, histRows, liveTabs) {
     }
   }
 
-  // 2순위: 누적 이력 DB(hist_rows)에서 해당 판정일자 데이터를 동일한 3단 일보 구조로 재구성
   const dayRows = (histRows || []).filter(function(r) { return r['판정일자'] === judgeIso; });
   if (!dayRows.length) return null;
 
@@ -3925,6 +4004,119 @@ function getTodayPendingMicroSheet(liveTabs, todayIso) {
   return null;
 }
 
+function renderMicroItemDropdown(filterTxt) {
+  const dd = document.getElementById('microItemDropdown');
+  const clr = document.getElementById('btnMicroComboClear');
+  if (!dd) return;
+  const q = String(filterTxt || '').trim();
+  if (clr) clr.style.display = q ? 'inline-flex' : 'none';
+
+  const hRows = (BUNDLE && BUNDLE.process && BUNDLE.process.micro && BUNDLE.process.micro.hist_rows) || [];
+  const catalog = buildMicroSearchCatalog(hRows).filter(function(it) {
+    if (MICRO_TREND_GRP !== 'ALL' && it.grp !== MICRO_TREND_GRP) return false;
+    if (!q) return true;
+    const low = it.label.toLowerCase();
+    const ns = low.replace(/\s+/g, '');
+    const qLow = q.toLowerCase();
+    return low.indexOf(qLow) !== -1 || ns.indexOf(qLow.replace(/\s+/g, '')) !== -1;
+  });
+
+  if (!catalog.length) {
+    dd.innerHTML = '<div style="padding:12px; text-align:center; color:var(--text-muted); font-size:12.5px;">일치하는 품목/업체가 없습니다. Enter를 누르면 입력한 키워드로 이력 전체를 검색합니다.</div>';
+    return;
+  }
+
+  dd.innerHTML = catalog.slice(0, 120).map(function(it) {
+    const badgeCls = it.isVendor ? 'badge-purple' : (it.isAlias ? 'badge-warn' : 'badge-neutral');
+    return '<div class="lot-combo-item" data-q="' + esc(it.rawKey) + '" onmousedown="event.preventDefault(); selectMicroTrendItem(this.getAttribute(\'data-q\'))">' +
+      '<span>' + highlightLotMatchHtml(it.label, q) + '</span>' +
+      '<span class="badge ' + badgeCls + '">' + it.cnt + '회</span>' +
+    '</div>';
+  }).join('');
+}
+
+function selectMicroTrendItem(val) {
+  MICRO_TREND_QUERY = String(val || '').trim();
+  const inp = document.getElementById('inpMicroItemCombo');
+  if (inp) inp.value = MICRO_TREND_QUERY;
+  const dd = document.getElementById('microItemDropdown');
+  if (dd) dd.classList.remove('open');
+  renderMicroTrendResultArea();
+}
+
+function renderMicroTrendResultArea() {
+  const resBox = document.getElementById('microTrendResultBox');
+  if (!resBox) return;
+
+  const hRows = (BUNDLE && BUNDLE.process && BUNDLE.process.micro && BUNDLE.process.micro.hist_rows) || [];
+  const q = String(MICRO_TREND_QUERY || '').trim();
+  const qLow = q.toLowerCase();
+  const qNs = qLow.replace(/\s+/g, '').replace(/milktalk/g, '밀크톡');
+
+  const matched = hRows.filter(function(r) {
+    if (MICRO_TREND_GRP !== 'ALL' && classifyMicroRowGroup(r) !== MICRO_TREND_GRP) return false;
+    if (!q) return MICRO_TREND_GRP !== 'ALL';
+
+    const vStr = String(r['업체_라인구분'] || '').toLowerCase();
+    const pStr = String(r['대표품목명'] || '').toLowerCase();
+    const aStr = String(r['연관품목_주석포함'] || '').toLowerCase();
+    const combined = (vStr + ' | ' + pStr + ' | ' + aStr);
+    const combinedNs = combined.replace(/\s+/g, '').replace(/milktalk/g, '밀크톡');
+
+    return combined.indexOf(qLow) !== -1 || combinedNs.indexOf(qNs) !== -1;
+  });
+
+  if (!q && MICRO_TREND_GRP === 'ALL') {
+    resBox.innerHTML =
+      '<div class="panel-card" style="text-align:center; padding:28px; color:var(--text-muted);">' +
+        '상단 <b>바로가기 버튼(Milk Talk · 명가유업 · 서울F&B · 두유액 · 유크림 등)</b>을 클릭하거나 검색창에서 품목/업체를 선택하면 날짜별 미생물 검사 결과가 시계열로 표시됩니다.' +
+      '</div>';
+    return;
+  }
+
+  const totalCnt = matched.length;
+  const failCnt = matched.filter(function(r) { return String(r['판정'] || '').indexOf('부적합') !== -1; }).length;
+  const passRate = totalCnt > 0 ? (((totalCnt - failCnt) / totalCnt) * 100).toFixed(1) + '%' : '-';
+  const uniqueDates = Array.from(new Set(matched.map(function(r) { return r['판정일자']; }).filter(Boolean)));
+  const latestRow = matched[0] || null;
+
+  resBox.innerHTML =
+    '<div class="kpi-grid-4">' +
+      '<div class="stat-card"><div class="stat-lbl">선택 품목 · 업체</div><div class="stat-val" style="font-size:17px;">' + esc(q || '분류 전체') + '</div><div class="stat-sub">단산 이력 및 주1~12 스냅샷 포함</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">누적 검사 건수 (판정일수)</div><div class="stat-val">' + totalCnt.toLocaleString() + '건 (' + uniqueDates.length + '일)</div><div class="stat-sub">_이력DB_미생물 기준</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">적합 판정률</div><div class="stat-val" style="color:' + (failCnt > 0 ? 'var(--err-fg)' : 'var(--ok-fg)') + ';">' + passRate + '</div><div class="stat-sub">부적합 ' + failCnt + '건</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">최근 판정일 (생산·검사일)</div><div class="stat-val" style="font-size:17px;">' + esc(latestRow ? latestRow['판정일자'] : '-') + '</div><div class="stat-sub">검사·생산일 : ' + esc(latestRow ? latestRow['검사일자_생산일'] : '-') + '</div></div>' +
+    '</div>' +
+    '<div class="panel-card">' +
+      '<div class="panel-title"><span>📋 [' + esc(q || '선택 분류') + '] 날짜별 미생물 검사 성적 추이 (최신 판정일순)</span><span class="badge badge-info">총 ' + totalCnt + '건</span></div>' +
+      '<div class="tbl-wrap"><table class="data-tbl">' +
+        '<thead><tr><th>판정일자</th><th>검사일(생산일)</th><th>대분류</th><th>업체 · 구분</th><th>미생물일보 품목명</th><th>호기/용량 · 라인</th><th>Storage Tank</th><th>대장균군</th><th>세균수</th><th>효모·곰팡이</th><th>유산균</th><th>판정자</th><th>판정</th></tr></thead>' +
+        '<tbody>' +
+        (matched.length ? matched.slice(0, 400).map(function(r) {
+          const pCls = String(r['판정'] || '').indexOf('부적합') !== -1 ? 'cell-red' : 'cell-green';
+          const hoLn = (r['호기_용량'] && r['호기_용량'] !== '-')
+            ? (r['호기_용량'] + (r['세부라인'] && r['세부라인'] !== '-' ? (' (' + r['세부라인'] + ')') : ''))
+            : '-';
+          return '<tr>' +
+            '<td><b>' + esc(r['판정일자']) + '</b> (' + esc(r['요일'] || '-') + ')</td>' +
+            '<td><b>' + esc(r['검사일자_생산일']) + '</b></td>' +
+            '<td>' + esc(r['대분류']) + '</td>' +
+            '<td><span class="badge badge-neutral">' + esc(r['업체_라인구분'] || '-') + '</span></td>' +
+            '<td class="td-left"><strong>' + esc(r['대표품목명']) + '</strong></td>' +
+            '<td>' + esc(hoLn) + '</td>' +
+            '<td><b>' + esc(r['Storage_Tank'] || '-') + '</b></td>' +
+            '<td><b>' + esc(r['대장균군'] || '-') + '</b></td>' +
+            '<td><b>' + esc(r['세균수'] || '-') + '</b></td>' +
+            '<td>' + esc(r['효모_곰팡이'] || '-') + '</td>' +
+            '<td><b>' + esc(r['유산균'] || '-') + '</b></td>' +
+            '<td>' + esc(r['판정자'] || '-') + '</td>' +
+            '<td class="' + pCls + '">' + esc(r['판정'] || '적합') + '</td>' +
+          '</tr>';
+        }).join('') : '<tr><td colspan="13" class="cell-gray" style="padding:24px;">해당 조건에 일치하는 미생물 검사 이력이 없습니다.</td></tr>') +
+        '</tbody></table></div>' +
+    '</div>';
+}
+
 function renderMicroView() {
   const mc = BUNDLE.process.micro || { has_sheet: false, live_tabs: {}, hist_rows: [] };
   const spMc = (BUNDLE.special_boards && BUNDLE.special_boards.micro_status) || { status: '출고적합', note: '', mode: '자동연동' };
@@ -3932,7 +4124,6 @@ function renderMicroView() {
   const hRows = mc.hist_rows || [];
   const todayIso = BUNDLE.loaded_date || '';
 
-  // 확정된 판정일자 목록(내림차순) 추출
   const dateSet = {};
   hRows.forEach(function(r) { if (r['판정일자']) dateSet[r['판정일자']] = true; });
   Object.keys(liveTabs).forEach(function(k) {
@@ -3942,20 +4133,19 @@ function renderMicroView() {
   const confirmedDates = Object.keys(dateSet).sort().reverse();
   const pendingTodayObj = (!dateSet[todayIso]) ? getTodayPendingMicroSheet(liveTabs, todayIso) : null;
 
-  // 기본 진입 시: 가장 최근 확정된 판정일자 자동 선택 (확정 이력이 하나도 없을 때만 금일 예정 표시)
-  if (!MICRO_SEL_KEY || (MICRO_SEL_KEY !== '_SEARCH_ALL' && MICRO_SEL_KEY !== 'TODAY_WAIT' && !dateSet[MICRO_SEL_KEY])) {
-    MICRO_SEL_KEY = confirmedDates.length ? confirmedDates[0] : (pendingTodayObj ? 'TODAY_WAIT' : '_SEARCH_ALL');
+  if (!MICRO_SEL_KEY || (MICRO_SEL_KEY !== '_SEARCH_ALL' && MICRO_SEL_KEY !== '_ITEM_TREND' && MICRO_SEL_KEY !== 'TODAY_WAIT' && !dateSet[MICRO_SEL_KEY])) {
+    MICRO_SEL_KEY = confirmedDates.length ? confirmedDates[0] : (pendingTodayObj ? 'TODAY_WAIT' : '_ITEM_TREND');
   }
 
   const latestConfirmedDt = confirmedDates.length ? confirmedDates[0] : '';
-  const pastChipDates = confirmedDates.slice(1, 9);
+  const pastChipDates = confirmedDates.slice(1, 7);
   const stCls = String(spMc.status).indexOf('보류') !== -1 ? 'badge-err' : (spMc.status === '검사중' ? 'badge-warn' : 'badge-ok');
 
   document.getElementById('view-micro').innerHTML =
     '<div class="page-hdr">' +
       '<div>' +
-        '<h2 class="page-h2">미생물 검사일보 판정 현황 및 일자별 이력 관제</h2>' +
-        '<div class="page-desc">최신 확정 판정 결과를 기본 표출하며, 상단 날짜 버튼을 클릭하면 해당 일자의 카톤 · 병우유 · 발효유 검사 내역으로 즉시 전환됩니다.</div>' +
+        '<h2 class="page-h2">미생물 검사일보 판정 현황 및 품목 · OEM별 검사 추이</h2>' +
+        '<div class="page-desc">일자별 3단 검사일보와 수출(Milk Talk) · 외주 OEM · 원액 · 단산 품목의 날짜별 검사 추이를 통합 제공합니다.</div>' +
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
         '<button class="btn btn-primary" onclick="openMicroStatusModal()">⚙️ 출고판정 표시 설정</button>' +
@@ -3984,21 +4174,72 @@ function renderMicroView() {
             return '<button class="btn btn-sm ' + (MICRO_SEL_KEY === d ? 'btn-primary' : '') + '" onclick="MICRO_SEL_KEY=\'' + esc(d) + '\'; renderMicroView()">📅 ' + esc(d.slice(5)) + '</button>';
           }).join('') +
           (confirmedDates.length > 1 ?
-            '<select class="form-ctrl" style="width:165px; padding:4px 8px;" onchange="if(this.value){MICRO_SEL_KEY=this.value; renderMicroView();}">' +
-              '<option value="">전체 판정일 선택 (' + confirmedDates.length + '일)</option>' +
+            '<select class="form-ctrl" style="width:160px; padding:4px 8px;" onchange="if(this.value){MICRO_SEL_KEY=this.value; renderMicroView();}">' +
+              '<option value="">전체 판정일 (' + confirmedDates.length + '일)</option>' +
               confirmedDates.map(function(d) {
                 return '<option value="' + esc(d) + '" ' + (MICRO_SEL_KEY === d ? 'selected' : '') + '>판정일 ' + esc(d) + '</option>';
               }).join('') +
             '</select>' : '') +
         '</div>' +
-        '<button class="btn btn-sm ' + (MICRO_SEL_KEY === '_SEARCH_ALL' ? 'btn-primary' : '') + '" onclick="MICRO_SEL_KEY=\'_SEARCH_ALL\'; renderMicroView()">🔍 전체 품목 통합 검색 (' + hRows.length + '건)</button>' +
+        '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+          '<button class="btn btn-sm ' + (MICRO_SEL_KEY === '_ITEM_TREND' ? 'btn-primary' : '') + '" style="' + (MICRO_SEL_KEY === '_ITEM_TREND' ? '' : 'border-color:#0052B4; color:#003378;') + '" onclick="MICRO_SEL_KEY=\'_ITEM_TREND\'; renderMicroView()">📊 품목 · OEM별 검사 추이</button>' +
+          '<button class="btn btn-sm ' + (MICRO_SEL_KEY === '_SEARCH_ALL' ? 'btn-primary' : '') + '" onclick="MICRO_SEL_KEY=\'_SEARCH_ALL\'; renderMicroView()">🔍 전체 이력 표 (' + hRows.length + '건)</button>' +
+        '</div>' +
       '</div>' +
     '</div>' +
     '<div id="microTabBox"></div>';
 
   const box = document.getElementById('microTabBox');
 
-  // [전체 품목 통합 검색 모드]
+  // ==================== [모드 A] 품목 · OEM · 원액별 날짜별 검사 추이 (신규) ====================
+  if (MICRO_SEL_KEY === '_ITEM_TREND') {
+    const grpTabs = [
+      ['ALL', '전체 품목·업체'],
+      ['EXPORT', '수출 (Milk Talk)'],
+      ['OEM', '위탁·OEM 업체'],
+      ['SPECIAL', '특수우유 · 원액(두유액·유크림)'],
+      ['DAIRY', '자사 우유(카톤·병)'],
+      ['FERM', '자사 발효유·호상']
+    ];
+
+    box.innerHTML =
+      '<div class="panel-card" style="background:#EFF6FF; border-color:#BFDBFE;">' +
+        '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">' +
+          grpTabs.map(function(gt) {
+            return '<button class="btn btn-sm ' + (MICRO_TREND_GRP === gt[0] ? 'btn-primary' : '') + '" onclick="MICRO_TREND_GRP=\'' + gt[0] + '\'; renderMicroView()">' + esc(gt[1]) + '</button>';
+          }).join('') +
+        '</div>' +
+        '<div style="display:grid; grid-template-columns:minmax(260px, 1fr) auto auto; gap:8px; align-items:center; margin-bottom:10px;">' +
+          '<div class="lot-combo-wrap" id="microItemComboWrap">' +
+            '<input type="text" id="inpMicroItemCombo" class="lot-combo-input" autocomplete="off" value="' + esc(MICRO_TREND_QUERY) + '" ' +
+              'placeholder="품목명 · OEM 업체명 · 단산품목 타이핑 또는 클릭 (예: Milk Talk, 명가유업, 두유액, 유크림, 목초우유)" ' +
+              'onfocus="renderMicroItemDropdown(this.value); document.getElementById(\'microItemDropdown\').classList.add(\'open\')" ' +
+              'oninput="renderMicroItemDropdown(this.value); document.getElementById(\'microItemDropdown\').classList.add(\'open\')" ' +
+              'onkeydown="if(event.key===\'Enter\'){selectMicroTrendItem(this.value);}" />' +
+            '<div class="lot-combo-actions">' +
+              '<button type="button" id="btnMicroComboClear" class="lot-combo-clear" style="display:' + (MICRO_TREND_QUERY ? 'inline-flex' : 'none') + ';" onmousedown="event.preventDefault(); selectMicroTrendItem(\'\'); document.getElementById(\'inpMicroItemCombo\').focus();">✕</button>' +
+              '<span class="lot-combo-arrow" onmousedown="event.preventDefault(); renderMicroItemDropdown(document.getElementById(\'inpMicroItemCombo\').value); document.getElementById(\'microItemDropdown\').classList.toggle(\'open\')">▾</span>' +
+            '</div>' +
+            '<div id="microItemDropdown" class="lot-combo-list"></div>' +
+          '</div>' +
+          '<button class="btn btn-primary" style="height:35px;" onclick="selectMicroTrendItem(document.getElementById(\'inpMicroItemCombo\').value)">조회</button>' +
+          '<button class="btn" style="height:35px;" onclick="MICRO_TREND_GRP=\'ALL\'; selectMicroTrendItem(\'\'); renderMicroView()">초기화</button>' +
+        '</div>' +
+        '<div style="display:flex; gap:5px; flex-wrap:wrap; align-items:center;">' +
+          '<span style="font-size:12px; font-weight:800; color:#1E3A8A; margin-right:4px;">⚡ 주요 품목·업체 바로가기 :</span>' +
+          MICRO_QUICK_CHIPS.map(function(chip) {
+            const act = (MICRO_TREND_QUERY === chip);
+            return '<button type="button" class="btn btn-sm ' + (act ? 'btn-primary' : '') + '" onclick="MICRO_TREND_GRP=\'ALL\'; selectMicroTrendItem(\'' + esc(chip) + '\')">' + esc(chip) + '</button>';
+          }).join('') +
+        '</div>' +
+      '</div>' +
+      '<div id="microTrendResultBox"></div>';
+
+    renderMicroTrendResultArea();
+    return;
+  }
+
+  // ==================== [모드 B] 전체 품목 통합 검색 모드 ====================
   if (MICRO_SEL_KEY === '_SEARCH_ALL') {
     const filtered = hRows.filter(function(r) {
       return MICRO_HIST_DATE_FILTER === 'ALL' || r['판정일자'] === MICRO_HIST_DATE_FILTER;
@@ -4015,7 +4256,7 @@ function renderMicroView() {
                 return '<option value="' + esc(d) + '" ' + (MICRO_HIST_DATE_FILTER === d ? 'selected' : '') + '>판정일 ' + esc(d) + '</option>';
               }).join('') +
             '</select>' +
-            '<input type="text" class="form-ctrl" style="width:220px;" placeholder="품목명 · Tank · 호기 검색" oninput="filterSimpleTable(this.value, \'microHistTbl\')" />' +
+            '<input type="text" class="form-ctrl" style="width:220px;" placeholder="품목명 · 업체 · Tank · 호기 검색" oninput="filterSimpleTable(this.value, \'microHistTbl\')" />' +
           '</div>' +
         '</div>' +
         '<div class="tbl-wrap"><table class="data-tbl" id="microHistTbl">' +
@@ -4044,7 +4285,7 @@ function renderMicroView() {
     return;
   }
 
-  // [일자별 3단 일보 화면 모드 (최신 확정일 / 과거 판정일 / 금일 입력대기 모두 동일 레이아웃)]
+  // ==================== [모드 C] 일자별 3단 일보 화면 모드 ====================
   const viewData = (MICRO_SEL_KEY === 'TODAY_WAIT')
     ? pendingTodayObj
     : buildMicroReportByDate(MICRO_SEL_KEY, hRows, liveTabs);
@@ -4095,7 +4336,6 @@ function renderMicroView() {
       '</tbody></table></div></div>' +
     '</div>';
 }
-
 // ==============================================================================
 // [VIEW 10] 냉장(우유·발효유·미생물) / 상온(상온공정·두유배양) 완전 분리 LOT 역추적 & 클레임 이력
 // ==============================================================================
@@ -4160,7 +4400,7 @@ function renderLotComboOptions(filterText) {
       '<span class="badge badge-neutral">전체 ' + allProds.length + '종</span>' +
     '</div>';
   } else {
-    html += '<div class="lot-combo-item" data-val="' + esc(q) + '" onmousedown="event.preventDefault(); selectLotComboItemEl(this, true)">' +
+    html += '<div class="lot-combo-item" data-val="' + esc(q) + '" data-kwmode="1" onmousedown="event.preventDefault(); selectLotComboItemEl(this, true)">' +
       '<span>🔍 <b>"' + esc(q) + '"</b> 포함 품목 전체 키워드 검색</span>' +
       '<span class="badge badge-info">' + matched.length + '종 해당</span>' +
     '</div>';
@@ -4212,15 +4452,18 @@ function clearLotComboInput() {
   if (dd) dd.classList.add('open');
 }
 
+let LOT_FORCE_KW_MODE = false;
+
 function selectLotComboItemEl(el, autoRun) {
   const val = el ? (el.getAttribute('data-val') || '') : '';
+  LOT_FORCE_KW_MODE = Boolean(el && el.getAttribute('data-kwmode') === '1');
   const inp = document.getElementById('inpLotProdCombo');
   const dd = document.getElementById('lotProdDropdown');
   const clearBtn = document.getElementById('btnLotComboClear');
   if (inp) inp.value = val;
   if (clearBtn) clearBtn.style.display = val ? 'inline-flex' : 'none';
   if (dd) dd.classList.remove('open');
-  if (autoRun && val) executeScopedLotTrace();
+  if (autoRun && val) executeScopedLotTrace(LOT_FORCE_KW_MODE);
 }
 
 function onLotComboKeydown(e) {
@@ -4332,7 +4575,7 @@ function resetScopedLotTrace() {
   renderLotView();
 }
 
-async function executeScopedLotTrace() {
+async function executeScopedLotTrace(forceKw) {
   const comboEl = document.getElementById('inpLotProdCombo');
   const rawInput = comboEl ? (comboEl.value || '').trim() : '';
   const exp = (document.getElementById('inpLotExp').value || '').trim();
@@ -4340,14 +4583,16 @@ async function executeScopedLotTrace() {
   if (dd) dd.classList.remove('open');
 
   if (!rawInput && !exp) {
-    showToast('품목명(예: 연세)을 입력·선택하거나 소비기한을 입력해 주세요.', 2800);
+    showToast('품목명(예: 마켓컬리, 연세딸기)을 입력·선택하거나 소비기한을 입력해 주세요.', 2800);
     return;
   }
 
   const allProds = getActiveLotProdList();
-  const isExactProd = allProds.indexOf(rawInput) !== -1;
+  const useKwMode = Boolean(forceKw);
+  const isExactProd = (!useKwMode) && (allProds.indexOf(rawInput) !== -1);
   const prod = isExactProd ? rawInput : 'ALL';
   const kw = isExactProd ? '' : rawInput;
+  LOT_FORCE_KW_MODE = false;
 
   const resBox = document.getElementById('lotResultArea');
   resBox.innerHTML = '<div class="panel-card" style="text-align:center; padding:24px;">⏳ ' + (LOT_SCOPE === 'DAIRY' ? '냉장(포장·미생물)' : '상온(공정·두유배양)') + ' 누적 이력을 조회하고 있습니다...</div>';

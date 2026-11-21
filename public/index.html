@@ -4740,6 +4740,100 @@ function renderScopedLotResultHtml(data, isDairyScope) {
     const rtCcp3b = data.matched_rt_ccp3b || [];
     const soy = data.matched_soy || [];
 
+    // 호기별 CCP-3B 설비 구분 (B·C·D: 미드·프리즈마[과산화수소 농도] / A·E: 콤비[분사량·온도] / F: 슬림리프[E빔])
+    const HO_EQUIP_DEFAULT = {
+      'A호기': '콤비 (분사량·온도)',
+      'B호기': '미드·프리즈마 (농도)',
+      'C호기': '미드·프리즈마 (농도)',
+      'D호기': '미드·프리즈마 (농도)',
+      'E호기': '콤비 (분사량·온도)',
+      'F호기': '슬림리프 (E빔)'
+    };
+
+    // ①번 생산·포장 매칭 행에서 날짜별 실제 가동 포장호기 추출 후, [생산일자 + 포장호기]당 딱 1줄로 압축
+    const dtTargetHosMap = {};
+    const dtOrder = [];
+    rt.forEach(function(r) {
+      const d = String(r['생산일자'] || '').trim();
+      const h = String(r['포장호기'] || '').trim();
+      if (!d) return;
+      if (!dtTargetHosMap[d]) {
+        dtTargetHosMap[d] = [];
+        dtOrder.push(d);
+      }
+      if (h && h !== '-' && dtTargetHosMap[d].indexOf(h) === -1) {
+        dtTargetHosMap[d].push(h);
+      }
+    });
+    rtCcp3b.forEach(function(c3) {
+      const d = String(c3['생산일자'] || '').trim();
+      if (!d) return;
+      if (!dtTargetHosMap[d]) {
+        dtTargetHosMap[d] = [];
+        dtOrder.push(d);
+      }
+      (c3._target_hos || []).forEach(function(h) {
+        if (h && h !== '-' && dtTargetHosMap[d].indexOf(h) === -1) {
+          dtTargetHosMap[d].push(h);
+        }
+      });
+    });
+
+    const compactCcp3bRows = [];
+    dtOrder.forEach(function(dt) {
+      const dayRecs = rtCcp3b.filter(function(x) { return String(x['생산일자'] || '').trim() === dt; });
+      if (!dayRecs.length) return;
+
+      let hos = dtTargetHosMap[dt] || [];
+      if (!hos.length) {
+        ['A호기', 'B호기', 'C호기', 'D호기', 'E호기', 'F호기'].forEach(function(candH) {
+          const hasAny = dayRecs.some(function(dr) {
+            const v = String(dr[candH] || '').trim();
+            return v !== '' && v !== '-';
+          });
+          if (hasAny) hos.push(candH);
+        });
+      }
+
+      hos.forEach(function(ho) {
+        const stdParts = [];
+        const valParts = [];
+        const equipParts = [];
+        let hasFail = false;
+
+        dayRecs.forEach(function(dr) {
+          const rawVal = String(dr[ho] || '').trim();
+          if (!rawVal || rawVal === '-') return;
+
+          const itemNm = String(dr['항목'] || '점검').trim();
+          const stdNm = String(dr['관리기준'] || '').trim();
+          const eqNm = String(dr['적용설비'] || '').trim();
+          const cm = dr._cls_map || {};
+
+          if (cm[ho] === 'cell-red') hasFail = true;
+          if (eqNm && eqNm !== '-' && equipParts.indexOf(eqNm) === -1) {
+            equipParts.push(eqNm);
+          }
+          if (stdNm && stdNm !== '-') {
+            stdParts.push(itemNm + ' (' + stdNm + ')');
+          }
+          valParts.push(itemNm + ' : ' + rawVal);
+        });
+
+        if (valParts.length > 0) {
+          compactCcp3bRows.push({
+            prod_date: dt,
+            pack_ho: ho,
+            equip: equipParts.length ? equipParts.join(' · ') : (HO_EQUIP_DEFAULT[ho] || '-'),
+            std_summary: stdParts.length ? stdParts.join(' / ') : '-',
+            actual_summary: valParts.join('  |  '),
+            judge: hasFail ? '확인필요' : '적합',
+            cls: hasFail ? 'cell-red' : 'cell-green'
+          });
+        }
+      });
+    });
+
     resBox.innerHTML =
       '<div class="panel-card">' +
         '<div class="panel-title"><span>① 상온제품 공정관리 일보 생산·포장 매칭 결과</span><span class="badge badge-info">' + rt.length + '건 매칭</span></div>' +
@@ -4782,30 +4876,20 @@ function renderScopedLotResultHtml(data, isDairyScope) {
           '</tbody></table></div>' +
       '</div>' +
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>②-2 당일 CCP-3B 무균포장기 공정관리 (과산화수소 농도 · 무균실 살균온도)</span><span class="badge badge-info">' + rtCcp3b.length + '건 매칭</span></div>' +
+        '<div class="panel-title"><span>②-2 당일 CCP-3B 무균포장기 공정관리 (B·C·D 과산화수소 농도 / A·E 분사량·온도 / F E빔)</span><span class="badge badge-info">' + compactCcp3bRows.length + '건 매칭</span></div>' +
         '<div class="tbl-wrap"><table class="data-tbl">' +
-          '<thead><tr><th>생산일자</th><th>점검항목</th><th>관리기준</th><th>적용설비</th><th style="background:#EFF6FF; color:#003378;">해당 포장호기 실측치</th><th>A호기</th><th>B호기</th><th>C호기</th><th>D호기</th><th>E호기</th><th>F호기</th></tr></thead>' +
+          '<thead><tr><th>생산일자</th><th>생산 포장호기</th><th>적용설비</th><th>관리기준</th><th style="background:#EFF6FF; color:#003378;">해당 포장호기 실측치 요약</th><th>판정</th></tr></thead>' +
           '<tbody>' +
-          (rtCcp3b.length ? rtCcp3b.map(function(r) {
-            const cm = r._cls_map || {};
-            const thos = r._target_hos || [];
-            const targetSummary = thos.length
-              ? thos.map(function(h) { return h + ': ' + (r[h] || '-'); }).join(' / ')
-              : '-';
-            const targetCls = (thos.length && cm[thos[0]]) ? cm[thos[0]] : 'cell-green';
+          (compactCcp3bRows.length ? compactCcp3bRows.map(function(r) {
             return '<tr>' +
-              '<td><b>' + esc(r['생산일자'] || '-') + '</b></td>' +
-              '<td><b>' + esc(r['항목'] || '-') + '</b></td>' +
-              '<td>' + esc(r['관리기준'] || '-') + '</td>' +
-              '<td>' + esc(r['적용설비'] || '-') + '</td>' +
-              '<td class="' + esc(targetCls) + '"><strong>' + esc(targetSummary) + '</strong></td>' +
-              ['A호기', 'B호기', 'C호기', 'D호기', 'E호기', 'F호기'].map(function(h) {
-                const isTarget = thos.indexOf(h) !== -1;
-                const st = isTarget ? 'outline:2px solid #003378; font-weight:900;' : 'opacity:0.72;';
-                return '<td class="' + esc(cm[h] || '') + '" style="' + st + '">' + esc(r[h] || '-') + '</td>';
-              }).join('') +
+              '<td><b>' + esc(r.prod_date) + '</b></td>' +
+              '<td><span class="badge badge-info">' + esc(r.pack_ho) + '</span></td>' +
+              '<td>' + esc(r.equip) + '</td>' +
+              '<td>' + esc(r.std_summary) + '</td>' +
+              '<td class="' + esc(r.cls) + '"><strong>' + esc(r.actual_summary) + '</strong></td>' +
+              '<td class="' + esc(r.cls) + '">' + esc(r.judge) + '</td>' +
             '</tr>';
-          }).join('') : '<tr><td colspan="11" class="cell-gray">해당 일자의 무균포장기(CCP-3B) 세부 기록이 없습니다.</td></tr>') +
+          }).join('') : '<tr><td colspan="6" class="cell-gray">해당 일자의 무균포장기(CCP-3B) 세부 기록이 없습니다.</td></tr>') +
           '</tbody></table></div>' +
       '</div>' +
       '<div class="panel-card">' +

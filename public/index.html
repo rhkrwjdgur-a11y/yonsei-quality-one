@@ -2283,108 +2283,98 @@ function renderHome() {
   if (!dashLaws.length) {
     document.getElementById('q2LawList').innerHTML = '<div style="color:var(--text-muted); font-size:11.5px; padding:8px;">대시보드에 고정된 법규가 없습니다.</div>';
   } else {
-    document.getElementById('q2LawList').innerHTML = dashLaws.map(function(item) {
-      const stCls = item['예고여부'] ? 'badge-purple' : 'badge-info';
-      return '<div class="mini-item" onclick="openLawDetailModal(\'' + esc(item.law_id) + '\')">' +
-        '<div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">' +
-          '<div style="display:flex; align-items:center; gap:4px; min-width:0;">' +
-            '<span class="badge ' + stCls + '">' + esc(item['법규단계']) + '</span>' +
-            '<span class="badge ' + esc(item.d_day_cls) + '">' + esc(item.d_day_label) + '</span>' +
-            '<span style="font-size:10.5px; color:var(--text-muted);">' + esc(item['시행일']) + '</span>' +
-          '</div>' +
-          '<span class="badge ' + esc(item.prep_timing_cls) + '">' + esc(item.prep_status) + '</span>' +
-        '</div>' +
-        '<div class="law-mini-title">' + esc(item['법규명']) + '</div>' +
-        '<div class="law-mini-sum">' + esc(item['실무조치요약']) + '</div>' +
-      '</div>';
-    }).join('');
-  }
+    const rt = data.matched_rt || [];
+    const rtCcp = data.matched_rt_ccp || [];
+    const rtCcp3b = data.matched_rt_ccp3b || [];
+    const soy = data.matched_soy || [];
 
-  const memoVal = (BUNDLE.special_boards && BUNDLE.special_boards.label_memo) ? BUNDLE.special_boards.label_memo : '';
-  document.getElementById('q2LabelMemoTxt').textContent = memoVal || '• 원자재 변경 품목 전성분 및 알레르기 유발물질 표시 교차 점검 진행\n• 표시사항 신규·변경 의뢰 건 부자재 발주 전 최종 확인필 여부 상시 체크';
-
-  // --- Q3: 방문심사 게이지 & 일정 (최신 날짜 상단 정렬) ---
-  const steps = [
-    ['심사준비중', '준비중 20%'],
-    ['심사중', '심사중 50%'],
-    ['서류심사중', '서류 75%'],
-    ['현장심사중', '현장 85%'],
-    ['심사종료', '종료 100%']
-  ];
-  const isRecentDone = String(au.visit_title || '').indexOf('최근 방문심사') !== -1 && au.status === '심사종료';
-  const heroBadgeTxt = isRecentDone ? '최근 수검' : '차기 최우선';
-
-  document.getElementById('q3HeroBox').innerHTML =
-    '<div class="q3-banner-line">' +
-      '<span class="q3-tag-navy">' + heroBadgeTxt + '</span>' +
-      '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + esc(au.visit_title || '-') + '"><b>' + esc(au.visit_title || '-') + '</b></span>' +
-    '</div>' +
-    '<div class="gauge-track"><div class="gauge-fill" style="width:' + (au.pct || 0) + '%; background-color:' + esc(au.color || '#003378') + ';">' + (au.pct || 0) + '%</div></div>' +
-    '<div class="step-btn-row">' +
-      steps.map(function(st) {
-        const isAct = au.status === st[0] ? ' active' : '';
-        return '<button class="step-btn' + isAct + '" onclick="quickChangeAuditStatus(\'' + esc(au.active_uid || '') + '\', \'' + st[0] + '\')">' + st[1] + '</button>';
-      }).join('') +
-    '</div>';
-
-  const allScheds = (BUNDLE.audit.schedules || []).slice().sort(function(a, b) {
-    return String(b['심사일자'] || '').localeCompare(String(a['심사일자'] || ''));
-  });
-  const visitList = allScheds.filter(function(s) { return s['구분'] !== '협력업체 방문'; });
-  const supVisitList = allScheds.filter(function(s) { return s['구분'] === '협력업체 방문'; });
-
-  document.getElementById('q3VisitList').innerHTML = visitList.length ? visitList.map(function(s) {
-    const bCls = s['진행현황'] === '심사종료' ? 'badge-ok' : 'badge-info';
-    return '<div class="mini-item" onclick="switchView(\'audit\', \'schedule\')" style="display:flex; justify-content:space-between; align-items:center; gap:5px;">' +
-      '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><b>' + esc((s['심사일자'] || '').slice(5)) + '</b> ' + esc(s['심사명']) + '</span>' +
-      '<span class="badge ' + bCls + '">' + esc(s['진행현황']) + '</span>' +
-    '</div>';
-  }).join('') : '<div style="font-size:11.5px; color:var(--text-muted); padding:6px;">등록된 방문심사 없음</div>';
-
-  document.getElementById('q3SupVisitList').innerHTML = supVisitList.length ? supVisitList.map(function(s) {
-    const bCls = s['진행현황'] === '심사종료' ? 'badge-ok' : 'badge-warn';
-    return '<div class="mini-item" onclick="switchView(\'audit\', \'schedule\')" style="display:flex; justify-content:space-between; align-items:center; gap:5px;">' +
-      '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><b>' + esc((s['심사일자'] || '').slice(5)) + '</b> ' + esc(s['심사명']) + '</span>' +
-      '<span class="badge ' + bCls + '">' + esc(s['진행현황']) + '</span>' +
-    '</div>';
-  }).join('') : '<div style="font-size:11.5px; color:var(--text-muted); padding:6px;">등록된 협력업체 방문 없음</div>';
-
-  // --- Q4: 클레임·부적합 진행 현황 ---
-  const actCnt = cnh.counts.active || 0;
-  const q4Badge = document.getElementById('q4ActiveBadge');
-  q4Badge.textContent = '진행 ' + actCnt + '건';
-  q4Badge.className = 'badge ' + (actCnt > 0 ? 'badge-err' : 'badge-ok');
-
-  const actItems = cnh.active_items || [];
-  if (!actItems.length) {
-    document.getElementById('q4BodyBox').innerHTML =
-      '<div class="q4-zero-box">' +
-        '<div>' +
-          '<div style="font-weight:900; color:var(--ok-fg); font-size:13px;">✓ 현재 출고보류 · 추가검사 진행 중인 클레임/부적합 건이 없습니다</div>' +
-          '<div style="font-size:11.5px; color:#065F46; margin-top:2px;">전 공정(상온 · 우유카톤/병 · 발효유 · 두유 · 미생물) 정상 출고 기준 유지 중</div>' +
-        '</div>' +
-        '<span class="badge badge-ok">이상 없음</span>' +
+    resBox.innerHTML =
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>① 상온제품 공정관리 일보 생산·포장 매칭 결과</span><span class="badge badge-info">' + rt.length + '건 매칭</span></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>생산일자</th><th>원본탭</th><th>포장호기</th><th>생산 제품명</th><th>표기 소비기한</th><th>확인시간</th><th>멸균기 · CCP 요약</th><th>특이사항</th></tr></thead>' +
+          '<tbody>' +
+          (rt.length ? rt.map(function(r) {
+            return '<tr>' +
+              '<td><b>' + esc(r['생산일자']) + '</b></td>' +
+              '<td>' + esc(r['원본탭명'] || '-') + '</td>' +
+              '<td><b>' + esc(r['포장호기']) + '</b></td>' +
+              '<td class="td-left"><strong>' + esc(r['제품명']) + '</strong></td>' +
+              '<td><b>' + esc(r['표기소비기한_원문'] || '-') + '</b></td>' +
+              '<td class="' + esc(r._cls_time || '') + '"><b>' + esc(r['확인시간'] || '-') + '</b></td>' +
+              '<td class="td-left">' + esc(r['멸균요약'] || '-') + '</td>' +
+              '<td class="' + esc(r._cls_rem || '') + '">' + esc(r['특이사항'] || '이상없음') + '</td>' +
+            '</tr>';
+          }).join('') : '<tr><td colspan="8" class="cell-gray">일치하는 상온 포장 기록이 없습니다.</td></tr>') +
+          '</tbody></table></div>' +
       '</div>' +
-      '<div class="q4-cnt-grid">' +
-        '<div class="q4-cnt-card"><div class="q4-cnt-lbl">시트 누적 전체 이력</div><div class="q4-cnt-num">' + cnh.counts.total + '건</div></div>' +
-        '<div class="q4-cnt-card"><div class="q4-cnt-lbl">주요 클레임 기록</div><div class="q4-cnt-num">' + cnh.counts.claim + '건</div></div>' +
-        '<div class="q4-cnt-card"><div class="q4-cnt-lbl">공정 부적합 기록</div><div class="q4-cnt-num" style="color:var(--warn-fg);">' + cnh.counts.nc + '건</div></div>' +
-      '</div>';
-  } else {
-    document.getElementById('q4BodyBox').innerHTML =
-      '<div class="mini-scroll-list">' +
-      actItems.map(function(it) {
-        const cCls = it['구분'] === '부적합' ? 'badge-err' : 'badge-warn';
-        return '<div class="mini-item" onclick="openLotViewWithScope(\'HIST\')">' +
-          '<div style="display:flex; justify-content:space-between; align-items:center; gap:4px;">' +
-            '<div><span class="badge ' + cCls + '">' + esc(it['구분']) + '</span> <strong style="font-size:12.5px;">' + esc(it['제품명']) + '</strong> <span style="font-size:11px; color:var(--text-muted);">(' + esc(it['소비기한']) + ')</span></div>' +
-            '<span class="badge badge-info">' + esc(it['진행상태']) + '</span>' +
-          '</div>' +
-          '<div style="font-size:11.5px; color:var(--text-sub); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' +
-            esc(it['상세사유']) + ' → ' + esc(it['추가검사_조치내역']) +
-          '</div>' +
-        '</div>';
-      }).join('') +
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>② 당일 상온 UHT 멸균기 CCP 모니터링 (해당 포장호기 매칭)</span><span class="badge badge-ok">' + rtCcp.length + '건 매칭</span></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>생산일자</th><th>멸균기(포장)</th><th>매칭 제품명</th><th>확인시간</th><th>멸균온도</th><th>균질압</th><th>멸균시간</th><th>유량/냉각</th><th>여과망/서명</th><th>특이사항</th></tr></thead>' +
+          '<tbody>' +
+          (rtCcp.length ? rtCcp.slice(0, 80).map(function(r) {
+            return '<tr>' +
+              '<td><b>' + esc(r['생산일자'] || '-') + '</b></td>' +
+              '<td><b>' + esc(r['멸균기_포장'] || '-') + '</b></td>' +
+              '<td class="td-left">' + esc(r['매칭 제품명'] || '-') + '</td>' +
+              '<td class="' + esc(r._c_time || '') + '">' + esc(r['확인시간'] || '-') + '</td>' +
+              '<td class="' + esc(r._c_temp || '') + '"><b>' + esc(r['멸균온도'] || '-') + '</b></td>' +
+              '<td class="' + esc(r._c_press || '') + '">' + esc(r['균질압'] || '-') + '</td>' +
+              '<td class="' + esc(r._c_hold || '') + '">' + esc(r['멸균시간'] || '-') + '</td>' +
+              '<td>' + esc(r['유량_냉각'] || '-') + '</td>' +
+              '<td class="' + esc(r._c_flt || '') + '">' + esc(r['여과망_서명'] || '-') + '</td>' +
+              '<td class="td-left ' + esc(r._c_rem || '') + '">' + esc(r['특이사항'] || '없음') + '</td>' +
+            '</tr>';
+          }).join('') : '<tr><td colspan="10" class="cell-gray">연동된 상온 UHT 멸균기 CCP 기록이 없습니다.</td></tr>') +
+          '</tbody></table></div>' +
+      '</div>' +
+      (rtCcp3b.length ?
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>②-2 당일 CCP-3B 무균포장기 공정관리 (과산화수소 농도 · 살균온도)</span><span class="badge badge-info">포장기 무균검증</span></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>생산일자</th><th>점검항목</th><th>관리기준</th><th>적용설비</th><th>A호기</th><th>B호기</th><th>C호기</th><th>D호기</th><th>E호기</th><th>F호기</th></tr></thead>' +
+          '<tbody>' +
+          rtCcp3b.map(function(r) {
+            const cm = r._cls_map || {};
+            const thos = r._target_hos || [];
+            return '<tr>' +
+              '<td><b>' + esc(r['생산일자'] || '-') + '</b></td>' +
+              '<td><b>' + esc(r['항목'] || '-') + '</b></td>' +
+              '<td>' + esc(r['관리기준'] || '-') + '</td>' +
+              '<td>' + esc(r['적용설비'] || '-') + '</td>' +
+              ['A호기', 'B호기', 'C호기', 'D호기', 'E호기', 'F호기'].map(function(h) {
+                const isTarget = thos.indexOf(h) !== -1;
+                const st = isTarget ? 'outline:2px solid #003378; font-weight:900;' : 'opacity:0.75;';
+                return '<td class="' + esc(cm[h] || '') + '" style="' + st + '">' + esc(r[h] || '-') + '</td>';
+              }).join('') +
+            '</tr>';
+          }).join('') +
+          '</tbody></table></div>' +
+      '</div>' : '') +
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>③ 두유 배양검사 일보 (37℃/55℃ 가온배양) 매칭 결과</span><span class="badge badge-ok">' + soy.length + '건 매칭</span></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>생산일자</th><th>포장기</th><th>배양구분</th><th>품목명</th><th>표기 소비기한</th><th>검사일(개봉일)</th><th>시작~종료</th><th>총검사수량</th><th>오염수량</th><th>검사자</th><th>최종판정</th></tr></thead>' +
+          '<tbody>' +
+          (soy.length ? soy.map(function(s) {
+            const jVal = s['판정'] || '적합';
+            const pCls = String(jVal).indexOf('부적합') !== -1 ? 'cell-red' : (jVal === '검사전' ? 'cell-yellow' : 'cell-green');
+            return '<tr>' +
+              '<td><b>' + esc(s['생산일자']) + '</b></td>' +
+              '<td><b>' + esc(s['포장기']) + '</b></td>' +
+              '<td>' + esc(s['배양구분'] || '-') + '</td>' +
+              '<td class="td-left"><strong>' + esc(s['품목명']) + '</strong></td>' +
+              '<td><b>' + esc(s['표기소비기한_원문'] || '-') + '</b></td>' +
+              '<td>' + esc(s['검사일자'] || '-') + '</td>' +
+              '<td>' + esc(s['생산시간'] || '-') + '</td>' +
+              '<td>' + esc(s['총검사수량'] || '-') + '</td>' +
+              '<td>' + esc(s['오염수량'] || '0') + '</td>' +
+              '<td>' + esc(s['검사자'] || '-') + '</td>' +
+              '<td class="' + pCls + '">' + esc(jVal) + '</td>' +
+            '</tr>';
+          }).join('') : '<tr><td colspan="11" class="cell-gray">일치하는 두유 배양검사 이력이 없습니다.</td></tr>') +
+          '</tbody></table></div>' +
       '</div>';
   }
 }

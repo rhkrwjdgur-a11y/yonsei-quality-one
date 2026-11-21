@@ -3908,18 +3908,71 @@ def make_law_id(tab_name: str, law_name: str, enf_raw: str, notice_raw: str) -> 
     return hashlib.md5(raw_key.encode("utf-8")).hexdigest()[:10]
 
 
-def is_broken_or_overlong_summary(s: str) -> bool:
+def is_broken_or_overlong_summary(s: str, full_content: str = "") -> bool:
     if not s:
         return True
     t = s.strip()
-    if len(t) <= 8:
-        return True
-    if len(t) > 130:
+    if len(t) <= 8 or len(t) > 155:
         return True
     ns = re.sub(r"\s+", "", t)
     if ns in ["개정이유", "1.개정이유", "주요내용", "2.주요내용"] or ns.startswith("개정이유·") or ns.startswith("개정이유:") or ns.startswith("1.개정이유"):
         return True
+    # 기호로 끝나거나 조사가 잘린 채 끝나는 경우 불완전 요약으로 판정
+    if t[-1] in ("·", ",", "/", ":", "-", "(", "「", "『", "‘", "'"):
+        return True
+    if re.search(r"\s+(?:및|또는|등을|등을|관한|따른|위한|하여|에서|으로|에게|부터)$", t):
+        return True
+    last_tok = t.split()[-1].rstrip(".,)")
+    if len(last_tok) >= 1 and re.search(r"(?:을|를|이|가|은|는|의|에|로)$", last_tok):
+        if not re.search(r"(?:강화|완화|신설|개정|추가|확대|축소|제외|포함|명확화|구체화|허용|금지|의무화|합리화|정비|개선|마련|적용|시행|폐지|조정|변경|확인|준수|관리|표시|고시|처분|기준|대상|시설|절차|방법|요건)$", last_tok):
+            return True
+    # 이전 56자 강제 슬라이싱으로 단어 중간이 잘린 경우(예: '식품제' -> 원문에는 '식품제조') 자동 감지
+    if full_content and len(last_tok) >= 2:
+        idx = full_content.find(last_tok)
+        if idx != -1 and (idx + len(last_tok)) < len(full_content):
+            nxt_ch = full_content[idx + len(last_tok)]
+            if re.match(r"[가-힣A-Za-z0-9]", nxt_ch) and nxt_ch not in ("함", "됨"):
+                return True
     return False
+
+
+def smart_trim_korean_clause(text: str, limit: int) -> str:
+    """글자 인덱스 강제 절단 없이, 반드시 어절 경계에서 끊고 조사 어미를 정리하여 완결성 보장"""
+    s = re.sub(r"\s+", " ", str(text or "")).strip(" ,./·:-")
+    if len(s) <= limit:
+        return s
+
+    # 3개 이상 나열된 품목(A, B, C, D 및 E)이 있으면 'A, B 등'으로 먼저 자연스럽게 축약
+    s_compact = re.sub(
+        r"([가-힣A-Za-z0-9]+)\s*,\s*([가-힣A-Za-z0-9]+)\s*,\s*[가-힣A-Za-z0-9,\s·]+?(?:및|또는)\s*[가-힣A-Za-z0-9\s·]+?(?=\s*(?:을|를|의|에| 등| 원재료| 포함| 제외| 추가| 삭제))",
+        r"\1·\2 등",
+        s
+    )
+    if len(s_compact) <= limit:
+        return s_compact.strip(" ,./·:-")
+    s = s_compact
+
+    # 마침구절/슬래시/쉼표/공백 순으로 안전한 경계 탐색 (단어 중간 절대 절단 금지)
+    cut = s[:limit + 1]
+    best_pos = -1
+    for sep in [" / ", ", ", " "]:
+        p = cut.rfind(sep)
+        if p >= int(limit * 0.55):
+            best_pos = p
+            break
+    if best_pos == -1:
+        sp = s.find(" ", limit)
+        trimmed = s[:sp] if sp != -1 else s
+    else:
+        trimmed = cut[:best_pos]
+
+    trimmed = trimmed.strip(" ,./·:-(")
+    # 끝에 남은 불완전 연결어·조사 정리
+    trimmed = re.sub(r"\s+(?:및|또는|관한|따른|위한|하여|에서|으로)$", "", trimmed).strip(" ,./·:-")
+    trimmed = re.sub(r"(?<=[가-힣]{2})(?:을|를|은|는)$", "", trimmed)
+    if trimmed.count("(") > trimmed.count(")"):
+        trimmed = trimmed[:trimmed.rfind("(")].strip(" ,./·:-")
+    return trimmed
 
 
 def compress_legal_clause_line(clause: str) -> str:
@@ -3930,16 +3983,21 @@ def compress_legal_clause_line(clause: str) -> str:
     s = re.sub(r"의사,\s*치과의사,\s*한의사[^,]*대학교수\s*또는\s*그\s*밖의\s*사람이", "의료인·전문가가", s)
     s = re.sub(r"인공지능시스템을\s*이용하여\s*생성한\s*실제와\s*구분하기\s*어려운\s*가상의\s*음향,\s*이미지\s*또는\s*영상\s*등을\s*활용한\s*광고로서", "AI 가상 생성물 활용", s)
     s = re.sub(r"유병률,\s*중증도,\s*국제기준과의\s*조화\s*등을\s*종합적으로\s*고려하여\s*", "", s)
+    s = re.sub(r"허가받은\s*축산물\s*작업장\s*외의\s*장소에서\s*축산물의\s*가공\s*[·,]\s*포장\s*또는\s*보관이\s*가능한\s*식품\s*제조\s*시설을\s*", "작업장 외 축산물 가공·보관 시설을 ", s)
+    s = re.sub(r"한식간장,\s*양조간장,\s*산분해간장,\s*효소분해간장,\s*혼합간장\s*및\s*간장을\s*원재료로\s*하여\s*제조\s*[·,]\s*가공한\s*", "간장류(한식·양조·혼합간장 등) 및 이를 원재료로 한 ", s)
     s = re.sub(r"에\s*대한\s*처분\s*기준을\s*명확화(?:함)?", " 처분기준 명확화", s)
     s = re.sub(r"에\s*대한\s*처분\s*기준(?:을)?\s*신설(?:함)?", " 처분기준 신설", s)
-    s = re.sub(r"할\s*수\s*있도록\s*(?:함|개정|완화|신설)", " 허용", s)
-    s = re.sub(r"하도록\s*(?:함|규정함|개정함|명시함)", "", s)
+    s = re.sub(r"할\s*수\s*있도록\s*(?:함|개정함?|완화함?|신설함?)", " 허용", s)
+    s = re.sub(r"(?:을|를)\s*할\s*수\s*있게\s*(?:함|개정함?)", " 허용", s)
+    s = re.sub(r"하도록\s*(?:규정함|개정함|명시함|함)", "", s)
     s = re.sub(r"(?:을|를)\s*구체적으로\s*명시(?:함)?", " 구체화", s)
-    s = re.sub(r"\s+", " ", s).strip(" ,./:-")
+    s = re.sub(r"(?:으로|로)\s*정함\.?$", "", s)
+    s = re.sub(r"(?:함|됨)\.?$", "", s)
+    s = re.sub(r"\s+", " ", s).strip(" ,./·:-")
     return s
 
 
-def extract_concise_law_summary(law_name: str, content_str: str, max_len: int = 96) -> str:
+def extract_concise_law_summary(law_name: str, content_str: str, max_len: int = 112) -> str:
     raw = str(content_str or "").strip()
     t = str(law_name or "").strip()
     if not raw or raw == "-":
@@ -3982,31 +4040,28 @@ def extract_concise_law_summary(law_name: str, content_str: str, max_len: int = 
             clauses.append(comp)
 
     if not clauses:
-        fallback = compress_legal_clause_line(target_body)
-        if len(fallback) > max_len:
-            fallback = fallback[:max_len - 1].rstrip(" ,/·-")
+        fallback = smart_trim_korean_clause(compress_legal_clause_line(target_body), max_len)
         return fallback if fallback else f"{t} 세부 개정내용 확인"
 
-    picked = []
-    cur_len = 0
-    for idx, cl in enumerate(clauses):
-        if len(cl) > 58:
-            cl = cl[:56].rstrip(" ,/·-")
-        sep_len = 3 if picked else 0
-        if cur_len + sep_len + len(cl) <= max_len or idx == 0:
-            picked.append(cl)
-            cur_len += sep_len + len(cl)
-        if len(picked) >= 2 or cur_len >= max_len - 12:
-            break
+    # 단일 핵심 조항이 길면 1개 문장을 온전히 보존(최대 105자 어절단위), 짧은 조항이면 2개 결합
+    if len(clauses[0]) >= 58:
+        summary_out = smart_trim_korean_clause(clauses[0], max_len)
+    else:
+        c1 = smart_trim_korean_clause(clauses[0], 64)
+        if len(clauses) >= 2:
+            remain = max_len - len(c1) - 3
+            if remain >= 22:
+                c2 = smart_trim_korean_clause(clauses[1], remain)
+                summary_out = f"{c1} / {c2}" if c2 else c1
+            else:
+                summary_out = c1
+        else:
+            summary_out = c1
 
-    summary_out = " / ".join(picked)
     missing_q = [q for q in quoted_keywords[:4] if q not in summary_out]
-    if missing_q and len(summary_out) <= max_len - 15:
+    if missing_q and len(summary_out) <= max_len - 18:
         q_str = "·".join(missing_q[:3])
         summary_out = f"{summary_out} ({q_str} 등)"
-
-    if len(summary_out) > max_len + 8:
-        summary_out = summary_out[:max_len + 5].rstrip(" ,/·-(")
 
     return summary_out
 
@@ -4267,7 +4322,7 @@ def fetch_law_info_sheet(sheet_urls_map: dict):
             if cached_s_obj and cached_s_obj.get("summary"):
                 saved_s = cached_s_obj["summary"]
                 saved_m = cached_s_obj.get("method", "auto_2line")
-                if saved_m in ("manual", "gemini") or not is_broken_or_overlong_summary(saved_s):
+                if saved_m == "manual" or (not is_broken_or_overlong_summary(saved_s, content_full)):
                     short_sum = saved_s
                 else:
                     short_sum = extract_concise_law_summary(law_nm, content_full)

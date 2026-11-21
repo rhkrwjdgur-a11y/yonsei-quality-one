@@ -1489,21 +1489,29 @@
       align-items: flex-start;
       gap: 11px;
     }
-    .auth-feat-icon {
-      font-size: 18px;
+    .auth-feat-num {
+      font-size: 12px;
+      font-weight: 800;
+      color: #93C5FD;
+      background: rgba(147, 197, 253, 0.14);
+      border: 1px solid rgba(147, 197, 253, 0.3);
+      border-radius: 6px;
+      padding: 3px 7px;
       line-height: 1.2;
       flex-shrink: 0;
+      margin-top: 1px;
+      letter-spacing: 0.3px;
     }
     .auth-feat-title {
       font-size: 13.5px;
       font-weight: 800;
       color: #FFFFFF;
-      margin-bottom: 2px;
+      margin-bottom: 3px;
     }
     .auth-feat-desc {
       font-size: 12px;
       color: #CBD5E1;
-      line-height: 1.38;
+      line-height: 1.4;
     }
 
     .auth-form-side {
@@ -1829,12 +1837,11 @@
 <!-- ======================= Q-Safety 와이드 2단 로그인 포털 ======================= -->
 <div class="auth-gate-backdrop" id="authGate">
   <div class="auth-portal-shell">
-    <!-- 좌측: 연세유업 브랜드 & 통합관제 4대 핵심 영역 소개 -->
+    <!-- 좌측: 연세유업 브랜드 & 통합관제 주요 영역 안내 -->
     <div class="auth-brand-side">
       <div>
         <div class="auth-brand-badge">
-          <span class="live-dot"></span>
-          <span>YONSEI DAIRY · ASAN PLANT</span>
+          <span>YONSEI DAIRY ASAN PLANT</span>
         </div>
         <div style="display:flex; align-items:center; gap:14px; margin-bottom:10px;">
           <img src="/img-symbol1.png" alt="연세유업" style="width:62px; height:62px; border-radius:50%; background:#FFFFFF; padding:4px; box-shadow:0 6px 16px rgba(0,0,0,0.25);" onerror="this.style.display='none'" />
@@ -1846,39 +1853,39 @@
 
         <div class="auth-feature-list">
           <div class="auth-feat-item">
-            <span class="auth-feat-icon">🏭</span>
+            <span class="auth-feat-num">01</span>
             <div>
-              <div class="auth-feat-title">공정 · 배양 · 미생물 실시간 통합 관제</div>
-              <div class="auth-feat-desc">상온 멸균 · 유제품(카톤/병/발효) · 두유배양 · 미생물 출고판정 상시 연동</div>
+              <div class="auth-feat-title">공정 및 배양, 미생물 실시간 통합 관제</div>
+              <div class="auth-feat-desc">상온 멸균, 유제품(카톤/병/발효), 두유배양, 미생물 출고판정 상시 연동</div>
             </div>
           </div>
           <div class="auth-feat-item">
-            <span class="auth-feat-icon">⚖️</span>
+            <span class="auth-feat-num">02</span>
             <div>
-              <div class="auth-feat-title">표시사항 심의 · 개정 법규 RISK 선제 차단</div>
-              <div class="auth-feat-desc">AI 법령 핵심 요약 · 시행 D-Day 부자재 불용방지 · 신규 알레르기 검증</div>
+              <div class="auth-feat-title">표시사항 심의 및 개정 법규 리스크 관리</div>
+              <div class="auth-feat-desc">법령 개정 핵심 요약, 시행일 기준 부자재 불용방지, 알레르기 검증</div>
             </div>
           </div>
           <div class="auth-feat-item">
-            <span class="auth-feat-icon">🔍</span>
+            <span class="auth-feat-num">03</span>
             <div>
-              <div class="auth-feat-title">냉장 · 상온 LOT 즉시 역추적</div>
-              <div class="auth-feat-desc">제품명·소비기한 기반 포장시간 · 살균/멸균 CCP · 공통원액(주1~12) 교차 조회</div>
+              <div class="auth-feat-title">냉장 및 상온 제품 LOT 역추적</div>
+              <div class="auth-feat-desc">제품명 및 소비기한 기반 포장시간, 살균/멸균 CCP, 공통원액 교차 조회</div>
             </div>
           </div>
           <div class="auth-feat-item">
-            <span class="auth-feat-icon">📊</span>
+            <span class="auth-feat-num">04</span>
             <div>
-              <div class="auth-feat-title">부문 8대 KPI 현황판 & 계절성 예측</div>
-              <div class="auth-feat-desc">원가절감 · 클레임 발생률 통계 예측 · 외부심사 및 협력업체 통합 관리</div>
+              <div class="auth-feat-title">품질안전부문 8대 KPI 현황 및 추이 분석</div>
+              <div class="auth-feat-desc">원가절감, 클레임 발생률 통계 예측, 외부심사 및 협력업체 통합 관리</div>
             </div>
           </div>
         </div>
       </div>
 
       <div style="font-size:12px; color:#93C5FD; font-weight:600; border-top:1px solid rgba(255,255,255,0.14); padding-top:12px; display:flex; justify-content:space-between;">
-        <span>연세유업 아산공장 품질안전부문 (식품안전팀 · 품질관리팀)</span>
-        <span>인가 임직원 전용</span>
+        <span>연세유업 아산공장 품질안전부문 (식품안전팀 / 품질관리팀)</span>
+        <span>임직원 전용</span>
       </div>
     </div>
 
@@ -1898,7 +1905,7 @@
       <form id="authPaneLogin" onsubmit="event.preventDefault(); submitQsafetyLogin();">
         <div class="form-row" style="margin-bottom:14px;">
           <label class="form-lbl" for="inpAuthEmpNo">사번</label>
-          <input type="text" id="inpAuthEmpNo" class="form-ctrl" placeholder="사번 8자리 입력 (예: 20220403)" inputmode="numeric" autocomplete="username" />
+          <input type="text" id="inpAuthEmpNo" class="form-ctrl" placeholder="사번 8자리 입력" inputmode="numeric" autocomplete="username" />
         </div>
         <div class="form-row" style="margin-bottom:12px;">
           <label class="form-lbl" for="inpAuthPw">비밀번호 <span style="font-weight:700; color:#0052B4; font-size:12px;">(초기 비밀번호 : 000)</span></label>
@@ -1913,13 +1920,13 @@
           </label>
         </div>
         <div id="authErrMsg" style="display:none; margin-bottom:14px; padding:10px 12px; border-radius:8px; background:#FEF2F2; border:1px solid #FCA5A5; color:#B91C1C; font-size:13px; font-weight:700; line-height:1.4;"></div>
-        <button type="submit" id="btnDoLogin" class="auth-submit-btn">로그인하여 대시보드 열기</button>
+        <button type="submit" id="btnDoLogin" class="auth-submit-btn">로그인</button>
       </form>
 
       <!-- [탭 2] 신규 사번 신청 -->
       <form id="authPaneReq" style="display:none;" onsubmit="event.preventDefault(); submitAccessRequest();">
         <div class="form-row">
-          <label class="form-lbl">성명 *</label>
+          <label class="form-lbl">성명</label>
           <input type="text" id="inpReqName" class="form-ctrl" placeholder="성명 입력" />
         </div>
         <div style="display:grid; grid-template-columns:1fr 1.3fr; gap:8px;">
@@ -1933,11 +1940,11 @@
           </div>
         </div>
         <div class="form-row" style="margin-bottom:14px;">
-          <label class="form-lbl">사번 *</label>
+          <label class="form-lbl">사번</label>
           <input type="text" id="inpReqEmpNo" class="form-ctrl" placeholder="사번 8자리 입력" inputmode="numeric" />
         </div>
         <div id="authReqMsg" style="display:none; margin-bottom:12px; padding:10px 12px; border-radius:8px; font-size:13px; font-weight:700;"></div>
-        <button type="submit" class="auth-submit-btn">관리자 승인 요청하기</button>
+        <button type="submit" class="auth-submit-btn">계정 등록 신청</button>
       </form>
     </div>
   </div>

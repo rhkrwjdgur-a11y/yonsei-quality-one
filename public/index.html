@@ -1,69 +1,4 @@
 <!DOCTYPE html>
-/* ==================== Q-Safety 깔끔한 정통 로그인 화면 & 좌측 환영 박스 ==================== */
-    .auth-gate-backdrop {
-      position: fixed;
-      inset: 0;
-      z-index: 500;
-      background: radial-gradient(circle at 50% 28%, #003A88 0%, #002352 62%, #001533 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .auth-gate-backdrop.hidden { display: none; }
-    .auth-card {
-      width: 100%;
-      max-width: 420px;
-      background: #FFFFFF;
-      border-radius: 16px;
-      padding: 32px 28px 26px;
-      box-shadow: 0 24px 55px rgba(0, 10, 28, 0.5);
-      border-top: 5px solid var(--yonsei-mid);
-    }
-    .sidebar-user-welcome {
-      margin-bottom: 8px;
-      padding: 8px 10px;
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(147, 197, 253, 0.28);
-      display: none;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .suw-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 6px;
-      font-size: 12.5px;
-      font-weight: 800;
-      color: #FFFFFF;
-    }
-    .suw-logout {
-      border: none;
-      background: rgba(255,255,255,0.14);
-      color: #FCA5A5;
-      font-size: 10.5px;
-      font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .suw-logout:hover { background: rgba(239,68,68,0.28); color: #FFFFFF; }
-    .suw-pw-link {
-      border: none;
-      background: none;
-      padding: 0;
-      text-align: left;
-      color: #FDE68A;
-      font-size: 11px;
-      font-weight: 700;
-      cursor: pointer;
-      text-decoration: underline;
-      text-underline-offset: 2px;
-    }
-    .suw-pw-link:hover { color: #FFFFFF; }
-
 <!-- ==========================================================================
   [public/index.html - PART 1 / 4]
   Q-Safety 프론트엔드 (화면배율 연동 무스크롤 CSS · 8대 KPI 장표 스타일 · 좌측 메뉴 복원 · 통합 대시보드 4분할)
@@ -1481,6 +1416,71 @@
       display: none;
       box-shadow: 0 8px 20px rgba(0,0,0,0.25);
     }
+    /* ==================== Q-Safety 깔끔한 정통 로그인 화면 & 좌측 환영 박스 ==================== */
+    .auth-gate-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 500;
+      background: radial-gradient(circle at 50% 28%, #003A88 0%, #002352 62%, #001533 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .auth-gate-backdrop.hidden { display: none; }
+    .auth-card {
+      width: 100%;
+      max-width: 420px;
+      background: #FFFFFF;
+      border-radius: 16px;
+      padding: 32px 28px 26px;
+      box-shadow: 0 24px 55px rgba(0, 10, 28, 0.5);
+      border-top: 5px solid var(--yonsei-mid);
+    }
+    .sidebar-user-welcome {
+      margin-bottom: 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(147, 197, 253, 0.28);
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .suw-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      font-size: 12.5px;
+      font-weight: 800;
+      color: #FFFFFF;
+    }
+    .suw-logout {
+      border: none;
+      background: rgba(255,255,255,0.14);
+      color: #FCA5A5;
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .suw-logout:hover { background: rgba(239,68,68,0.28); color: #FFFFFF; }
+    .suw-pw-link {
+      border: none;
+      background: none;
+      padding: 0;
+      text-align: left;
+      color: #FDE68A;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .suw-pw-link:hover { color: #FFFFFF; }
+
   </style>
 </head>
 <body>
@@ -5634,7 +5634,7 @@ function renderAdminUsersModalBody(users) {
       '</div>' +
     '</div>' +
     '<div class="tbl-wrap" style="max-height:360px; overflow-y:auto;"><table class="data-tbl">' +
-      '<thead><tr><th>상태</th><th>성명</th><th>직급</th><th>소속·직책</th><th>사번</th><th>비번상태</th><th>최근 접속</th><th>관리</th></tr></thead>' +
+      '<thead><tr><th>상태</th><th>권한</th><th>성명</th><th>직급</th><th>소속·직책</th><th>사번</th><th>비번상태</th><th>최근 접속</th><th>관리</th></tr></thead>' +
       '<tbody>' +
       users.map(function(u) {
         const st = u['상태'] || '정상';
@@ -5651,7 +5651,11 @@ function renderAdminUsersModalBody(users) {
           btns += '<button class="btn btn-sm" style="color:var(--err-fg);" onclick="adminActionUser(\'delete\', \'' + esc(u['사번']) + '\')">삭제</button>';
         }
         return '<tr>' +
+          const rl = u['권한'] || '실무자';
+        const rlCls = rl === '관리자' ? 'badge-purple' : 'badge-neutral';
+        return '<tr>' +
           '<td><span class="badge ' + stCls + '">' + esc(st) + '</span></td>' +
+          '<td><span class="badge ' + rlCls + '">' + esc(rl) + '</span></td>' +
           '<td><b>' + esc(u['성명']) + '</b></td>' +
           '<td>' + esc(u['직급']) + '</td>' +
           '<td class="td-left">' + esc(u['소속_직책']) + '</td>' +
@@ -5713,3 +5717,6 @@ window.addEventListener('DOMContentLoaded', async function() {
     }
   }, 180000);
 });
+</script>
+</body>
+</html>

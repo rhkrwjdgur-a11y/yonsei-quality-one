@@ -4243,10 +4243,10 @@ def smart_trim_korean_clause(text: str, limit: int = 105) -> str:
         trimmed = cut[:best_pos]
 
    trimmed = trimmed.strip(" ,./·:-(")
-    trimmed = re.sub(r"\s+(?:및|또는|관한|따른|위한|하여|에서|으로|대하여)$", "", trimmed).strip(" ,./·:-")
-    trimmed = re.sub(r"(?<=[가-힣]{2})(?:을|를|은|는)$", "", trimmed)
+   trimmed = re.sub(r"\s+(?:및|또는|관한|따른|위한|하여|에서|으로|대하여)$", "", trimmed).strip(" ,./·:-")
+   trimmed = re.sub(r"(?<=[가-힣]{2})(?:을|를|은|는)$", "", trimmed)
     if trimmed.count("(") > trimmed.count(")"):
-        trimmed = trimmed[:trimmed.rfind("(")].strip(" ,./·:-")
+       trimmed = trimmed[:trimmed.rfind("(")].strip(" ,./·:-")
     return trimmed
 
 

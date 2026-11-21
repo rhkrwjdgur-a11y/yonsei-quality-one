@@ -865,6 +865,8 @@ def expand_micro_alias_pool(rep_name: str, saved_alias_col: str = "", custom_not
             parts.append("저당바나바잎, 연세바나바잎, 세브란스 저당 바나바잎")
         if "헛개" in rep_ns:
             parts.append("연세헛개, 헛개나무, 세브란스 헛개")
+        if "활력플러스" in rep_ns:
+            parts.append("활력플러스, 세브란스 활력플러스, 연세 활력플러스")
         if "a2" in rep_low and "greek" not in rep_low:
             parts.append("A2 단백우유, 세브란스 A2 단백 우유, 전용목장 A2단백우유, A2단백우유")
         if "어린이" in rep_ns:
@@ -928,8 +930,9 @@ def is_product_match(
         rec_candidates = [rec_raw]
 
     hint_ns = re.sub(r"\s+", "", str(record_line_hint or "")).lower()
-    hint_is_bottle = ("병" in hint_ns)
-    hint_is_carton = ("카톤" in hint_ns) and not hint_is_bottle
+    is_ferm_hint = ("발효" in hint_ns) or ("호상" in hint_ns)
+    hint_is_bottle = ("병" in hint_ns) and (not is_ferm_hint)
+    hint_is_carton = ("카톤" in hint_ns) and (not hint_is_bottle) and (not is_ferm_hint)
 
     queries = []
     if has_exact_sel:
@@ -998,10 +1001,10 @@ def is_product_match(
                 if q_core == rc_core:
                     cand_matched = True
                     break
-                # '연세 전용목장 우유' <-> '전용목장 우유' 처럼 '연세/전용목장' 유무 차이만 허용하되 타 브랜드('푸르밀 딸기' 등)는 완전 차단
-                q_strip_ys = re.sub(r"^(?:연세대학교|연세우유|연세)", "", q_core)
-                r_strip_ys = re.sub(r"^(?:연세대학교|연세우유|연세)", "", rc_core)
-                if len(q_strip_ys) >= 4 and q_strip_ys == r_strip_ys:
+                # 자사 브랜드 접두어('연세'·'세브란스') 생략 차이만 허용하되 타사 브랜드('푸르밀'·'오늘좋은' 등) 혼입은 완전 차단
+                q_strip_ys = re.sub(r"^(?:연세대학교|연세우유|연세|세브란스)", "", q_core)
+                r_strip_ys = re.sub(r"^(?:연세대학교|연세우유|연세|세브란스)", "", rc_core)
+                if len(q_strip_ys) >= 3 and q_strip_ys == r_strip_ys:
                     cand_matched = True
                     break
             else:

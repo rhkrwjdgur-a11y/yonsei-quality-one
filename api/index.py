@@ -3936,13 +3936,17 @@ def is_broken_or_overlong_summary(s: str, full_content: str = "") -> bool:
     return False
 
 
-def smart_trim_korean_clause(text: str, limit: int) -> str:
-    """글자 인덱스 강제 절단 없이, 반드시 어절 경계에서 끊고 조사 어미를 정리하여 완결성 보장"""
+def smart_trim_korean_clause(text: str, limit: int = 105) -> str:
+    """
+    1) 길이는 무조건 limit(기본 105자, 1~2줄) 이하로 엄격 제한
+    2) 단어 중간 절단 원천 금지
+    3) limit 초과 장문일 때 한국어 법령의 맨 끝 핵심 결론(확대·신설·허용·완화 등)을 보존
+    """
     s = re.sub(r"\s+", " ", str(text or "")).strip(" ,./·:-")
     if len(s) <= limit:
         return s
 
-    # 3개 이상 나열된 품목(A, B, C, D 및 E)이 있으면 'A, B 등'으로 먼저 자연스럽게 축약
+    # 3개 이상 나열된 품목(A, B, C 및 D)은 'A·B 등'으로 먼저 압축
     s_compact = re.sub(
         r"([가-힣A-Za-z0-9]+)\s*,\s*([가-힣A-Za-z0-9]+)\s*,\s*[가-힣A-Za-z0-9,\s·]+?(?:및|또는)\s*[가-힣A-Za-z0-9\s·]+?(?=\s*(?:을|를|의|에| 등| 원재료| 포함| 제외| 추가| 삭제))",
         r"\1·\2 등",
@@ -3952,7 +3956,26 @@ def smart_trim_korean_clause(text: str, limit: int) -> str:
         return s_compact.strip(" ,./·:-")
     s = s_compact
 
-    # 마침구절/슬래시/쉼표/공백 순으로 안전한 경계 탐색 (단어 중간 절대 절단 금지)
+    # 문장 맨 끝에 법령 핵심 결론어(마지막 2~3어절)가 있으면 따로 확보하여 보존
+    tail_conclusion = ""
+    m_tail = re.search(
+        r"\s+([가-힣A-Za-z0-9·\(\)]+\s+(?:표시대상\s*)?(?:강화|완화|신설|개정|추가|확대|축소|제외|포함|명확화|구체화|허용|금지|의무화|면제|합리화|정비|개선|변경|조정|폐지|마련|적용|시행|처분기준\s*신설|처분기준\s*명확화))$",
+        s
+    )
+    if m_tail and len(m_tail.group(1)) <= 28:
+        tail_conclusion = m_tail.group(1).strip()
+
+    if tail_conclusion and limit >= (len(tail_conclusion) + 25):
+        head_budget = limit - len(tail_conclusion) - 3
+        cut_h = s[:head_budget + 1]
+        pos_h = max(cut_h.rfind(", "), cut_h.rfind(" "))
+        head_part = cut_h[:pos_h] if pos_h >= int(head_budget * 0.5) else cut_h[:head_budget]
+        head_part = head_part.strip(" ,./·:-(")
+        head_part = re.sub(r"\s+(?:및|또는|관한|따른|위한|하여|에서|으로|대하여)$", "", head_part).strip(" ,./·:-")
+        if head_part.count("(") > head_part.count(")"):
+            head_part = head_part[:head_part.rfind("(")].strip(" ,./·:-")
+        return f"{head_part} → {tail_conclusion}"
+
     cut = s[:limit + 1]
     best_pos = -1
     for sep in [" / ", ", ", " "]:
@@ -3962,9 +3985,16 @@ def smart_trim_korean_clause(text: str, limit: int) -> str:
             break
     if best_pos == -1:
         sp = s.find(" ", limit)
-        trimmed = s[:sp] if sp != -1 else s
+        trimmed = s[:sp] if sp != -1 else s[:limit]
     else:
         trimmed = cut[:best_pos]
+
+    trimmed = trimmed.strip(" ,./·:-(")
+    trimmed = re.sub(r"\s+(?:및|또는|관한|따른|위한|하여|에서|으로|대하여)$", "", trimmed).strip(" ,./·:-")
+    trimmed = re.sub(r"(?<=[가-힣]{2})(?:을|를|은|는)$", "", trimmed)
+    if trimmed.count("(") > trimmed.count(")"):
+        trimmed = trimmed[:trimmed.rfind("(")].strip(" ,./·:-")
+    return trimmed
 
     trimmed = trimmed.strip(" ,./·:-(")
     # 끝에 남은 불완전 연결어·조사 정리
@@ -4314,7 +4344,8 @@ def fetch_law_info_sheet(sheet_urls_map: dict):
 
                 raw_parsed_items.append((t_name, tab_has_notice, last_ministry, law_nm, content_full, notice_raw, enf_raw, rel_raw, lid))
 
-        ai_budget = 3 if (1 <= missing_laws_count <= 4) else 0
+        # 서버 타임아웃 없이 한 번 동기화할 때마다 최대 4건씩 Gemini AI 요약을 생성하여 _법규요약DB에 영구 축적
+        ai_budget = 4
         ai_used = 0
 
         for (t_name, tab_has_notice, last_ministry, law_nm, content_full, notice_raw, enf_raw, rel_raw, lid) in raw_parsed_items:
@@ -4325,20 +4356,23 @@ def fetch_law_info_sheet(sheet_urls_map: dict):
                 if saved_m == "manual" or (not is_broken_or_overlong_summary(saved_s, content_full)):
                     short_sum = saved_s
                 else:
-                    short_sum = extract_concise_law_summary(law_nm, content_full)
-                    summary_db_map[lid] = {"summary": short_sum, "method": "auto_2line", "updated_at": now_s}
+                    ai_txt = generate_gemini_law_summary_single(law_nm, content_full) if ai_used < ai_budget else None
+                    if ai_txt and not is_broken_or_overlong_summary(ai_txt):
+                        ai_used += 1
+                        short_sum = ai_txt
+                        summary_db_map[lid] = {"summary": short_sum, "method": "gemini", "updated_at": now_s}
+                    else:
+                        short_sum = extract_concise_law_summary(law_nm, content_full, max_len=105)
+                        summary_db_map[lid] = {"summary": short_sum, "method": "auto_2line", "updated_at": now_s}
                     sdb_dirty = True
             else:
-                ai_txt = None
-                if ai_used < ai_budget:
-                    ai_txt = generate_gemini_law_summary_single(law_nm, content_full)
-                    if ai_txt:
-                        ai_used += 1
-                if ai_txt:
+                ai_txt = generate_gemini_law_summary_single(law_nm, content_full) if ai_used < ai_budget else None
+                if ai_txt and not is_broken_or_overlong_summary(ai_txt):
+                    ai_used += 1
                     short_sum = ai_txt
                     summary_db_map[lid] = {"summary": short_sum, "method": "gemini", "updated_at": now_s}
                 else:
-                    short_sum = extract_concise_law_summary(law_nm, content_full)
+                    short_sum = extract_concise_law_summary(law_nm, content_full, max_len=105)
                     summary_db_map[lid] = {"summary": short_sum, "method": "auto_2line", "updated_at": now_s}
                 sdb_dirty = True
 

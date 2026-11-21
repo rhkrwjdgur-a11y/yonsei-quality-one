@@ -3051,12 +3051,17 @@ function renderRuntimeCardsHtml(timesList) {
   '</div>';
 }
 
+function isDairyActiveStatus(st) {
+  const s = String(st || '');
+  return s.indexOf('금일생산') !== -1 || s.indexOf('생산마감') !== -1;
+}
+
 function renderDairyPackTableHtml(rows, isBottleMode) {
-  const activeOnly = (rows || []).filter(function(r) { return String(r['가동여부'] || '').indexOf('금일생산') !== -1; });
+  const activeOnly = (rows || []).filter(function(r) { return isDairyActiveStatus(r['가동여부']); });
   const targetRows = activeOnly.length ? activeOnly : (rows || []);
 
   if (!targetRows.length) {
-    return '<div class="tbl-wrap"><table class="data-tbl"><tbody><tr><td class="cell-gray">금일 생산 기록이 없습니다.</td></tr></tbody></table></div>';
+    return '<div class="tbl-wrap"><table class="data-tbl"><tbody><tr><td class="cell-gray">해당 일자에 생산 기록이 없습니다.</td></tr></tbody></table></div>';
   }
 
   if (isBottleMode) {
@@ -3064,7 +3069,7 @@ function renderDairyPackTableHtml(rows, isBottleMode) {
       '<thead><tr><th>라인구분</th><th>작성일</th><th>가동여부</th><th>병우유 제품명 (용량)</th><th>확인시간</th><th>표기 소비기한 (Tank)</th><th>표시사항</th><th>캡 속지 접착</th><th>제품용량</th><th>관능(5점법)</th></tr></thead>' +
       '<tbody>' +
       targetRows.map(function(r) {
-        const isRun = String(r['가동여부']).indexOf('금일생산') !== -1;
+        const isRun = isDairyActiveStatus(r['가동여부']);
         return '<tr>' +
           '<td><span class="badge badge-purple">' + esc(r['라인구분']) + '</span></td>' +
           '<td>' + esc(r['작성일']) + '</td>' +
@@ -3085,7 +3090,7 @@ function renderDairyPackTableHtml(rows, isBottleMode) {
     '<thead><tr><th>라인구분</th><th>작성일</th><th>가동여부</th><th>제품명 (용량)</th><th>확인시간</th><th>표기 소비기한 (Tank)</th><th>표시사항</th><th>상부/실링</th><th>하부/라벨</th><th>제품용량</th><th>관능(5점법)</th></tr></thead>' +
     '<tbody>' +
     targetRows.map(function(r) {
-      const isRun = String(r['가동여부']).indexOf('금일생산') !== -1;
+      const isRun = isDairyActiveStatus(r['가동여부']);
       return '<tr>' +
         '<td><span class="badge badge-info">' + esc(r['라인구분']) + '</span></td>' +
         '<td>' + esc(r['작성일']) + '</td>' +
@@ -3103,10 +3108,40 @@ function renderDairyPackTableHtml(rows, isBottleMode) {
     '</tbody></table></div>';
 }
 
-let PROC_RT_SEL_KEY = 'TODAY';   // 'TODAY' | 'YEST' | 'YYYY-MM-DD'
-let PROC_DAIRY_SEL_KEY = 'LIVE'; // 'LIVE' | 'YYYY-MM-DD'
+let PROC_RT_SEL_KEY = 'TODAY';    // 'TODAY' | 'YEST' | 'YYYY-MM-DD'
+let PROC_DAIRY_SEL_KEY = 'TODAY'; // 'TODAY' | 'YEST' | 'YYYY-MM-DD'
 
-function mapHistDairyRowToPackFormat(r) {
+function parseDairySheetIso(rawDt, fallbackIso) {
+  const s = String(rawDt || '').trim();
+  if (!s || s === '-') return '';
+  const mFull = s.match(/(20\d{2})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (mFull) {
+    return mFull[1] + '-' + String(mFull[2]).padStart(2, '0') + '-' + String(mFull[3]).padStart(2, '0');
+  }
+  const mShort = s.match(/(\d{1,2})[\/\.\-](\d{1,2})/);
+  if (mShort) {
+    const yr = (fallbackIso && fallbackIso.length >= 4) ? fallbackIso.slice(0, 4) : String(new Date().getFullYear());
+    return yr + '-' + String(mShort[1]).padStart(2, '0') + '-' + String(mShort[2]).padStart(2, '0');
+  }
+  return fallbackIso || '';
+}
+
+function fmtIsoToSlashMmDd(isoStr) {
+  const s = String(isoStr || '').trim();
+  if (s.length >= 10 && s.charAt(4) === '-') {
+    return s.slice(5, 7) + '/' + s.slice(8, 10);
+  }
+  return s || '-';
+}
+
+function getPrevDayIso(isoStr) {
+  const m = String(isoStr || '').match(/^(20\d{2})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) - 1);
+  return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+}
+
+function mapHistDairyRowToPackFormat(r, isTodayTarget) {
   const sealRaw = String(r['접착_외관_요약'] || r['접착및외관'] || '');
   const mTop = sealRaw.match(/상부\s*:\s*([^/\s]+)/);
   const mBot = sealRaw.match(/하부\s*:\s*([^/\s]+)/);
@@ -3114,7 +3149,7 @@ function mapHistDairyRowToPackFormat(r) {
   return {
     '라인구분': r['라인구분'] || '-',
     '작성일': r['생산일자'] || '-',
-    '가동여부': '금일생산',
+    '가동여부': isTodayTarget ? '금일생산' : '생산마감',
     '제품명': r['제품명'] || '-',
     '확인시간': r['확인시간'] || '-',
     '표기 소비기한': r['표기소비기한_원문'] || '-',
@@ -3220,54 +3255,93 @@ function renderProcessView() {
           '</div>' : '')
       );
 
-  // ==================== [2] 유제품 포장일보 (과거 날짜 클릭 시에도 금일 탭과 동일하게 카톤/병/발효유 분리 표시) ====================
+  // ==================== [2] 유제품 포장일보 (상온과 동일하게 금일 실시간(날짜) · 전일 마감(날짜) · 자동 DB 폴백 적용) ====================
   } else if (PROC_MAIN_TAB === 'dairy') {
+    if (PROC_DAIRY_SEL_KEY === 'LIVE') PROC_DAIRY_SEL_KEY = 'TODAY';
+
+    const todayIso = BUNDLE.loaded_date || '';
     const dyDateSet = {};
     Object.keys(pr.dairy_hist_times_map || {}).forEach(function(d) { if (d) dyDateSet[d] = true; });
     (pr.dairy_hist_p || []).forEach(function(r) { if (r['생산일자']) dyDateSet[r['생산일자']] = true; });
     const histDates = Object.keys(dyDateSet).sort().reverse();
 
-    const isLive = (PROC_DAIRY_SEL_KEY === 'LIVE');
-    let viewMilkTimes = pr.milk_run_times || [];
-    let viewFermTimes = pr.ferm_run_times || [];
-    let viewCartonRows = pr.milk_carton_pack || [];
-    let viewBottleRows = pr.milk_bottle_pack || [];
-    let viewFermRows = pr.ferm_pack || [];
-    let titleDateMilk = pr.milk_date;
-    let titleDateFerm = pr.ferm_date;
+    const liveMilkIso = parseDairySheetIso(pr.milk_date, todayIso);
+    const liveFermIso = parseDairySheetIso(pr.ferm_date, todayIso);
+    const hasTodayEntry = (liveMilkIso === todayIso) || (liveFermIso === todayIso) || Boolean(dyDateSet[todayIso]);
 
-    if (!isLive) {
-      const allTimes = (pr.dairy_hist_times_map && pr.dairy_hist_times_map[PROC_DAIRY_SEL_KEY]) || [];
-      viewMilkTimes = allTimes.filter(function(t) { return String(t['라인구분'] || '').indexOf('발효') === -1; });
-      viewFermTimes = allTimes.filter(function(t) { return String(t['라인구분'] || '').indexOf('발효') !== -1; });
+    const dairyTodayIso = hasTodayEntry ? todayIso : (histDates[0] || todayIso);
+    const calYestIso = getPrevDayIso(dairyTodayIso);
+    const dairyYestIso = dyDateSet[calYestIso]
+      ? calYestIso
+      : (histDates.find(function(d) { return d < dairyTodayIso; }) || calYestIso);
 
-      const dayProds = (pr.dairy_hist_p || [])
-        .filter(function(r) { return r['생산일자'] === PROC_DAIRY_SEL_KEY; })
-        .map(mapHistDairyRowToPackFormat);
+    const pastDates = histDates.filter(function(d) {
+      return d !== dairyTodayIso && d !== dairyYestIso;
+    });
 
-      viewCartonRows = dayProds.filter(function(r) { return r['라인구분'] === '우유(카톤)'; });
-      viewBottleRows = dayProds.filter(function(r) { return r['라인구분'] === '우유(병포장)'; });
-      viewFermRows = dayProds.filter(function(r) { return r['라인구분'] !== '우유(카톤)' && r['라인구분'] !== '우유(병포장)'; });
-      titleDateMilk = PROC_DAIRY_SEL_KEY;
-      titleDateFerm = PROC_DAIRY_SEL_KEY;
-    }
+    let targetIso = dairyTodayIso;
+    if (PROC_DAIRY_SEL_KEY === 'YEST') targetIso = dairyYestIso;
+    else if (PROC_DAIRY_SEL_KEY !== 'TODAY') targetIso = PROC_DAIRY_SEL_KEY;
 
-    const cntC = viewCartonRows.filter(function(r) { return String(r['가동여부']).indexOf('금일생산') !== -1; }).length;
-    const cntB = viewBottleRows.filter(function(r) { return String(r['가동여부']).indexOf('금일생산') !== -1; }).length;
-    const cntF = viewFermRows.filter(function(r) { return String(r['가동여부']).indexOf('금일생산') !== -1; }).length;
+    const isTodayTarget = (targetIso === todayIso);
+
+    // 해당 날짜의 _이력DB 데이터 추출
+    const dbDayProds = (pr.dairy_hist_p || [])
+      .filter(function(r) { return r['생산일자'] === targetIso; })
+      .map(function(r) { return mapHistDairyRowToPackFormat(r, isTodayTarget); });
+    const dbCartonRows = dbDayProds.filter(function(r) { return r['라인구분'] === '우유(카톤)'; });
+    const dbBottleRows = dbDayProds.filter(function(r) { return r['라인구분'] === '우유(병포장)'; });
+    const dbFermRows = dbDayProds.filter(function(r) { return r['라인구분'] !== '우유(카톤)' && r['라인구분'] !== '우유(병포장)'; });
+
+    const dbAllTimes = (pr.dairy_hist_times_map && pr.dairy_hist_times_map[targetIso]) || [];
+    const dbMilkTimes = dbAllTimes.filter(function(t) { return String(t['라인구분'] || '').indexOf('발효') === -1; });
+    const dbFermTimes = dbAllTimes.filter(function(t) { return String(t['라인구분'] || '').indexOf('발효') !== -1; });
+
+    // 실시간 시트 탭이 살아있고 활성 품목이 있으면 실시간 우선, 마감 후 탭이 삭제·초기화되었으면 _이력DB 자동 표시
+    const liveCartonAct = (pr.milk_carton_pack || []).filter(function(r) { return isDairyActiveStatus(r['가동여부']); });
+    const liveBottleAct = (pr.milk_bottle_pack || []).filter(function(r) { return isDairyActiveStatus(r['가동여부']); });
+    const liveFermAct = (pr.ferm_pack || []).filter(function(r) { return isDairyActiveStatus(r['가동여부']); });
+
+    const useLiveMilk = (liveMilkIso === targetIso) && ((liveCartonAct.length + liveBottleAct.length) >= (dbCartonRows.length + dbBottleRows.length));
+    const useLiveFerm = (liveFermIso === targetIso) && (liveFermAct.length >= dbFermRows.length);
+
+    const hasRunning = function(arr) {
+      return (arr || []).some(function(t) { return t && t['가동상태'] === '가동'; });
+    };
+
+    const viewCartonRows = useLiveMilk ? (pr.milk_carton_pack || []) : dbCartonRows;
+    const viewBottleRows = useLiveMilk ? (pr.milk_bottle_pack || []) : dbBottleRows;
+    const viewFermRows = useLiveFerm ? (pr.ferm_pack || []) : dbFermRows;
+
+    const viewMilkTimes = useLiveMilk
+      ? (hasRunning(pr.milk_run_times) ? pr.milk_run_times : (dbMilkTimes.length ? dbMilkTimes : (pr.milk_run_times || [])))
+      : (dbMilkTimes.length ? dbMilkTimes : ((liveMilkIso === targetIso && pr.milk_run_times) ? pr.milk_run_times : []));
+
+    const viewFermTimes = useLiveFerm
+      ? (hasRunning(pr.ferm_run_times) ? pr.ferm_run_times : (dbFermTimes.length ? dbFermTimes : (pr.ferm_run_times || [])))
+      : (dbFermTimes.length ? dbFermTimes : ((liveFermIso === targetIso && pr.ferm_run_times) ? pr.ferm_run_times : []));
+
+    const cntC = viewCartonRows.filter(function(r) { return isDairyActiveStatus(r['가동여부']); }).length;
+    const cntB = viewBottleRows.filter(function(r) { return isDairyActiveStatus(r['가동여부']); }).length;
+    const cntF = viewFermRows.filter(function(r) { return isDairyActiveStatus(r['가동여부']); }).length;
+
+    const todayBtnLbl = '금일 실시간 (' + fmtIsoToSlashMmDd(dairyTodayIso) + ')';
+    const yestBtnLbl = '전일 마감 (' + fmtIsoToSlashMmDd(dairyYestIso) + ')';
 
     box.innerHTML =
       '<div class="panel-card" style="padding:10px 14px; background:#F8FAFC; margin-bottom:10px;">' +
         '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">' +
           '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' +
-            '<button class="btn btn-sm ' + (isLive ? 'btn-primary' : '') + '" onclick="PROC_DAIRY_SEL_KEY=\'LIVE\'; renderProcessView()">금일 실시간 (우유 · 발효유)</button>' +
-            histDates.slice(0, 8).map(function(d) {
+            '<button class="btn btn-sm ' + (PROC_DAIRY_SEL_KEY === 'TODAY' ? 'btn-primary' : '') + '" onclick="PROC_DAIRY_SEL_KEY=\'TODAY\'; renderProcessView()">' + esc(todayBtnLbl) + '</button>' +
+            (dairyYestIso && dairyYestIso !== dairyTodayIso ?
+              '<button class="btn btn-sm ' + (PROC_DAIRY_SEL_KEY === 'YEST' ? 'btn-primary' : '') + '" onclick="PROC_DAIRY_SEL_KEY=\'YEST\'; renderProcessView()">' + esc(yestBtnLbl) + '</button>' : '') +
+            pastDates.slice(0, 8).map(function(d) {
               return '<button class="btn btn-sm ' + (PROC_DAIRY_SEL_KEY === d ? 'btn-primary' : '') + '" onclick="PROC_DAIRY_SEL_KEY=\'' + esc(d) + '\'; renderProcessView()">📅 ' + esc(d.slice(5)) + '</button>';
             }).join('') +
-            (histDates.length ?
+            (pastDates.length ?
               '<select class="form-ctrl" style="width:155px; padding:4px 8px;" onchange="if(this.value){PROC_DAIRY_SEL_KEY=this.value; renderProcessView();}">' +
-                '<option value="">이전 이력 전체 (' + histDates.length + '일)</option>' +
-                histDates.map(function(d) {
+                '<option value="">이전 이력 전체 (' + pastDates.length + '일)</option>' +
+                pastDates.map(function(d) {
                   return '<option value="' + esc(d) + '" ' + (PROC_DAIRY_SEL_KEY === d ? 'selected' : '') + '>' + esc(d) + '</option>';
                 }).join('') +
               '</select>' : '') +
@@ -3276,7 +3350,7 @@ function renderProcessView() {
         '</div>' +
       '</div>' +
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>🕒 [우유] 라인 가동 현황 (' + esc(titleDateMilk) + ') — 카톤 / 병포장 분리</span></div>' +
+        '<div class="panel-title"><span>🕒 [우유] 라인 가동 현황 (' + esc(targetIso) + ') — 카톤 / 병포장 분리</span></div>' +
         renderRuntimeCardsHtml(viewMilkTimes) +
         '<div style="margin-top:8px; margin-bottom:14px;">' +
           '<div style="font-size:14px; font-weight:800; color:var(--yonsei-blue); margin-bottom:6px;">① [우유(카톤)] 생산 품목 및 상·하부접착 점검 (생산 ' + cntC + '품목)</div>' +
@@ -3288,11 +3362,10 @@ function renderProcessView() {
         '</div>' +
       '</div>' +
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>🕒 [발효유 · 호상] 라인 가동 현황 (' + esc(titleDateFerm) + ') (생산 ' + cntF + '품목)</span></div>' +
+        '<div class="panel-title"><span>🕒 [발효유 · 호상] 라인 가동 현황 (' + esc(targetIso) + ') (생산 ' + cntF + '품목)</span></div>' +
         renderRuntimeCardsHtml(viewFermTimes) +
         renderDairyPackTableHtml(viewFermRows, false) +
       '</div>';
-
   // ==================== [3] 두유 배양검사 일보 (시트탭 + 누적 생산일 버튼 통합 전환) ====================
   } else {
     const soyMap = pr.soy_tabs_map || {};

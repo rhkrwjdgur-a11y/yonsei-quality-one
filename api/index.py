@@ -702,7 +702,7 @@ def calc_seasonal_claim_forecast(
         denom = sum(w * ((x - mx) ** 2) for w, x in zip(weights, settled_idx))
         slope = sum(w * (x - mx) * (y - my) for w, x, y in zip(weights, settled_idx, s_y)) / denom if denom > 0 else 0.0
         # 급격한 직선 발산 방지를 위해 월별 추세 기울기 완충(Damping)
-        damped_slope = max(min(slope * 0.55, 0.06), -0.06)
+        damped_slope = max(min(slope * 0.30, 0.03), -0.04)
         intercept = my - slope * mx
         base_trend = [max(float(slope * i + intercept), 0.1) for i in range(total_periods)]
         anchor_i = max(settled_idx)
@@ -6363,12 +6363,12 @@ def api_health():
 
 
 @app.get("/api/bundle")
-def api_get_bundle(force: int = 0, _u: dict = Depends(require_auth_user)):):
+def api_get_bundle(force: int = 0, _u: dict = Depends(require_auth_user)):
     return build_full_dashboard_bundle(force_refresh=(force == 1))
 
 
 @app.get("/api/lot-trace")
-def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "ALL"):
+def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "ALL", _u: dict = Depends(require_auth_user)):
     """
     - scope='DAIRY' : 냉장 전용 역추적 (우유[카톤·병 분리]·발효유 포장일보 + 미생물 검사일보[주1~12 매칭])
     - scope='RT'    : 상온 전용 역추적 (상온 공정·멸균 CCP + 두유 배양검사 일보)

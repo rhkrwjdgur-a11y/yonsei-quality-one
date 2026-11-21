@@ -1317,6 +1317,9 @@
       <button class="nav-btn" data-view="kpi" onclick="switchView('kpi')">
         <span>📊 2026 부문 8대 KPI</span><span class="nav-arr">›</span>
       </button>
+      <button class="nav-btn" data-view="claim" onclick="switchView('claim')">
+        <span>📉 클레임 발생률 분석</span><span class="nav-arr">›</span>
+      </button>
 
       <div class="nav-group-lbl">식품안전팀 (QA)</div>
       <button class="nav-btn" data-view="label" onclick="switchView('label')">
@@ -1342,14 +1345,11 @@
       <button class="nav-btn" data-view="micro" onclick="switchView('micro')">
         <span>🧪 미생물 검사일보</span><span class="nav-arr">›</span>
       </button>
-      <button class="nav-btn" data-view="lot" onclick="switchView('lot')">
-        <span>🔍 클레임 · LOT 역추적</span><span class="nav-arr">›</span>
-      </button>
-      <button class="nav-btn" data-view="claim" onclick="switchView('claim')">
-        <span>📉 클레임 발생률 분석</span><span class="nav-arr">›</span>
-      </button>
       <button class="nav-btn" data-view="defect_sub" onclick="switchView('defect_sub')">
-        <span>🛡️ 핵심불량 · 부자재 관리</span><span class="nav-arr">›</span>
+        <span>🛡️ 핵심불량 · 부적합 내역</span><span class="nav-arr">›</span>
+      </button>
+      <button class="nav-btn" data-view="lot" onclick="switchView('lot')">
+        <span>🔍 냉장 · 상온 LOT 역추적</span><span class="nav-arr">›</span>
       </button>
     </div>
 
@@ -1557,10 +1557,10 @@ const VIEW_TITLES = {
   law: 'HACCP 강화 · 법적 RISK · 식품 법규 D-Day 관리',
   process: '공정 및 배양 실시간 통합 관제 (상온 · 유제품[카톤/병] · 두유)',
   micro: '미생물 검사일보 상시 3탭 및 누적 DB 관제',
-  lot: '클레임 · 부적합 이력 및 냉장/상온 분리 LOT 역추적',
+  lot: '냉장 · 상온 전용 LOT 역추적',
   claim: '클레임 발생률(PPM) 추이 및 부문별 분석',
   cost: '원가절감 실적 추이 관리',
-  defect_sub: '핵심불량(클레임) 저감화 · 부자재 관리 고도화'
+  defect_sub: '핵심불량 저감화 · 클레임 및 부적합 내역 관리'
 };
 
 function esc(v) {
@@ -1645,10 +1645,16 @@ function switchView(viewKey, subOpt) {
 
   if (subOpt && viewKey === 'process') PROC_MAIN_TAB = subOpt;
   if (subOpt && viewKey === 'audit') AUDIT_TAB = subOpt;
+  if (subOpt && viewKey === 'defect_sub') DEFECT_SUB_TAB = subOpt;
   if (BUNDLE && BUNDLE.ok) renderActiveView();
 }
 
 function openLotViewWithScope(scopeKey) {
+  if (scopeKey === 'HIST') {
+    DEFECT_SUB_TAB = 'hist';
+    switchView('defect_sub', 'hist');
+    return;
+  }
   LOT_SCOPE = scopeKey || 'DAIRY';
   LAST_LOT_RESULT = null;
   switchView('lot');
@@ -3770,63 +3776,27 @@ function onLotComboKeydown(e) {
 }
 
 function renderLotView() {
-  const cnh = BUNDLE.claim_nc_hist;
   const pr = BUNDLE.process;
+  if (LOT_SCOPE !== 'DAIRY' && LOT_SCOPE !== 'RT') LOT_SCOPE = 'DAIRY';
 
   document.getElementById('view-lot').innerHTML =
     '<div class="page-hdr">' +
       '<div>' +
-        '<h2 class="page-h2">냉장 · 상온 전용 LOT 역추적 및 클레임/부적합 이력 관리</h2>' +
+        '<h2 class="page-h2">냉장 · 상온 전용 LOT 역추적</h2>' +
         '<div class="page-desc">동일 제품명 혼선을 방지하기 위해 [냉장 전용 역추적(포장+미생물)]과 [상온 전용 역추적(상온공정+두유배양)]을 완전히 분리하여 조회합니다.</div>' +
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
-        '<button class="btn btn-primary" onclick="openClaimNcModal()">+ 클레임·부적합 신규 등록</button>' +
+        '<button class="btn btn-primary" onclick="DEFECT_SUB_TAB=\'hist\'; switchView(\'defect_sub\', \'hist\')">🚨 클레임·부적합 내역 관리 ›</button>' +
         '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
       '</div>' +
     '</div>' +
     '<div class="tab-bar">' +
       '<button class="tab-btn ' + (LOT_SCOPE === 'DAIRY' ? 'active' : '') + '" onclick="LOT_SCOPE=\'DAIRY\'; LAST_LOT_RESULT=null; renderLotView()">❄️ 냉장 제품 LOT 역추적 (우유[카톤·병] · 발효유 포장 + 미생물 일보)</button>' +
       '<button class="tab-btn ' + (LOT_SCOPE === 'RT' ? 'active' : '') + '" onclick="LOT_SCOPE=\'RT\'; LAST_LOT_RESULT=null; renderLotView()">📦 상온 제품 LOT 역추적 (상온 공정·멸균 CCP + 두유 배양검사 일보)</button>' +
-      '<button class="tab-btn ' + (LOT_SCOPE === 'HIST' ? 'active' : '') + '" onclick="LOT_SCOPE=\'HIST\'; renderLotView()">🚨 클레임 · 부적합 이력 관리 (진행 ' + cnh.counts.active + '건 / 누적 ' + cnh.counts.total + '건)</button>' +
     '</div>' +
     '<div id="lotTabContent"></div>';
 
   const box = document.getElementById('lotTabContent');
-
-  if (LOT_SCOPE === 'HIST') {
-    const allItems = cnh.all_items || [];
-    box.innerHTML =
-      '<div class="panel-card">' +
-        '<div class="panel-title"><span>클레임 · 공정 부적합 등록 및 진행상태 관리 (\'클레임, 부적합 이력\' 시트 실시간 저장)</span></div>' +
-        '<div class="tbl-wrap"><table class="data-tbl">' +
-          '<thead><tr><th>대시보드 노출</th><th>구분</th><th>중요도</th><th>등록일</th><th>제품명</th><th>소비기한</th><th>원인유형</th><th>상세사유 · 추가검사 조치</th><th>진행상태 변경</th><th>최종판정</th><th>삭제</th></tr></thead>' +
-          '<tbody>' +
-          (allItems.length ? allItems.map(function(it) {
-            const catCls = it['구분'] === '부적합' ? 'badge-err' : 'badge-warn';
-            const impCls = it['중요도'] === '중점관리' ? 'badge-err' : 'badge-neutral';
-            return '<tr>' +
-              '<td><input type="checkbox" ' + (it['대시보드노출'] === 'Y' ? 'checked' : '') + ' onchange="toggleClaimNcDash(\'' + esc(it['고유ID']) + '\', \'' + esc(it['구분']) + '\')" /></td>' +
-              '<td><span class="badge ' + catCls + '">' + esc(it['구분']) + '</span></td>' +
-              '<td><span class="badge ' + impCls + '">' + esc(it['중요도']) + '</span></td>' +
-              '<td>' + esc(it['등록일']) + '</td>' +
-              '<td class="td-left"><strong>' + esc(it['제품명']) + '</strong></td>' +
-              '<td><b>' + esc(it['소비기한']) + '</b></td>' +
-              '<td>' + esc(it['발생공정_원인유형']) + '</td>' +
-              '<td class="td-left"><div><b>사유:</b> ' + esc(it['상세사유']) + '</div><div style="color:var(--yonsei-blue); margin-top:2px;"><b>조치:</b> ' + esc(it['추가검사_조치내역']) + '</div></td>' +
-              '<td><select class="form-ctrl" style="font-size:12px; padding:3px 6px;" onchange="changeClaimNcStatus(\'' + esc(it['고유ID']) + '\', \'' + esc(it['구분']) + '\', this.value)">' +
-                ['출고대기', '검사중', '원인·조치중', '적합(종결)', '부적합'].map(function(st) {
-                  return '<option value="' + st + '" ' + (it['진행상태'] === st ? 'selected' : '') + '>' + st + '</option>';
-                }).join('') +
-              '</select></td>' +
-              '<td><b>' + esc(it['최종판정']) + '</b></td>' +
-              '<td><button class="btn btn-sm" style="color:var(--err-fg);" onclick="deleteClaimNcItem(\'' + esc(it['고유ID']) + '\', \'' + esc(it['구분']) + '\')">삭제</button></td>' +
-            '</tr>';
-          }).join('') : '<tr><td colspan="11" class="cell-gray">등록된 클레임·부적합 이력이 없습니다.</td></tr>') +
-          '</tbody></table></div>' +
-      '</div>';
-    return;
-  }
-
   const isDairyScope = (LOT_SCOPE === 'DAIRY');
   const prodList = isDairyScope ? (pr.dairy_products || []) : (pr.rt_products || []);
   const scopeTitle = isDairyScope
@@ -4543,7 +4513,7 @@ function renderCostView() {
 }
 
 // ==============================================================================
-// [VIEW 13] 핵심불량 · 부자재 관리 전용 화면 (좌측 사이드바 메뉴 & KPI 4·5번 직결)
+// [VIEW 13] 핵심불량 · 클레임 및 부적합 내역 · 부자재 관리 통합 화면
 // ==============================================================================
 function renderDefectSubView() {
   const mk = BUNDLE.manual_kpis || {};
@@ -4556,21 +4526,68 @@ function renderDefectSubView() {
   document.getElementById('view-defect_sub').innerHTML =
     '<div class="page-hdr">' +
       '<div>' +
-        '<h2 class="page-h2">핵심불량(클레임) 저감화 · 부자재 관리 고도화</h2>' +
-        '<div class="page-desc">설비·공정 중대 핵심불량 억제 실적과 표시사항·법규 선제 대응을 통한 부자재 폐기 Zero화 현황을 관리합니다.</div>' +
+        '<h2 class="page-h2">핵심불량 저감화 · 클레임 및 부적합 내역 통합 관리</h2>' +
+        '<div class="page-desc">핵심불량 억제 KPI 실적과 실시간 클레임·공정 부적합 내역(\'클레임, 부적합 이력\' 시트 연동) 및 부자재 폐기 Zero 현황을 한곳에서 관리합니다.</div>' +
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
+        '<button class="btn btn-primary" onclick="openClaimNcModal()">+ 클레임·부적합 신규 등록</button>' +
+        '<button class="btn" onclick="switchView(\'lot\')">🔍 LOT 역추적 ›</button>' +
         '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
         '<button class="btn" onclick="switchView(\'home\')">← 모닝 브리핑</button>' +
       '</div>' +
     '</div>' +
     '<div class="tab-bar">' +
-      '<button class="tab-btn ' + (DEFECT_SUB_TAB === 'defect' ? 'active' : '') + '" onclick="DEFECT_SUB_TAB=\'defect\'; renderDefectSubView()">🛡️ 4. 핵심불량(클레임) 발생 저감화 (' + esc(k9.actual_text) + ' / 목표 ' + esc(k9.target_text) + ')</button>' +
-      '<button class="tab-btn ' + (DEFECT_SUB_TAB === 'sub' ? 'active' : '') + '" onclick="DEFECT_SUB_TAB=\'sub\'; renderDefectSubView()">📦 5. 부자재 관리 고도화 · 폐기 Zero (' + esc(k10.actual_text) + ')</button>' +
+      '<button class="tab-btn ' + (DEFECT_SUB_TAB === 'defect' ? 'active' : '') + '" onclick="DEFECT_SUB_TAB=\'defect\'; renderDefectSubView()">🛡️ 핵심불량(클레임) 발생 저감화 (' + esc(k9.actual_text) + ' / 목표 ' + esc(k9.target_text) + ')</button>' +
+      '<button class="tab-btn ' + (DEFECT_SUB_TAB === 'hist' ? 'active' : '') + '" onclick="DEFECT_SUB_TAB=\'hist\'; renderDefectSubView()">🚨 클레임 및 부적합 내역 관리 (진행 ' + cnh.counts.active + '건 / 누적 ' + cnh.counts.total + '건)</button>' +
+      '<button class="tab-btn ' + (DEFECT_SUB_TAB === 'sub' ? 'active' : '') + '" onclick="DEFECT_SUB_TAB=\'sub\'; renderDefectSubView()">📦 부자재 관리 고도화 · 폐기 Zero (' + esc(k10.actual_text) + ')</button>' +
     '</div>' +
     '<div id="defectSubBox"></div>';
 
   const box = document.getElementById('defectSubBox');
+
+  if (DEFECT_SUB_TAB === 'hist') {
+    const allItems = cnh.all_items || [];
+    box.innerHTML =
+      '<div class="kpi-grid-4">' +
+        '<div class="stat-card"><div class="stat-lbl">시트 누적 전체 내역</div><div class="stat-val">' + cnh.counts.total + '건</div><div class="stat-sub">클레임 + 공정 부적합 합산</div></div>' +
+        '<div class="stat-card"><div class="stat-lbl">현재 대시보드 진행·추적중</div><div class="stat-val" style="color:' + (cnh.counts.active > 0 ? 'var(--err-fg)' : 'var(--ok-fg)') + ';">' + cnh.counts.active + '건</div><div class="stat-sub">중점관리 ' + cnh.counts.major + '건</div></div>' +
+        '<div class="stat-card"><div class="stat-lbl">주요 클레임 기록</div><div class="stat-val">' + cnh.counts.claim + '건</div><div class="stat-sub">[클레임] 탭 누적</div></div>' +
+        '<div class="stat-card"><div class="stat-lbl">공정 부적합 기록</div><div class="stat-val" style="color:var(--warn-fg);">' + cnh.counts.nc + '건</div><div class="stat-sub">[부적합] 탭 누적</div></div>' +
+      '</div>' +
+      '<div class="panel-card">' +
+        '<div class="panel-title">' +
+          '<span>클레임 · 공정 부적합 상세 내역 및 진행상태 관리 (\'클레임, 부적합 이력\' 시트 실시간 저장)</span>' +
+          '<input type="text" class="form-ctrl" style="width:240px; padding:4px 9px;" placeholder="제품명 · 소비기한 · 사유 검색" oninput="filterSimpleTable(this.value, \'cnhMainTbl\')" />' +
+        '</div>' +
+        '<div class="tbl-wrap"><table class="data-tbl" id="cnhMainTbl">' +
+          '<thead><tr><th>대시보드 노출</th><th>구분</th><th>중요도</th><th>등록일</th><th>제품명</th><th>소비기한</th><th>원인유형</th><th>상세사유 · 추가검사 조치</th><th>진행상태 변경</th><th>최종판정</th><th>삭제</th></tr></thead>' +
+          '<tbody>' +
+          (allItems.length ? allItems.map(function(it) {
+            const catCls = it['구분'] === '부적합' ? 'badge-err' : 'badge-warn';
+            const impCls = it['중요도'] === '중점관리' ? 'badge-err' : 'badge-neutral';
+            return '<tr>' +
+              '<td><input type="checkbox" ' + (it['대시보드노출'] === 'Y' ? 'checked' : '') + ' onchange="toggleClaimNcDash(\'' + esc(it['고유ID']) + '\', \'' + esc(it['구분']) + '\')" /></td>' +
+              '<td><span class="badge ' + catCls + '">' + esc(it['구분']) + '</span></td>' +
+              '<td><span class="badge ' + impCls + '">' + esc(it['중요도']) + '</span></td>' +
+              '<td>' + esc(it['등록일']) + '</td>' +
+              '<td class="td-left"><strong>' + esc(it['제품명']) + '</strong></td>' +
+              '<td><b>' + esc(it['소비기한']) + '</b></td>' +
+              '<td>' + esc(it['발생공정_원인유형']) + '</td>' +
+              '<td class="td-left"><div><b>사유:</b> ' + esc(it['상세사유']) + '</div><div style="color:var(--yonsei-blue); margin-top:2px;"><b>조치:</b> ' + esc(it['추가검사_조치내역']) + '</div></td>' +
+              '<td><select class="form-ctrl" style="font-size:12px; padding:3px 6px;" onchange="changeClaimNcStatus(\'' + esc(it['고유ID']) + '\', \'' + esc(it['구분']) + '\', this.value)">' +
+                ['출고대기', '검사중', '원인·조치중', '적합(종결)', '부적합'].map(function(st) {
+                  return '<option value="' + st + '" ' + (it['진행상태'] === st ? 'selected' : '') + '>' + st + '</option>';
+                }).join('') +
+              '</select></td>' +
+              '<td><b>' + esc(it['최종판정']) + '</b></td>' +
+              '<td><button class="btn btn-sm" style="color:var(--err-fg);" onclick="deleteClaimNcItem(\'' + esc(it['고유ID']) + '\', \'' + esc(it['구분']) + '\')">삭제</button></td>' +
+            '</tr>';
+          }).join('') : '<tr><td colspan="11" class="cell-gray">등록된 클레임·부적합 내역이 없습니다. 우측 상단 [+ 클레임·부적합 신규 등록]을 눌러 추가해 주세요.</td></tr>') +
+          '</tbody></table></div>' +
+      '</div>';
+    return;
+  }
+
   if (DEFECT_SUB_TAB === 'defect') {
     const remainCnt = Math.max(0, (k9.target_num || 38) - (k9.actual_num || 0));
     box.innerHTML =
@@ -4578,7 +4595,7 @@ function renderDefectSubView() {
         '<div class="stat-card"><div class="stat-lbl">연간 허용 한도 (목표)</div><div class="stat-val">' + esc(k9.target_text) + '</div><div class="stat-sub">중대 핵심불량 억제 기준</div></div>' +
         '<div class="stat-card"><div class="stat-lbl">현재 누적 발생 실적</div><div class="stat-val" style="color:var(--ok-fg);">' + esc(k9.actual_text) + '</div><div class="stat-sub">' + esc(k9.sub_badge || '안정 관리 중') + '</div></div>' +
         '<div class="stat-card"><div class="stat-lbl">잔여 허용 여유분</div><div class="stat-val">' + remainCnt + '건</div><div class="stat-sub">한도 대비 여유 유지</div></div>' +
-        '<div class="stat-card"><div class="stat-lbl">클레임·부적합 추적 연동</div><div class="stat-val">' + cnh.counts.total + '건</div><div class="stat-sub">현재 진행중 ' + cnh.counts.active + '건</div></div>' +
+        '<div class="stat-card" style="cursor:pointer;" onclick="DEFECT_SUB_TAB=\'hist\'; renderDefectSubView()"><div class="stat-lbl">클레임·부적합 내역 연동</div><div class="stat-val">' + cnh.counts.total + '건</div><div class="stat-sub">현재 진행중 ' + cnh.counts.active + '건 (클릭 시 내역 보기)</div></div>' +
       '</div>' +
       '<div class="panel-card">' +
         '<div class="panel-title"><span>' + esc(k9.notes_title || '핵심불량(클레임) 중점 저감 추진 내역') + '</span>' +
@@ -4589,7 +4606,7 @@ function renderDefectSubView() {
         '</ul>' +
       '</div>' +
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>공정·원인유형별 클레임/부적합 등록 분포</span><button class="btn btn-sm" onclick="openLotViewWithScope(\'HIST\')">이력 상세 관리 ›</button></div>' +
+        '<div class="panel-title"><span>공정·원인유형별 클레임/부적합 등록 분포</span><button class="btn btn-sm" onclick="DEFECT_SUB_TAB=\'hist\'; renderDefectSubView()">클레임·부적합 내역 탭으로 ›</button></div>' +
         '<div class="tbl-wrap"><table class="data-tbl">' +
           '<thead><tr><th>발생공정 · 원인유형</th><th>누적 등록 건수</th></tr></thead><tbody>' +
           ((cnh.by_cause && cnh.by_cause.length) ? cnh.by_cause.map(function(r) {

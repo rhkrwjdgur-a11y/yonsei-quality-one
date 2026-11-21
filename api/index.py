@@ -6363,7 +6363,7 @@ def api_health():
 
 
 @app.get("/api/bundle")
-def api_get_bundle(force: int = 0):
+def api_get_bundle(force: int = 0, _u: dict = Depends(require_auth_user)):):
     return build_full_dashboard_bundle(force_refresh=(force == 1))
 
 

@@ -543,7 +543,8 @@ def parse_date_obj(val: Any) -> Optional[date]:
     return None
 
 
-def calc_trend_and_forecast_split(y_values: list, is_recorded_list: list = None, total_periods: int = 12):
+def calc_weighted_trend_and_forecast(y_values: list, is_recorded_list: list = None, total_periods: int = 12):
+    """원가절감용 최근 가중 선형회귀(WLS): 초반보다 최근 월 실적 흐름에 가중치를 부여하여 연말 예측"""
     if is_recorded_list is not None:
         valid_idx = [i for i, flag in enumerate(is_recorded_list) if flag]
     else:
@@ -552,11 +553,15 @@ def calc_trend_and_forecast_split(y_values: list, is_recorded_list: list = None,
     valid_y = [float(y_values[i]) for i in valid_idx]
 
     if len(valid_idx) >= 2:
-        n = len(valid_idx)
-        mean_x = sum(valid_idx) / n
-        mean_y = sum(valid_y) / n
-        denom = sum((x - mean_x) ** 2 for x in valid_idx)
-        slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(valid_idx, valid_y)) / denom if denom > 0 else 0.0
+        weights = [1.0 + 0.22 * rank for rank in range(len(valid_idx))]
+        w_sum = sum(weights)
+        mean_x = sum(w * x for w, x in zip(weights, valid_idx)) / w_sum
+        mean_y = sum(w * y for w, y in zip(weights, valid_y)) / w_sum
+        denom = sum(w * ((x - mean_x) ** 2) for w, x in zip(weights, valid_idx))
+        slope = (
+            sum(w * (x - mean_x) * (y - mean_y) for w, x, y in zip(weights, valid_idx, valid_y)) / denom
+            if denom > 0 else 0.0
+        )
         intercept = mean_y - slope * mean_x
         full_line = [round(max(float(slope * i + intercept), 0.0), 2) for i in range(total_periods)]
     elif len(valid_idx) == 1:
@@ -570,6 +575,149 @@ def calc_trend_and_forecast_split(y_values: list, is_recorded_list: list = None,
     forecast_line = [full_line[i] if i >= last_idx else None for i in range(total_periods)]
 
     return actual_line, forecast_line, full_line, round(float(slope), 4), len(valid_idx), last_idx
+
+
+def calc_trend_and_forecast_split(y_values: list, is_recorded_list: list = None, total_periods: int = 12):
+    return calc_weighted_trend_and_forecast(y_values, is_recorded_list, total_periods)
+
+
+def despike_prev_year_series(prev_ppms: List[float]) -> List[float]:
+    """
+    전년도 일회성 설비 사고(예: 25년 2월 발효유 CIP 이상으로 인한 3.1 PPM 폭등) 특별원인 이상치(Outlier)를
+    IQR(사분위수 범위) 상한 기준으로 자동 절사하여 순수 계절성 패턴만 추출
+    """
+    valid = sorted([v for v in prev_ppms if v > 0])
+    if len(valid) < 4:
+        return list(prev_ppms)
+    n = len(valid)
+    q1 = valid[n // 4]
+    med = valid[n // 2]
+    q3 = valid[(3 * n) // 4]
+    iqr = max(q3 - q1, 0.18)
+    upper_fence = min(q3 + 1.5 * iqr, med * 2.15)
+    cap_replacement = round(q3 + 0.35 * iqr, 2)
+    return [cap_replacement if v > upper_fence else v for v in prev_ppms]
+
+
+def calc_seasonal_claim_forecast(
+    cur_ppms: List[float],
+    cur_prods: List[int],
+    cur_cnts: List[int],
+    prev_ppms: Optional[List[float]] = None,
+    total_periods: int = 12
+) -> dict:
+    """
+    SQC 기반 클레임 발생률 예측 엔진:
+    1) 평월 생산량의 60% 미만인 미마감 가집계 월(예: 11월 중간집계)은 기준 추세 왜곡에서 제외
+    2) 전년도 일회성 사고 이상치를 절사한 뒤 월별 계절성 지수(Seasonal Index) 산출
+    3) 마감 완료 월의 가중 추세 레벨 × 전년도 동절기 계절 지수를 결합해 잔여 월 및 회계연도 말 누적 PPM 산출
+    """
+    rec_idx = [i for i in range(total_periods) if (cur_prods[i] > 0 or cur_cnts[i] > 0)]
+    if not rec_idx:
+        return {
+            "act_line": [None] * total_periods,
+            "fc_line": [None] * total_periods,
+            "full_line": [0.0] * total_periods,
+            "slope": 0.0,
+            "recorded_months": 0,
+            "last_idx": -1,
+            "feb_pred": 0.0,
+            "cum_pred_ppm": 0.0,
+            "partial_month_idx": -1
+        }
+
+    last_rec_idx = max(rec_idx)
+    pos_prods = sorted([cur_prods[i] for i in rec_idx if cur_prods[i] > 0])
+    med_prod = pos_prods[len(pos_prods) // 2] if pos_prods else 0
+
+    partial_idx = -1
+    settled_idx = list(rec_idx)
+    if len(rec_idx) >= 3 and med_prod > 0 and (0 < cur_prods[last_rec_idx] < med_prod * 0.60):
+        partial_idx = last_rec_idx
+        settled_idx = [i for i in rec_idx if i != last_rec_idx]
+
+    # 1) 마감 완료 월 기준 가중 선형 추세 산출
+    s_y = [float(cur_ppms[i]) for i in settled_idx]
+    if len(settled_idx) >= 2:
+        weights = [1.0 + 0.18 * r for r in range(len(settled_idx))]
+        w_sum = sum(weights)
+        mx = sum(w * x for w, x in zip(weights, settled_idx)) / w_sum
+        my = sum(w * y for w, y in zip(weights, s_y)) / w_sum
+        denom = sum(w * ((x - mx) ** 2) for w, x in zip(weights, settled_idx))
+        slope = sum(w * (x - mx) * (y - my) for w, x, y in zip(weights, settled_idx, s_y)) / denom if denom > 0 else 0.0
+        # 급격한 직선 발산 방지를 위해 월별 추세 기울기 완충(Damping)
+        damped_slope = max(min(slope * 0.55, 0.06), -0.06)
+        intercept = my - slope * mx
+        base_trend = [max(float(slope * i + intercept), 0.1) for i in range(total_periods)]
+        anchor_i = max(settled_idx)
+        anchor_level = base_trend[anchor_i]
+    else:
+        slope = 0.0
+        damped_slope = 0.0
+        anchor_i = settled_idx[0]
+        anchor_level = float(cur_ppms[anchor_i])
+        base_trend = [anchor_level] * total_periods
+
+    # 2) 전년도 이상치 제거 후 계절성 지수(Seasonal Index) 추출
+    seasonal_factors = [1.0] * total_periods
+    if prev_ppms and sum(1 for v in prev_ppms if v > 0) >= 6:
+        clean_prev = despike_prev_year_series([float(v) for v in prev_ppms[:total_periods]])
+        valid_prev = [v for v in clean_prev if v > 0]
+        prev_mean = sum(valid_prev) / len(valid_prev) if valid_prev else 1.0
+        if prev_mean > 0:
+            for idx_m in range(total_periods):
+                if clean_prev[idx_m] > 0:
+                    raw_si = clean_prev[idx_m] / prev_mean
+                    seasonal_factors[idx_m] = 0.35 + 0.65 * raw_si
+
+    overlap_si = [seasonal_factors[i] for i in settled_idx if seasonal_factors[i] > 0]
+    base_si_mean = (sum(overlap_si) / len(overlap_si)) if overlap_si else 1.0
+    deseason_level = anchor_level / base_si_mean if base_si_mean > 0 else anchor_level
+
+    # 3) 실적 추세선(act_line) 및 계절성 반영 예측선(fc_line) 결합
+    full_line = []
+    for i in range(total_periods):
+        if i <= anchor_i:
+            full_line.append(round(base_trend[i], 2))
+        else:
+            step = i - anchor_i
+            trend_comp = max(deseason_level + (damped_slope * step), 0.15)
+            pred_v = round(max(trend_comp * seasonal_factors[i], 0.15), 2)
+            full_line.append(pred_v)
+
+    act_line = [full_line[i] if i <= anchor_i else None for i in range(total_periods)]
+    fc_start = anchor_i
+    fc_line = [None] * total_periods
+    fc_line[fc_start] = round(float(cur_ppms[fc_start]), 2)
+    for i in range(fc_start + 1, total_periods):
+        fc_line[i] = full_line[i]
+
+    # 4) 회계연도 말(2월 마감 시) 최종 연간 누적 PPM 예상치 산출
+    est_month_prod = med_prod if med_prod > 0 else 55_000_000
+    tot_cnt_proj = sum(cur_cnts[i] for i in settled_idx)
+    tot_prd_proj = sum(cur_prods[i] for i in settled_idx)
+    for i in range(anchor_i + 1, total_periods):
+        if i == partial_idx:
+            rem_prod = max(est_month_prod - cur_prods[i], 0)
+            tot_cnt_proj += cur_cnts[i] + (rem_prod * full_line[i] / 1_000_000.0)
+            tot_prd_proj += max(est_month_prod, cur_prods[i])
+        else:
+            tot_cnt_proj += est_month_prod * full_line[i] / 1_000_000.0
+            tot_prd_proj += est_month_prod
+
+    cum_pred_ppm = round((tot_cnt_proj / tot_prd_proj) * 1_000_000.0, 2) if tot_prd_proj > 0 else 0.0
+
+    return {
+        "act_line": act_line,
+        "fc_line": fc_line,
+        "full_line": full_line,
+        "slope": round(float(slope), 4),
+        "recorded_months": len(rec_idx),
+        "last_idx": anchor_i,
+        "feb_pred": full_line[-1] if full_line else 0.0,
+        "cum_pred_ppm": cum_pred_ppm,
+        "partial_month_idx": partial_idx
+    }
 
 
 def normalize_comp_name(name: str, core_only: bool = False) -> str:
@@ -987,46 +1135,121 @@ def fetch_claim_sheet(sheet_urls_map: dict):
             return [], [], "클레임 시트에서 유효한 데이터를 찾지 못했습니다."
 
         years_found = sorted(list({r["연도"] for r in cat_list}), reverse=True)
-        yr_cur = "2026년" if "2026년" in years_found else years_found[0]
-        yr_prev = "2025년" if "2025년" in years_found else (years_found[1] if len(years_found) > 1 else "")
 
-        row_cur = next((r for r in cat_list if r["연도"] == yr_cur and r["유형"] == "합계"), None)
+        # 실적이 1건이라도 입력된 가장 최신 회계연도를 자동으로 당해 대표 연도로 선택 (빈 양식만 추가된 경우 기존 연도 유지)
+        active_yr = years_found[0]
+        for y_cand in years_found:
+            r_sum_cand = next((r for r in cat_list if r["연도"] == y_cand and r["유형"] == "합계"), None)
+            if r_sum_cand and (r_sum_cand.get("합계_생산수량", 0) > 0 or r_sum_cand.get("합계_건수", 0) > 0):
+                active_yr = y_cand
+                break
+            sub_has = any((r.get("합계_생산수량", 0) > 0 or r.get("합계_건수", 0) > 0) for r in cat_list if r["연도"] == y_cand)
+            if sub_has:
+                active_yr = y_cand
+                break
+
+        m_yr_num = re.search(r"(\d{4})", active_yr)
+        prev_yr_cand = f"{int(m_yr_num.group(1)) - 1}년" if m_yr_num else ""
+        yr_prev = prev_yr_cand if prev_yr_cand in years_found else next((y for y in years_found if y < active_yr), "")
+
+        row_cur = next((r for r in cat_list if r["연도"] == active_yr and r["유형"] == "합계"), None)
         row_prev = next((r for r in cat_list if r["연도"] == yr_prev and r["유형"] == "합계"), None) if yr_prev else None
 
         trend_rows = []
         for m in FISCAL_MONTHS:
-            c26 = int(row_cur[f"{m}_건수"]) if row_cur else 0
-            prod26 = int(row_cur[f"{m}_생산수량"]) if row_cur else 0
-            p26 = float(row_cur[f"{m}_PPM"]) if row_cur else 0.0
-            c25 = int(row_prev[f"{m}_건수"]) if row_prev else 0
-            p25 = float(row_prev[f"{m}_PPM"]) if row_prev else 0.0
+            c_cur = int(row_cur[f"{m}_건수"]) if row_cur else 0
+            prod_cur = int(row_cur[f"{m}_생산수량"]) if row_cur else 0
+            p_cur = float(row_cur[f"{m}_PPM"]) if row_cur else 0.0
+            c_prv = int(row_prev[f"{m}_건수"]) if row_prev else 0
+            p_prv = float(row_prev[f"{m}_PPM"]) if row_prev else 0.0
             trend_rows.append({
                 "월": m,
-                "2026년_건수": c26,
-                "2026년_생산수량": prod26,
-                "2026년_PPM": p26,
-                "2025년_건수": c25,
-                "2025년_PPM": p25,
+                "당해_연도": active_yr,
+                "전년_연도": yr_prev or "전년",
+                "당해_건수": c_cur,
+                "당해_생산수량": prod_cur,
+                "당해_PPM": p_cur,
+                "전년_건수": c_prv,
+                "전년_PPM": p_prv,
+                # 기존 키 하위 호환 유지
+                "2026년_건수": c_cur,
+                "2026년_생산수량": prod_cur,
+                "2026년_PPM": p_cur,
+                "2025년_건수": c_prv,
+                "2025년_PPM": p_prv,
                 "목표_PPM": 1.12,
-                "_기록여부": (prod26 > 0 or c26 > 0)
+                "_기록여부": (prod_cur > 0 or c_cur > 0)
             })
         return trend_rows, cat_list, None
     except Exception as e:
         return [], [], str(e)
 
 
-def build_division_claim_summary(cat_list: list, year_str: str, division_categories: list) -> dict:
+def build_year_total_claim_pack(cat_list: list, year_str: str, prev_year_str: str = "") -> dict:
+    """선택한 임의 연도(2025·2026·2027년 등)에 대한 전사 합계 추이 및 이상치 보정 계절성 예측 산출"""
+    row_cur = next((r for r in cat_list if r["연도"] == year_str and r["유형"] == "합계"), None)
+    row_prev = next((r for r in cat_list if r["연도"] == prev_year_str and r["유형"] == "합계"), None) if prev_year_str else None
+
+    cur_ppms, cur_prods, cur_cnts, prev_ppms = [], [], [], []
+    monthly_rows = []
+    for m in FISCAL_MONTHS:
+        cnt_v = int(row_cur.get(f"{m}_건수", 0)) if row_cur else 0
+        prd_v = int(row_cur.get(f"{m}_생산수량", 0)) if row_cur else 0
+        ppm_v = float(row_cur.get(f"{m}_PPM", 0.0)) if row_cur else 0.0
+        p_cnt_v = int(row_prev.get(f"{m}_건수", 0)) if row_prev else 0
+        p_ppm_v = float(row_prev.get(f"{m}_PPM", 0.0)) if row_prev else 0.0
+        cur_ppms.append(ppm_v)
+        cur_prods.append(prd_v)
+        cur_cnts.append(cnt_v)
+        prev_ppms.append(p_ppm_v)
+        monthly_rows.append({
+            "월": m,
+            "당해_건수": cnt_v,
+            "당해_생산수량": prd_v,
+            "당해_PPM": ppm_v,
+            "전년_건수": p_cnt_v,
+            "전년_PPM": p_ppm_v,
+            "_기록여부": (prd_v > 0 or cnt_v > 0)
+        })
+
+    fc_res = calc_seasonal_claim_forecast(cur_ppms, cur_prods, cur_cnts, prev_ppms if row_prev else None)
+    return {
+        "year": year_str,
+        "prev_year": prev_year_str,
+        "total_cnt": int(row_cur["합계_건수"]) if row_cur else 0,
+        "total_prod": int(row_cur["합계_생산수량"]) if row_cur else 0,
+        "total_ppm": float(row_cur["합계_PPM"]) if row_cur else 0.0,
+        "monthly": monthly_rows,
+        **fc_res
+    }
+
+
+def build_division_claim_summary(cat_list: list, year_str: str, division_categories: list, prev_year_str: str = "") -> dict:
     sub = [r for r in cat_list if r["연도"] == year_str and r["유형"] in division_categories]
+    sub_prev = [r for r in cat_list if r["연도"] == prev_year_str and r["유형"] in division_categories] if prev_year_str else []
+
     monthly = []
+    cur_ppms, cur_prods, cur_cnts, prev_ppms = [], [], [], []
     for m in FISCAL_MONTHS:
         cnt_sum = sum(int(r.get(f"{m}_건수", 0)) for r in sub)
         prod_sum = sum(int(r.get(f"{m}_생산수량", 0)) for r in sub)
         ppm_val = round((cnt_sum / prod_sum) * 1_000_000, 2) if prod_sum > 0 else 0.0
+
+        p_cnt_sum = sum(int(r.get(f"{m}_건수", 0)) for r in sub_prev)
+        p_prod_sum = sum(int(r.get(f"{m}_생산수량", 0)) for r in sub_prev)
+        p_ppm_val = round((p_cnt_sum / p_prod_sum) * 1_000_000, 2) if p_prod_sum > 0 else 0.0
+
+        cur_ppms.append(ppm_val)
+        cur_prods.append(prod_sum)
+        cur_cnts.append(cnt_sum)
+        prev_ppms.append(p_ppm_val)
+
         item = {
             "월": m,
             "합산_건수": cnt_sum,
             "합산_생산수량": prod_sum,
             "부문_통합_PPM": ppm_val,
+            "전년_부문_PPM": p_ppm_val,
             "_기록여부": (prod_sum > 0 or cnt_sum > 0)
         }
         for cat in division_categories:
@@ -1038,21 +1261,21 @@ def build_division_claim_summary(cat_list: list, year_str: str, division_categor
     tot_c = sum(x["합산_건수"] for x in monthly)
     tot_p = sum(x["합산_생산수량"] for x in monthly)
     tot_ppm = round((tot_c / tot_p) * 1_000_000, 2) if tot_p > 0 else 0.0
-    act_l, fc_l, full_l, slp, _, last_i = calc_trend_and_forecast_split(
-        [x["부문_통합_PPM"] for x in monthly],
-        [x["_기록여부"] for x in monthly]
-    )
+    fc_res = calc_seasonal_claim_forecast(cur_ppms, cur_prods, cur_cnts, prev_ppms if sub_prev else None)
+
     return {
         "year": year_str,
+        "prev_year": prev_year_str,
         "categories": division_categories,
         "total_cnt": tot_c,
         "total_prod": tot_p,
         "total_ppm": tot_ppm,
-        "slope": slp,
-        "feb_pred": full_l[-1] if full_l else 0.0,
-        "last_idx": last_i,
-        "act_line": act_l,
-        "fc_line": fc_l,
+        "slope": fc_res["slope"],
+        "feb_pred": fc_res["feb_pred"],
+        "cum_pred_ppm": fc_res["cum_pred_ppm"],
+        "last_idx": fc_res["last_idx"],
+        "act_line": fc_res["act_line"],
+        "fc_line": fc_res["fc_line"],
         "monthly": monthly,
         "raw": sub
     }
@@ -1979,66 +2202,87 @@ def parse_dairy_pack_rows(tab_title_raw: str, rows: list, line_label: str):
         pt_block = rows[prod_time_sec_idx : end_pt_idx]
         ignore_words = {"생산시간", "포장생산시간", "포장시간", "구분", "호기", "시작", "종료", "시작시간", "종료시간"}
 
-        anchors_by_row: Dict[int, List[Tuple[int, str]]] = {}
-        for bi, br in enumerate(pt_block):
-            for ci, cell in enumerate(br):
-                cs = re.sub(r"\s+", " ", str(cell)).strip()
-                cs_ns = re.sub(r"\s+", "", cs)
-                if not cs_ns or cs_ns in ignore_words or "공정관리일보" in cs_ns:
-                    continue
-                if re.search(r"\d{1,2}:\d{2}", cs_ns):
-                    continue
-                if any(mk in cs_ns for mk in ["호기", "카톤", "병포장", "병우유", "병발효유", "호상", "연팩", "로타리", "라인", "팩", "컵"]) or cs_ns == "병":
-                    anchors_by_row.setdefault(bi, []).append((ci, cs))
+        handled_milk_inline = False
+        if line_label == "우유":
+            flat_cells = []
+            for br in pt_block:
+                for cell in br:
+                    cs = re.sub(r"\s+", " ", str(cell)).strip()
+                    if cs and re.sub(r"\s+", "", cs) not in ignore_words and "공정관리일보" not in cs:
+                        flat_cells.append(cs)
+            flat_pt_txt = " ".join(flat_cells)
+            mc_chk = re.search(r"카톤(?:\s*(?:포장|우유|팩|라인))?(?=\s*[:\-~0-9\(]|$)", flat_pt_txt)
+            mb_chk = re.search(r"병(?:\s*(?:포장|우유|라인))?(?=\s*[:\-~0-9\(]|$)", flat_pt_txt)
+            if mc_chk and mb_chk:
+                mid_seg = flat_pt_txt[min(mc_chk.end(), mb_chk.end()) : max(mc_chk.start(), mb_chk.start())]
+                if re.search(r"\d{1,2}:\d{2}|~", mid_seg):
+                    run_times.extend(split_combined_milk_time_entry(flat_pt_txt))
+                    handled_milk_inline = True
 
-        seen_titles = set()
-        for bi, row_anchors in anchors_by_row.items():
-            row_anchors.sort(key=lambda x: x[0])
-            br = pt_block[bi]
-            for idx_a, (ac, albl) in enumerate(row_anchors):
-                next_ac = row_anchors[idx_a + 1][0] if idx_a + 1 < len(row_anchors) else len(br)
+        if not handled_milk_inline:
+            anchors_by_row: Dict[int, List[Tuple[int, str]]] = {}
+            for bi, br in enumerate(pt_block):
+                for ci, cell in enumerate(br):
+                    cs = re.sub(r"\s+", " ", str(cell)).strip()
+                    cs_ns = re.sub(r"\s+", "", cs)
+                    if not cs_ns or cs_ns in ignore_words or "공정관리일보" in cs_ns:
+                        continue
+                    if re.search(r"\d{1,2}:\d{2}", cs_ns) and not any(k in cs_ns for k in ["카톤", "병포장", "병우유", "병발효유", "호상"]):
+                        continue
+                    if any(mk in cs_ns for mk in ["호기", "카톤", "병포장", "병우유", "병발효유", "호상", "연팩", "로타리", "라인", "팩", "컵"]) or cs_ns == "병":
+                        anchors_by_row.setdefault(bi, []).append((ci, cs))
 
-                same_row_times = []
-                for sub_c in range(ac + 1, min(next_ac, len(br))):
-                    same_row_times.extend(re.findall(r"\d{1,2}:\d{2}", str(br[sub_c])))
+            seen_titles = set()
+            for bi, row_anchors in anchors_by_row.items():
+                row_anchors.sort(key=lambda x: x[0])
+                br = pt_block[bi]
+                for idx_a, (ac, albl) in enumerate(row_anchors):
+                    next_ac = row_anchors[idx_a + 1][0] if idx_a + 1 < len(row_anchors) else len(br)
 
-                below_times = []
-                if len(same_row_times) < 2:
-                    for sub_r_i in range(bi + 1, min(bi + 4, len(pt_block))):
-                        if sub_r_i in anchors_by_row:
-                            break
-                        sbr = pt_block[sub_r_i]
-                        for sub_c in range(ac, min(next_ac, len(sbr))):
-                            below_times.extend(re.findall(r"\d{1,2}:\d{2}", str(sbr[sub_c])))
+                    same_row_chunks = [str(br[sub_c]).strip() for sub_c in range(ac, min(next_ac, len(br))) if str(br[sub_c]).strip()]
+                    same_row_txt = " ".join(same_row_chunks)
+                    same_row_times = re.findall(r"(?<!\d)\d{1,2}:\d{2}(?!\d)", same_row_txt)
 
-                use_times = same_row_times if len(same_row_times) >= 1 else below_times
-                albl_ns = re.sub(r"\s+", "", albl)
+                    use_raw_txt = same_row_txt
+                    if len(same_row_times) < 2:
+                        below_chunks = []
+                        for sub_r_i in range(bi + 1, min(bi + 4, len(pt_block))):
+                            if sub_r_i in anchors_by_row:
+                                break
+                            sbr = pt_block[sub_r_i]
+                            for sub_c in range(ac, min(next_ac, len(sbr))):
+                                sv = str(sbr[sub_c]).strip()
+                                if sv:
+                                    below_chunks.append(sv)
+                        if below_chunks:
+                            use_raw_txt = (same_row_txt + " " + " ".join(below_chunks)).strip()
 
-                if line_label == "우유" and ("카톤/병" in albl_ns or ("카톤" in albl_ns and "병" in albl_ns)):
-                    for sp_card in split_combined_milk_time_entry(" ".join(use_times)):
-                        if sp_card["포장호기"] not in seen_titles:
-                            seen_titles.add(sp_card["포장호기"])
-                            run_times.append(sp_card)
-                    continue
+                    albl_ns = re.sub(r"\s+", "", albl)
+                    if line_label == "우유" and ("카톤/병" in albl_ns or ("카톤" in use_raw_txt and "병" in use_raw_txt)):
+                        for sp_card in split_combined_milk_time_entry(use_raw_txt):
+                            if sp_card["포장호기"] not in seen_titles:
+                                seen_titles.add(sp_card["포장호기"])
+                                run_times.append(sp_card)
+                        continue
 
-                if line_label == "우유":
-                    if "카톤" in albl_ns:
-                        norm_ho = "우유 카톤 생산시간"
-                        sub_ln = "우유(카톤)"
-                    elif "병" in albl_ns:
-                        norm_ho = "우유 병포장 생산시간"
-                        sub_ln = "우유(병포장)"
+                    if line_label == "우유":
+                        if "카톤" in albl_ns:
+                            norm_ho = "우유 카톤 생산시간"
+                            sub_ln = "우유(카톤)"
+                        elif "병" in albl_ns:
+                            norm_ho = "우유 병포장 생산시간"
+                            sub_ln = "우유(병포장)"
+                        else:
+                            norm_ho = albl
+                            sub_ln = "우유"
                     else:
-                        norm_ho = albl
-                        sub_ln = "우유"
-                else:
-                    norm_ho = albl if "생산시간" in albl else f"{albl} 생산시간"
-                    sub_ln = line_label
+                        clean_lbl = re.sub(r"\d{1,2}:\d{2}.*$", "", albl).strip() or albl
+                        norm_ho = clean_lbl if "생산시간" in clean_lbl else f"{clean_lbl} 생산시간"
+                        sub_ln = line_label
 
-                if norm_ho not in seen_titles:
-                    seen_titles.add(norm_ho)
-                    raw_span = f"{use_times[0]} ~ {use_times[1]}" if len(use_times) >= 2 else (use_times[0] if use_times else "")
-                    run_times.append(build_run_time_card(sub_ln, norm_ho, raw_span))
+                    if norm_ho not in seen_titles:
+                        seen_titles.add(norm_ho)
+                        run_times.append(build_run_time_card(sub_ln, norm_ho, use_raw_txt))
 
     if line_label == "우유":
         has_c = any("카톤" in r["포장호기"] for r in run_times)
@@ -2052,7 +2296,8 @@ def parse_dairy_pack_rows(tab_title_raw: str, rows: list, line_label: str):
 
 
 def extract_hist_dairy_run_times(dairy_hist_c: list, target_date: str, line_filter: str = "ALL") -> list:
-    out = []
+    cards_by_ho: Dict[str, dict] = {}
+    order_hos: List[str] = []
     for r in dairy_hist_c:
         if r.get("생산일자") != target_date:
             continue
@@ -2063,11 +2308,19 @@ def extract_hist_dairy_run_times(dairy_hist_c: list, target_date: str, line_filt
             ho_nm = str(r.get("세부항목", "-")).strip()
             raw_v = str(r.get("기록내용_수치", "-")).strip()
             ho_ns = re.sub(r"\s+", "", ho_nm)
-            if "카톤/병" in ho_ns or ("우유" in ho_ns and "카톤" in ho_ns and "병" in ho_ns):
-                out.extend(split_combined_milk_time_entry(raw_v))
+            if "카톤/병" in ho_ns or ("우유" in ho_ns and "카톤" in ho_ns and "병" in ho_ns) or ("카톤" in raw_v and "병" in raw_v):
+                cand_cards = split_combined_milk_time_entry(raw_v)
             else:
-                out.append(build_run_time_card(ln, ho_nm, raw_v))
-    return out
+                cand_cards = [build_run_time_card(ln, ho_nm, raw_v)]
+
+            for cd in cand_cards:
+                k = cd["포장호기"]
+                if k not in cards_by_ho:
+                    order_hos.append(k)
+                    cards_by_ho[k] = cd
+                elif cd["가동상태"] == "가동":
+                    cards_by_ho[k] = cd
+    return [cards_by_ho[k] for k in order_hos]
 
 
 def fetch_process_milk_sheet(sheet_urls_map: dict):
@@ -3989,16 +4242,8 @@ def smart_trim_korean_clause(text: str, limit: int = 105) -> str:
     else:
         trimmed = cut[:best_pos]
 
-    trimmed = trimmed.strip(" ,./·:-(")
+   trimmed = trimmed.strip(" ,./·:-(")
     trimmed = re.sub(r"\s+(?:및|또는|관한|따른|위한|하여|에서|으로|대하여)$", "", trimmed).strip(" ,./·:-")
-    trimmed = re.sub(r"(?<=[가-힣]{2})(?:을|를|은|는)$", "", trimmed)
-    if trimmed.count("(") > trimmed.count(")"):
-        trimmed = trimmed[:trimmed.rfind("(")].strip(" ,./·:-")
-    return trimmed
-
-    trimmed = trimmed.strip(" ,./·:-(")
-    # 끝에 남은 불완전 연결어·조사 정리
-    trimmed = re.sub(r"\s+(?:및|또는|관한|따른|위한|하여|에서|으로)$", "", trimmed).strip(" ,./·:-")
     trimmed = re.sub(r"(?<=[가-힣]{2})(?:을|를|은|는)$", "", trimmed)
     if trimmed.count("(") > trimmed.count(")"):
         trimmed = trimmed[:trimmed.rfind("(")].strip(" ,./·:-")
@@ -5220,23 +5465,34 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
         sig_cost = "green" if cost_dept_sum["actual_uk"] >= cost_targets["부문"] else ("red" if cost_rows else "gray")
 
         claim_target_ppm = 1.12
-        row_26_sum = next((r for r in claim_cat if r["연도"] == "2026년" and r["유형"] == "합계"), None)
-        claim_actual_ppm = float(row_26_sum["합계_PPM"]) if row_26_sum else 0.0
-        claim_total_cnt = int(row_26_sum["합계_건수"]) if row_26_sum else 0
-        cl_act_l, cl_fc_l, cl_full_l, cl_slope, cl_m_cnt, cl_last_i = calc_trend_and_forecast_split(
-            [float(r["2026년_PPM"]) for r in claim_trend],
-            [bool(r["_기록여부"]) for r in claim_trend] if claim_trend else None
-        )
-        claim_feb_pred = cl_full_l[-1] if cl_full_l else 0.0
-        sig_claim = "gray" if not row_26_sum else ("red" if claim_actual_ppm > claim_target_ppm else "green")
-
         avail_claim_years = sorted(list({r["연도"] for r in claim_cat}), reverse=True)
+        active_claim_yr = claim_trend[0].get("당해_연도", "2026년") if claim_trend else (avail_claim_years[0] if avail_claim_years else "2026년")
+
+        year_totals_map = {}
         div_claims = {}
         for yr in avail_claim_years:
+            m_yn = re.search(r"(\d{4})", yr)
+            prv_cand = f"{int(m_yn.group(1)) - 1}년" if m_yn else ""
+            prv_yr = prv_cand if prv_cand in avail_claim_years else next((y for y in avail_claim_years if y < yr), "")
+            year_totals_map[yr] = build_year_total_claim_pack(claim_cat, yr, prv_yr)
             div_claims[yr] = {
-                "dairy": build_division_claim_summary(claim_cat, yr, DAIRY_CATEGORIES),
-                "rt": build_division_claim_summary(claim_cat, yr, RT_CATEGORIES)
+                "dairy": build_division_claim_summary(claim_cat, yr, DAIRY_CATEGORIES, prv_yr),
+                "rt": build_division_claim_summary(claim_cat, yr, RT_CATEGORIES, prv_yr)
             }
+
+        cur_cl_pack = year_totals_map.get(active_claim_yr, {})
+        row_cur_sum = next((r for r in claim_cat if r["연도"] == active_claim_yr and r["유형"] == "합계"), None)
+        claim_actual_ppm = float(cur_cl_pack.get("total_ppm", 0.0))
+        claim_total_cnt = int(cur_cl_pack.get("total_cnt", 0))
+        cl_act_l = cur_cl_pack.get("act_line", [None] * 12)
+        cl_fc_l = cur_cl_pack.get("fc_line", [None] * 12)
+        cl_full_l = cur_cl_pack.get("full_line", [0.0] * 12)
+        cl_slope = cur_cl_pack.get("slope", 0.0)
+        cl_m_cnt = cur_cl_pack.get("recorded_months", 0)
+        cl_last_i = cur_cl_pack.get("last_idx", -1)
+        claim_feb_pred = cur_cl_pack.get("feb_pred", 0.0)
+        claim_cum_pred = cur_cl_pack.get("cum_pred_ppm", claim_actual_ppm)
+        sig_claim = "gray" if not row_cur_sum else ("red" if claim_actual_ppm > claim_target_ppm else "green")
 
         rt_t_lines = rt_today["lines_records"] if rt_today else []
         rt_running_hos = rt_today["running_hos"] if rt_today else []
@@ -5436,18 +5692,21 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
                 "rows": cost_rows
             },
             "claim": {
+                "active_year": active_claim_yr,
                 "target_ppm": claim_target_ppm,
                 "actual_ppm": claim_actual_ppm,
                 "total_cnt": claim_total_cnt,
                 "slope": cl_slope,
                 "recorded_months": cl_m_cnt,
                 "feb_pred": claim_feb_pred,
+                "cum_pred_ppm": claim_cum_pred,
                 "last_idx": cl_last_i,
                 "act_line": cl_act_l,
                 "fc_line": cl_fc_l,
                 "full_line": cl_full_l,
                 "signal": sig_claim,
                 "years": avail_claim_years,
+                "year_totals": year_totals_map,
                 "trend_rows": claim_trend,
                 "category_rows": claim_cat,
                 "divisions": div_claims
@@ -6340,54 +6599,136 @@ def api_generate_ai_briefing():
     if not bundle.get("ok"):
         raise HTTPException(status_code=500, detail="데이터가 준비되지 않았습니다.")
 
-    ps = bundle["process"]["summary"]
+    pr = bundle["process"]
+    ps = pr["summary"]
     lb = bundle["label_status"]
-    au = bundle["audit"]["summary"]
+    rw = bundle["raw_db"]
+    au = bundle["audit"]
+    sp = bundle["supplier"]
     lw = bundle["law"]
-    cnh = bundle["claim_nc_hist"]["counts"]
-    cs = bundle["cost"]["dept"]
+    cnh = bundle["claim_nc_hist"]
+    cs = bundle["cost"]
+    cl = bundle["claim"]
     mc = bundle.get("special_boards", {}).get("micro_status", DEFAULT_MICRO_STATUS)
 
-    rt_tab = ps["rt_today_tab"]
-    rt_cnt = ps["active_rt_cnt"]
-    mc_cnt = ps["active_milk_carton_cnt"]
-    mb_cnt = ps["active_milk_bottle_cnt"]
-    fm_cnt = ps["active_ferm_cnt"]
-    sy_tab = ps["soy_default_tab"]
-    sy_un = ps["soy_uninspected_cnt"]
-    mc_st = mc.get("status", "출고적합")
-    mc_nt = mc.get("note", "")
-    lb_rev = lb["reviewing_cnt"]
-    lb_cur_m = lb.get("cur_month", 11)
-    lb_m_cnt = lb.get("cnt_26_cur_m", 0)
-    lb_26 = lb["cnt_26_all"]
-    lw_act = lw["active_cnt"]
-    lw_1yr = lw["prep_1yr_cnt"]
-    au_ban = au["upcoming_banner"]
-    cnh_act = cnh["active"]
-    cnh_maj = cnh["major"]
-    cs_uk = cs["actual_uk"]
-    cs_rt = cs["rate"]
+    # 1) [공정 · 배양 · 출고 판정] 단순 건수 나열 대신 실제 미입력 호기명·이탈·특이사항 핀셋 추출
+    rt_today_obj = pr.get("rt_today") or {}
+    rt_wait_hos = [
+        f"{r['포장호기']}({r['생산 제품명']})"
+        for r in rt_today_obj.get("lines_records", [])
+        if r.get("_cls") == "cell-yellow"
+    ]
+    rt_err_hos = [
+        f"{r['포장호기']}({r['생산 제품명']})"
+        for r in rt_today_obj.get("lines_records", [])
+        if r.get("_cls") == "cell-red"
+    ]
+    soy_def = ps.get("soy_default_tab", "-")
+    soy_blocks = pr.get("soy_tabs_map", {}).get(soy_def, {}).get("blocks", [])
+    soy_wait_hos = [
+        f"{b['포장기']}({b['품목명']})"
+        for b in soy_blocks
+        if not b.get("검사완료여부")
+    ]
 
-    factual_fallback = (
-        f"[Q-Safety 금일 브리핑] 상온공정({rt_tab}) {rt_cnt}건 · 유제품(우유카톤 {mc_cnt}·병 {mb_cnt}·발효유 {fm_cnt}) 가동 중이며, "
-        f"두유배양({sy_tab}) 미검사 {sy_un}호기, 미생물 판정 '{mc_st}({mc_nt})'입니다. "
-        f"표시사항은 현재 {lb_rev}건 검토중({lb_cur_m}월 당월 {lb_m_cnt}건 · 26년 누적 {lb_26}건, 법규 D-Day {lw_act}건 관리), "
-        f"차기 일정은 '{au_ban}', 클레임·부적합 진행 {cnh_act}건, 부문 누적 원가절감 {cs_uk}억원({cs_rt}%)입니다."
+    sec1_items = []
+    if rt_err_hos or ps.get("red_rt_cnt", 0) > 0:
+        sec1_items.append(f"상온 공정 기준·기입 누락 즉시 확인 필요 : {', '.join(rt_err_hos[:3]) or (str(ps['red_rt_cnt']) + '건')}")
+    elif rt_wait_hos:
+        sec1_items.append(f"상온({ps['rt_today_tab']}) CCP 이탈 없으나 확인시간 기입 대기 : {', '.join(rt_wait_hos[:3])}")
+    else:
+        sec1_items.append(f"상온({ps['rt_today_tab']}) {ps['active_rt_cnt']}품목 · 유제품(카톤 {ps['active_milk_carton_cnt']}·병 {ps['active_milk_bottle_cnt']}·발효 {ps['active_ferm_cnt']}) 기준이탈 없이 정상 가동")
+
+    if soy_wait_hos:
+        sec1_items.append(f"두유배양({soy_def} 개봉분) 판정 미입력 대기 호기 : {', '.join(soy_wait_hos[:4])}")
+    else:
+        sec1_items.append(f"두유배양({soy_def}) {ps['soy_done_cnt']}개 호기 전량 판정 완료 (오염 {ps['soy_contam_total']}건)")
+
+    sec1_items.append(f"미생물 출고 판정 : '{mc.get('status', '출고적합')}' — {mc.get('note', '특이사항 없음')}")
+    if ps.get("today_notes"):
+        sec1_items.append(f"현장 전달사항 : {' / '.join(ps['today_notes'][:2])}")
+
+    # 2) [법규 D-Day · 원자재 알레르기 · 표시심의 교차 리스크]
+    all_laws = lw.get("all_laws", [])
+    urgent_unready = [
+        f"{x['법규명']}({x['d_day_label']})"
+        for x in all_laws
+        if x.get("d_day") is not None and 0 <= x["d_day"] <= 120 and not x.get("예고여부") and x.get("prep_status") == "검토전"
+    ]
+    prep_1yr_unready = [
+        f"{x['법규명']}({x['d_day_label']})"
+        for x in lw.get("dashboard_laws", [])
+        if x.get("d_day") is not None and 0 <= x["d_day"] <= 365 and x.get("prep_status") != "반영완료"
+    ]
+    alg_bd = rw.get("allergen_breakdown", {})
+    alg_nz = [f"{k} {v}건" for k, v in alg_bd.items() if v > 0]
+
+    sec2_items = []
+    if urgent_unready:
+        sec2_items.append(f"시행 4개월 내 도래 '검토전' 고시 우선 착수 필요 : {', '.join(urgent_unready[:2])}")
+    elif prep_1yr_unready:
+        sec2_items.append(f"1년 내 불용방지 관리 대상 법규 {len(prep_1yr_unready)}건 추적 중 ({', '.join(prep_1yr_unready[:2])})")
+    else:
+        sec2_items.append(f"추적 법규 {lw['active_cnt']}건 모두 준비상태 정상 관리 중")
+
+    if rw.get("allergy_cnt", 0) > 0:
+        sec2_items.append(f"원자재 DB 신규 알레르기(4종) 함유 {rw['allergy_cnt']}건({'·'.join(alg_nz)}) 완제품 표시 대조 관리")
+    sec2_items.append(f"표시사항 현재 심의 대기 {lb['reviewing_cnt']}건 ({lb['rev_summary_line']})")
+
+    # 3) [8대 KPI 목표 미달 항목 및 연말 예측 격차 진단]
+    cs_dept = cs["dept"]
+    cost_gap_uk = round(cs["targets"]["부문"] - cs_dept["proj_uk"], 2)
+    sup_gap = round(sp["target_exec"] - sp["exec_rate"], 2) if sp["exec_rate"] > 0 else 0.0
+    aud_ks = au.get("kpi_sheet", {})
+    aud_gap = round(aud_ks.get("score_target", 94.28) - aud_ks.get("score_actual", 0.0), 2) if aud_ks.get("score_actual", 0) > 0 else 0.0
+
+    sec3_items = []
+    if cost_gap_uk > 0:
+        sec3_items.append(f"원가절감 : 현재 {cs_dept['actual_uk']}억({cs_dept['rate']}%) · 연말 추세 예측 {cs_dept['proj_uk']}억 (목표 {cs['targets']['부문']}억 대비 {cost_gap_uk}억 추가 과제 발굴 필요)")
+    else:
+        sec3_items.append(f"원가절감 : 현재 {cs_dept['actual_uk']}억({cs_dept['rate']}%) · 연말 예측 {cs_dept['proj_uk']}억으로 목표({cs['targets']['부문']}억) 달성 순항")
+
+    sec3_items.append(
+        f"클레임 발생률({cl.get('active_year', '2026년')}) : 현재 누적 {cl['actual_ppm']} PPM · 이상치 보정 계절성 반영 연말 누적 예상 {cl.get('cum_pred_ppm', cl['actual_ppm'])} PPM (목표 {cl['target_ppm']} 이하 {'안정권' if cl.get('cum_pred_ppm', cl['actual_ppm']) <= cl['target_ppm'] else '집중관리'})"
     )
+    kpi_gaps = []
+    if sup_gap > 0:
+        kpi_gaps.append(f"협력업체 AUDIT 실행률 {sp['exec_rate']:.1f}%(목표 대비 -{sup_gap:.1f}%p)")
+    if aud_gap > 0:
+        kpi_gaps.append(f"외부심사 점수 {aud_ks['score_actual']}점(목표 대비 -{aud_gap:.2f}점)")
+    if kpi_gaps:
+        sec3_items.append("목표 미달 중점 보완 KPI : " + " / ".join(kpi_gaps))
+
+    # 4) [심사 · 협력업체 · 클레임 실행 체크포인트]
+    sec4_items = [f"방문·출장 일정 : {au['summary'].get('upcoming_banner', '-')}"]
+    if sp.get("unsub_cnt", 0) > 0 or sp.get("out_cnt", 0) > 0:
+        sec4_items.append(f"협력업체 서류심사 : 미제출 {sp['unsub_cnt']}개사 독려 및 등급 외 {sp['out_cnt']}개사 개선 피드백 필요")
+    act_cnh = cnh.get("active_items", [])
+    if act_cnh:
+        names_cnh = [f"[{x['구분']}]{x['제품명']}({x['진행상태']})" for x in act_cnh[:2]]
+        sec4_items.append(f"진행 중 클레임·부적합 {len(act_cnh)}건 추적 : {', '.join(names_cnh)}")
+    else:
+        sec4_items.append(f"현재 출고보류·추적 중인 클레임/부적합 0건 (시트 누적 {cnh['counts']['total']}건 종결 완료)")
+
+    structured_sections = [
+        {"badge": "공정 · 배양 점검", "tone": "warn" if (rt_err_hos or rt_wait_hos or soy_wait_hos) else "ok", "title": "현장 · 실험실 실시간 미결 및 출고 판정", "items": sec1_items},
+        {"badge": "선제 리스크 차단", "tone": "warn" if (urgent_unready or rw.get("allergy_cnt", 0) > 0) else "info", "title": "법규 D-Day · 신규 알레르기 · 표시심의 교차 진단", "items": sec2_items},
+        {"badge": "KPI 예측 · 격차", "tone": "warn" if (cost_gap_uk > 0 or kpi_gaps) else "ok", "title": "8대 KPI 연말 달성 예측 및 부족분 핀셋 진단", "items": sec3_items},
+        {"badge": "심사 · 사후관리", "tone": "info", "title": "수검 일정 · 협력업체 미제출 · 클레임 추적", "items": sec4_items}
+    ]
+
+    fallback_plain = "\n\n".join([f"■ [{s['badge']}] {s['title']}\n" + "\n".join([f"• {it}" for it in s["items"]]) for s in structured_sections])
 
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if not api_key:
-        return {"ok": True, "source": "factual_engine", "briefing": factual_fallback}
+        return {"ok": True, "source": "Q-Safety 교차진단 엔진", "sections": structured_sections, "briefing": fallback_plain}
 
-    t_notes = ps["today_notes"]
-    lb_line = lb["rev_summary_line"]
     prompt_txt = (
-        "다음 연세유업 아산공장 품질안전부문 실시간 지표를 바탕으로 추정 없이 오직 팩트 수치만 요약하여 "
-        "부문장 출근 보고용 3줄 핵심 브리핑을 한국어로 간결하게 작성해줘.\n"
-        f"- 공정: 상온({rt_tab}) 가동 {rt_cnt}건·특이사항 {t_notes} / 유제품(우유카톤 {mc_cnt}·우유병 {mb_cnt}·발효유 {fm_cnt}) / 두유배양({sy_tab}) 미검사 {sy_un}건 / 미생물: {mc_st} ({mc_nt})\n"
-        f"- 식안팀: 표시사항 현재 {lb_rev}건 검토중({lb_line}), {lb_cur_m}월 당월 {lb_m_cnt}건, 26년 누적 {lb_26}건, 법규 D-Day 추적 {lw_act}건(1년내 불용방지 준비 {lw_1yr}건)\n"
-        f"- 심사/이력: 도래 일정 '{au_ban}', 클레임·부적합 현재 추적 {cnh_act}건(중점 {cnh_maj}건)"
+        "너는 연세유업 아산공장 품질안전부문 수석 데이터 분석가야. 아래 13개 시트에서 교차 추출한 팩트 진단 데이터를 바탕으로 "
+        "경영진 보고용 4개 섹션 JSON을 다듬어줘. 추측이나 없는 숫자는 절대 만들지 말고, 각 항목(items)은 명사형·개조식 1줄로 간결·명료하게 작성해. "
+        "반드시 순수 JSON 배열만 출력해: "
+        '[{"badge":"공정 · 배양 점검","tone":"ok|warn","title":"...","items":["...","..."]}, ...]\n\n'
+        f"[원본 팩트 JSON]\n{json.dumps(structured_sections, ensure_ascii=False)}"
     )
 
     for endpoint in [
@@ -6398,17 +6739,21 @@ def api_generate_ai_briefing():
             resp = requests.post(
                 endpoint,
                 json={"contents": [{"role": "user", "parts": [{"text": prompt_txt}]}]},
-                timeout=12
+                timeout=11
             )
             if resp.status_code == 200:
-                rj = resp.json()
-                cands = rj.get("candidates", [])
+                cands = resp.json().get("candidates", [])
                 if cands:
                     parts = cands[0].get("content", {}).get("parts", [])
                     if parts and parts[0].get("text"):
-                        return {"ok": True, "source": "gemini_api", "briefing": parts[0]["text"].strip()}
+                        raw_t = parts[0]["text"].strip()
+                        raw_t = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_t, flags=re.IGNORECASE).strip()
+                        parsed_sec = json.loads(raw_t)
+                        if isinstance(parsed_sec, list) and len(parsed_sec) >= 3 and all("items" in x for x in parsed_sec):
+                            plain_ai = "\n\n".join([f"■ [{s.get('badge','')}] {s.get('title','')}\n" + "\n".join([f"• {it}" for it in s.get("items", [])]) for s in parsed_sec])
+                            return {"ok": True, "source": "Gemini 2.5 Flash 심층 교차진단", "sections": parsed_sec, "briefing": plain_ai}
         except Exception:
             continue
 
-    return {"ok": True, "source": "factual_engine", "briefing": factual_fallback}
+    return {"ok": True, "source": "Q-Safety 교차진단 엔진", "sections": structured_sections, "briefing": fallback_plain}
 # ============================ [api/index.py - PART 4 / 4 끝] ============================

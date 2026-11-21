@@ -6175,9 +6175,9 @@ def api_auth_login(body: AuthLoginPayload):
         raise HTTPException(status_code=400, detail="사번과 비밀번호를 모두 입력해 주세요.")
 
     users, _ = load_auth_users_live(force=True)
-    user = next((u for u in users if u["사번"] == in_emp), None)
+    idx_u, user = next(((i, u) for i, u in enumerate(users) if u["사번"] == in_emp), (-1, None))
     if not user:
-        raise HTTPException(status_code=401, detail="등록되지 않은 사번입니다. 하단 [신규 계정 신청]을 이용해 주세요.")
+        raise HTTPException(status_code=401, detail="등록되지 않은 사번입니다. 우측 [신규 계정 신청] 탭을 이용해 주세요.")
 
     saved_pw = _normalize_pw_str(user.get("비밀번호", "000"))
     pw_ok = (in_pw == saved_pw) or (saved_pw == "000" and in_pw == "000")
@@ -6189,8 +6189,21 @@ def api_auth_login(body: AuthLoginPayload):
     if user.get("상태") != "정상":
         raise HTTPException(status_code=403, detail="접속이 제한된 계정입니다. 관리자에게 문의해 주세요.")
 
-    user["최근접속일시"] = now_kst().strftime("%Y-%m-%d %H:%M")
-    save_auth_users_to_sheet(users)
+    now_hm = now_kst().strftime("%Y-%m-%d %H:%M")
+    user["최근접속일시"] = now_hm
+    _AUTH_CACHE["ts"] = time.time()
+
+    # 전체 시트 초기화(clear) 대신 해당 행의 H열(최근접속일시) 1칸만 가볍게 업데이트하여 로그인 속도 극대화
+    def _bg_stamp_login(row_no: int, ts_val: str):
+        try:
+            ws_l, _ = _get_or_create_cost_login_ws()
+            if ws_l is not None:
+                ws_l.update_acell(f"H{row_no}", ts_val)
+        except Exception:
+            pass
+
+    if idx_u >= 0:
+        threading.Thread(target=_bg_stamp_login, args=(idx_u + 2, now_hm), daemon=True).start()
 
     tok = create_signed_token(in_emp, days=(14 if body.remember else 1))
     pending_cnt = sum(1 for x in users if x.get("상태") == "승인대기") if user["권한"] == "관리자" else 0

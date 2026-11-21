@@ -3067,7 +3067,7 @@ function renderKpiView() {
       '<h2 class="exec-kpi-h1">2026 업적 KPI 실시간 현황판_품질안전부문</h2>' +
       '<div style="display:flex; gap:10px; align-items:center;">' +
         '<span style="font-size:13px; font-weight:800; color:#1E293B;">Summary (기준 : ' + esc(refDateStr) + ')</span>' +
-        '<button class="btn btn-sm" onclick="switchView(\'home\')">← 통합 대시보드으로</button>' +
+        '<button class="btn btn-sm" onclick="switchView(\'home\')">← 통합 대시보드로</button>' +
       '</div>' +
     '</div>' +
     '<div class="exec-kpi-grid">' +
@@ -4640,14 +4640,43 @@ function renderSubMatView() {
 // 전체 양방향 저장 모달 핸들러 (표시사항 [특이사항] · 미생물 판정 · 법규 [_법규요약DB] · 일정 · 클레임 · KPI)
 // ==============================================================================
 async function openAiBriefingModal() {
-  openModal('✨ Q-Safety AI 출근 요약 브리핑', '<div style="padding:18px; text-align:center;">실시간 시트 지표를 바탕으로 팩트 요약 브리핑을 생성하고 있습니다...</div>');
+  openModal('✨ Q-Safety AI 요약 브리핑', '<div style="padding:22px; text-align:center; font-weight:700; color:var(--yonsei-blue);">⏳ 13개 시트 하위 데이터를 교차 분석하여 핵심 리스크와 KPI 예측 격차를 추출하고 있습니다...</div>');
   try {
     const res = await apiPost('/api/ai-briefing', {});
-    document.getElementById('modalBody').innerHTML =
-      '<div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:9px; padding:14px; line-height:1.65; white-space:pre-line; font-size:13.5px; color:#0F172A;">' +
+    const secs = res.sections || [];
+    let bodyHtml = '';
+
+    if (secs.length) {
+      bodyHtml = '<div style="display:flex; flex-direction:column; gap:10px;">' +
+        secs.map(function(s) {
+          const tone = s.tone || 'info';
+          const bCls = tone === 'warn' ? 'badge-warn' : (tone === 'ok' ? 'badge-ok' : 'badge-info');
+          const bgCol = tone === 'warn' ? '#FFFBEB' : (tone === 'ok' ? '#F8FAFC' : '#EFF6FF');
+          const bdCol = tone === 'warn' ? '#FDE68A' : (tone === 'ok' ? '#E2E8F0' : '#BFDBFE');
+          const itemsHtml = (s.items || []).map(function(it) {
+            return '<li style="margin-bottom:4px; line-height:1.5; color:#0F172A;">' + esc(it) + '</li>';
+          }).join('');
+          return '<div style="background:' + bgCol + '; border:1px solid ' + bdCol + '; border-radius:9px; padding:11px 14px;">' +
+            '<div style="display:flex; align-items:center; gap:7px; margin-bottom:6px;">' +
+              '<span class="badge ' + bCls + '">' + esc(s.badge || '핵심 진단') + '</span>' +
+              '<strong style="font-size:13.5px; color:#0F172A;">' + esc(s.title || '') + '</strong>' +
+            '</div>' +
+            '<ul style="margin:0; padding-left:18px; font-size:13px; font-weight:600;">' + itemsHtml + '</ul>' +
+          '</div>';
+        }).join('') +
+      '</div>';
+    } else {
+      bodyHtml = '<div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:9px; padding:14px; line-height:1.65; white-space:pre-line; font-size:13.5px; color:#0F172A;">' +
         esc(res.briefing) +
-      '</div>' +
-      '<div style="margin-top:8px; font-size:11.5px; color:var(--text-muted); text-align:right;">생성 엔진 : ' + esc(res.source) + '</div>';
+      '</div>';
+    }
+
+    document.getElementById('modalBody').innerHTML =
+      bodyHtml +
+      '<div style="margin-top:9px; font-size:11.5px; color:var(--text-muted); display:flex; justify-content:space-between;">' +
+        '<span>※ 단순 수치 나열이 아닌 시트 세부 탭 교차 진단 결과입니다.</span>' +
+        '<span>분석 엔진 : <b>' + esc(res.source) + '</b></span>' +
+      '</div>';
   } catch (e) {
     document.getElementById('modalBody').innerHTML = '<div style="color:var(--err-fg);">브리핑 생성 실패: ' + esc(e.message) + '</div>';
   }

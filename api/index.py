@@ -6409,14 +6409,40 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
     is_exp_empty = exp_q.get("empty", True)
     today_d = now_kst().date()
 
-    matched_rt, matched_rt_ccp, matched_soy = [], [], []
+    matched_rt, matched_rt_ccp, matched_rt_ccp3b, matched_soy = [], [], [], []
     if run_rt:
-        matched_rt = [
+        rt_date_views = (p_data.get("rt_today") or {}).get("date_views") or {}
+
+        matched_rt_raw = [
             r for r in rt_hp
             if is_product_match(r.get("제품명", ""), product, kw)
             and is_exp_match(r.get("표기소비기한_원문", ""), r.get("표준소비기한_검색용", ""), exp_q)
         ]
-        matched_rt.sort(key=lambda x: x.get("생산일자", ""), reverse=True)
+        matched_rt_raw.sort(key=lambda x: x.get("생산일자", ""), reverse=True)
+
+        # ① 생산·포장 매칭 행에 원본 탭의 확인시간 · 멸균요약 · 색상 클래스 보강
+        for r in matched_rt_raw:
+            rc = dict(r)
+            dt_s = str(rc.get("생산일자", "")).strip()
+            ho_s = str(rc.get("포장호기", "")).strip()
+            dv = rt_date_views.get(dt_s)
+            if dv:
+                for cp in dv.get("compact_rows", []):
+                    if cp.get("포장호기") == ho_s and is_product_match(cp.get("생산 제품명", ""), rc.get("제품명", ""), ""):
+                        if str(rc.get("확인시간", "")).strip() in ("", "-", "미기입(대기)") and cp.get("확인시간"):
+                            rc["확인시간"] = cp["확인시간"]
+                        rc["멸균요약"] = cp.get("멸균기·CCP 요약", "-")
+                        rc["특이사항"] = cp.get("특이사항", "이상없음")
+                        rc["_cls_time"] = cp.get("_cls_status", "cell-green")
+                        rc["_cls_rem"] = cp.get("_cls_rem", "cell-green")
+                        break
+            if "_cls_time" not in rc:
+                chk_v = str(rc.get("확인시간", "")).strip()
+                rc["_cls_time"] = "cell-green" if re.search(r"\d{1,2}:\d{2}", chk_v) else "cell-yellow"
+                rc["멸균요약"] = rc.get("멸균요약", "-")
+                rc["특이사항"] = rc.get("특이사항", "이상없음")
+                rc["_cls_rem"] = "cell-green"
+            matched_rt.append(rc)
 
         rt_keys = [(str(r.get("생산일자", "")).strip(), str(r.get("포장호기", "")).strip(), str(r.get("제품명", "")).strip()) for r in matched_rt]
         seen_soy_idx = set()
@@ -6435,8 +6461,97 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
                 matched_soy.append(sr)
         matched_soy.sort(key=lambda x: x.get("생산일자", ""), reverse=True)
 
-        rt_dt_tab_set = {(r.get("생산일자", ""), r.get("원본탭명", "")) for r in matched_rt}
-        matched_rt_ccp = [c for c in rt_hc if (c.get("생산일자", ""), c.get("원본탭명", "")) in rt_dt_tab_set]
+        # ② 당일 상온 UHT 멸균기 CCP & CCP-3B 무균포장기 기록 (해당 포장호기 정밀 매칭 + 적합 색상 포함)
+        date_hos_map: Dict[str, List[str]] = {}
+        for r in matched_rt:
+            d_k = str(r.get("생산일자", "")).strip()
+            h_k = str(r.get("포장호기", "")).strip()
+            if d_k:
+                date_hos_map.setdefault(d_k, [])
+                if h_k and h_k not in date_hos_map[d_k]:
+                    date_hos_map[d_k].append(h_k)
+
+        for dt_s in sorted(date_hos_map.keys(), reverse=True):
+            target_hos = date_hos_map[dt_s]
+            dv = rt_date_views.get(dt_s)
+            ster_added_for_dt = False
+
+            if dv and dv.get("ster_records"):
+                all_ster = dv["ster_records"]
+                filtered_ster = [
+                    sr for sr in all_ster
+                    if not target_hos or any(f"({h})" in str(sr.get("멸균기_포장", "")) or h in str(sr.get("멸균기_포장", "")) for h in target_hos)
+                ]
+                use_ster = filtered_ster if filtered_ster else all_ster
+                for sr in use_ster:
+                    sr_copy = dict(sr)
+                    sr_copy["생산일자"] = dt_s
+                    matched_rt_ccp.append(sr_copy)
+                    ster_added_for_dt = True
+
+                for c3 in dv.get("ccp3b_records", []):
+                    c3_copy = dict(c3)
+                    c3_copy["생산일자"] = dt_s
+                    c3_copy["_target_hos"] = target_hos
+                    matched_rt_ccp3b.append(c3_copy)
+
+            # 시트 탭이 삭제되어 _이력DB_상온CCP에만 남은 과거 데이터 폴백 파싱
+            if not ster_added_for_dt:
+                day_c_rows = [c for c in rt_hc if str(c.get("생산일자", "")).strip() == dt_s]
+                for c in day_c_rows:
+                    eq_v = (
+                        c.get("설비_호기") or c.get("멸균기_포장") or c.get("멸균기")
+                        or c.get("포장호기") or c.get("호기") or "-"
+                    )
+                    if target_hos and eq_v != "-" and not any(h in str(eq_v) for h in target_hos):
+                        continue
+
+                    prod_v = c.get("매칭 제품명") or c.get("세부항목") or c.get("제품명") or c.get("항목") or "-"
+                    time_v = c.get("확인시간") or c.get("모니터링시간") or c.get("시간") or "-"
+                    temp_v = c.get("멸균온도") or c.get("온도") or "-"
+                    press_v = c.get("균질압") or c.get("압력") or "-"
+                    hold_v = c.get("멸균시간") or c.get("유지시간") or "-"
+                    flow_v = c.get("유량_냉각") or (
+                        f"{c.get('유량', '-')} / {c.get('냉각온도', c.get('냉각', '-'))}"
+                        if (c.get("유량") or c.get("냉각온도") or c.get("냉각")) else "-"
+                    )
+                    flt_v = c.get("여과망_서명") or c.get("여과망") or c.get("판정") or "-"
+                    rem_v = str(c.get("특이사항", "")).strip() or "없음"
+
+                    # 단일 요약 컬럼('기록내용_수치' 등)에 합쳐져 저장된 경우 시간/온도 자동 분리
+                    raw_val_col = str(c.get("기록내용_수치") or c.get("실측치") or c.get("측정값") or "").strip()
+                    if raw_val_col and temp_v == "-":
+                        m_tm = re.search(r"(\d{1,2}:\d{2})", raw_val_col)
+                        m_tp = re.search(r"(\d{2,3}(?:\.\d+)?\s*℃[^/]*)", raw_val_col)
+                        if m_tm and time_v == "-":
+                            time_v = m_tm.group(1)
+                        if m_tp:
+                            temp_v = m_tp.group(1).strip()
+                        else:
+                            temp_v = raw_val_col
+
+                    # 모든 핵심 수치가 비어 있고 특이사항만 '없음'인 빈 행은 제외
+                    if all(str(x).strip() in ("", "-") for x in [eq_v, prod_v, time_v, temp_v, press_v, hold_v]) and rem_v in ("없음", "-"):
+                        continue
+
+                    matched_rt_ccp.append({
+                        "생산일자": dt_s,
+                        "멸균기_포장": eq_v,
+                        "매칭 제품명": prod_v,
+                        "확인시간": time_v,
+                        "멸균온도": temp_v,
+                        "균질압": press_v,
+                        "멸균시간": hold_v,
+                        "유량_냉각": flow_v,
+                        "여과망_서명": flt_v if flt_v != "-" else "적합",
+                        "특이사항": rem_v,
+                        "_c_time": "cell-green" if re.search(r"\d{1,2}:\d{2}", str(time_v)) else ("cell-yellow" if time_v != "-" else ""),
+                        "_c_temp": "cell-green" if temp_v not in ("", "-") else "",
+                        "_c_press": "cell-green" if press_v not in ("", "-") else "",
+                        "_c_hold": "cell-green" if hold_v not in ("", "-") else "",
+                        "_c_flt": "cell-red" if "부적합" in str(flt_v) else "cell-green",
+                        "_c_rem": "cell-yellow" if rem_v not in ("없음", "이상없음", "-") else ""
+                    })
 
     matched_dy, matched_micro = [], []
     if run_dairy:

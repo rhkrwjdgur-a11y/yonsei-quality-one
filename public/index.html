@@ -2195,6 +2195,8 @@ function renderActiveView() {
 // [VIEW 1] 통합 대시보드 (가안 이미지 레이아웃 완벽 일치)
 // ==============================================================================
 function renderHome() {
+  if (!BUNDLE || !BUNDLE.ok) return;
+
   const setHtml = function(id, html) {
     const el = document.getElementById(id);
     if (el) el.innerHTML = html;
@@ -2204,7 +2206,9 @@ function renderHome() {
     if (el) el.textContent = txt;
   };
 
-  // --- [Q1] 공정 · 배양 · 미생물 출고 판정 ---
+  // =========================================================================
+  // [Q1] 좌상단 : 공정 · 배양 · 미생물 출고 판정
+  // =========================================================================
   try {
     const ps = (BUNDLE.process && BUNDLE.process.summary) || {};
     const mc = (BUNDLE.special_boards && BUNDLE.special_boards.micro_status) || { status: '출고적합', note: '', mode: '자동연동' };
@@ -2240,7 +2244,7 @@ function renderHome() {
       '<div class="proc-tile" onclick="switchView(\'micro\')">' +
         '<div class="pt-top"><span class="pt-name">미생물 출고 판정</span><span class="badge ' + mcBadgeCls + '">' + esc(mc.mode === '수동지정' ? '수동지정' : '최신확정') + '</span></div>' +
         '<div class="pt-val">' + esc(mcStatus) + '</div>' +
-        '<div class="pt-sub" title="' + esc(mc.note) + '">' + esc(mc.note || '특이사항 없음') + '</div>' +
+        '<div class="pt-sub" title="' + esc(mc.note || '') + '">' + esc(mc.note || '특이사항 없음') + '</div>' +
       '</div>'
     );
 
@@ -2251,59 +2255,66 @@ function renderHome() {
       const hasSpecial = (yNotes.length > 0 || tNotes.length > 0 || ps.red_rt_cnt > 0);
       notesBox.className = 'bottom-notes-3line ' + (hasSpecial ? 'q1-warn' : 'q1-ok');
       const line1 = yNotes.length > 0
-        ? '✓ [전일(' + esc(ps.rt_yest_tab) + ') 마감] ' + esc(yNotes.join(' / '))
-        : '✓ [전일 마감(' + esc(ps.rt_yest_tab) + ')] 상온·유제품·배양 전 호기 기준이탈 및 설비 특이사항 없음';
+        ? '✓ [전일(' + esc(ps.rt_yest_tab || '-') + ') 마감] ' + esc(yNotes.join(' / '))
+        : '✓ [전일 마감(' + esc(ps.rt_yest_tab || '-') + ')] 상온·유제품·배양 전 호기 기준이탈 및 설비 특이사항 없음';
       const line2 = tNotes.length > 0
-        ? '★ [금일(' + esc(ps.rt_today_tab) + ') 전달사항] ' + esc(tNotes.join(' / '))
-        : '✓ [금일 실시간(' + esc(ps.rt_today_tab) + ')] 상온 ' + (ps.active_rt_cnt || 0) + '품목 · 우유(카톤 ' + (ps.active_milk_carton_cnt || 0) + '·병 ' + (ps.active_milk_bottle_cnt || 0) + ') · 발효유 ' + (ps.active_ferm_cnt || 0) + '품목 정상 가동 중';
+        ? '★ [금일(' + esc(ps.rt_today_tab || '-') + ') 전달사항] ' + esc(tNotes.join(' / '))
+        : '✓ [금일 실시간(' + esc(ps.rt_today_tab || '-') + ')] 상온 ' + (ps.active_rt_cnt || 0) + '품목 · 우유(카톤 ' + (ps.active_milk_carton_cnt || 0) + '·병 ' + (ps.active_milk_bottle_cnt || 0) + ') · 발효유 ' + (ps.active_ferm_cnt || 0) + '품목 정상 가동 중';
       notesBox.innerHTML = '<div>' + line1 + '</div><div>' + line2 + '</div>';
     }
-  } catch (e1) {
-    console.error('Q1 render error:', e1);
+  } catch (errQ1) {
+    console.error('Q1 렌더링 오류:', errQ1);
   }
 
-  // --- [Q2] 표시사항 심의 · 법규 개정 D-Day · 특이사항 메모 ---
+  // =========================================================================
+  // [Q2] 우상단 : 표시사항 심의 · 법규 개정 D-Day (시트 전체 법규 자동 폴백 포함)
+  // =========================================================================
   try {
     const lb = BUNDLE.label_status || {};
     const lw = BUNDLE.law || {};
+    const allLaws = lw.all_laws || [];
+
+    // [대시보드] 핀 목록이 비어 있으면 왼쪽 법규 탭의 전체 법규(all_laws)에서 시행 임박 순으로 자동 추출
+    let dashLaws = (lw.dashboard_laws && lw.dashboard_laws.length) ? lw.dashboard_laws.slice() : [];
+    if (!dashLaws.length && allLaws.length) {
+      const sortedAll = allLaws.slice().sort(function(a, b) {
+        const da = (a.d_day !== null && a.d_day !== undefined) ? (a.d_day >= 0 ? a.d_day : 50000 + Math.abs(a.d_day)) : 99999;
+        const db = (b.d_day !== null && b.d_day !== undefined) ? (b.d_day >= 0 ? b.d_day : 50000 + Math.abs(b.d_day)) : 99999;
+        return da - db;
+      });
+      const qsFirst = sortedAll.filter(function(x) { return x['품질안전해당'] && !x['예고여부']; });
+      dashLaws = (qsFirst.length ? qsFirst : sortedAll).slice(0, 6);
+    }
+
+    const prepCnt = (lw.prep_1yr_cnt && lw.prep_1yr_cnt > 0)
+      ? lw.prep_1yr_cnt
+      : dashLaws.filter(function(x) { return x.d_day !== null && x.d_day !== undefined && x.d_day >= 0 && x.d_day <= 365 && x.prep_status !== '반영완료'; }).length;
 
     setTxt('q2RevBadge', '심의중 ' + (lb.reviewing_cnt || 0) + '건');
-    setTxt('q2LawBadge', '1년내 준비 ' + (lw.prep_1yr_cnt || 0) + '건');
+    setTxt('q2LawBadge', '1년내 준비 ' + prepCnt + '건');
 
+    const diffCurM = (lb.cnt_26_cur_m || 0) - (lb.cnt_25_cur_m || 0);
     setHtml('q2LabelStatsStack',
       '<div class="lbl-num-card highlight" onclick="switchView(\'label\')">' +
-        '<div class="lnc-row">' +
-          '<span class="lnc-title">현재 검토중</span>' +
-          '<span class="lnc-big">' + (lb.reviewing_cnt || 0) + '건</span>' +
-        '</div>' +
-        '<div class="lnc-sub">' + esc(lb.rev_summary_line || '-') + '</div>' +
+        '<div class="lnc-row"><span class="lnc-title">현재 검토중</span><span class="lnc-big">' + (lb.reviewing_cnt || 0) + '건</span></div>' +
+        '<div class="lnc-sub">' + esc(lb.rev_summary_line || '현재 검토 대기 품목 없음') + '</div>' +
       '</div>' +
       '<div class="lbl-num-card" onclick="switchView(\'label\')">' +
-        '<div class="lnc-row">' +
-          '<span class="lnc-title">' + (lb.cur_month || 11) + '월 당월 심의</span>' +
-          '<span class="lnc-pill">' + (lb.cnt_26_cur_m || 0) + '건</span>' +
-        '</div>' +
-        '<div class="lnc-sub">전년 동월 대비 ' + ((lb.cnt_26_cur_m || 0) >= (lb.cnt_25_cur_m || 0) ? '+' : '') + ((lb.cnt_26_cur_m || 0) - (lb.cnt_25_cur_m || 0)) + '건</div>' +
+        '<div class="lnc-row"><span class="lnc-title">' + (lb.cur_month || 11) + '월 당월 심의</span><span class="lnc-pill">' + (lb.cnt_26_cur_m || 0) + '건</span></div>' +
+        '<div class="lnc-sub">전년 동월 대비 ' + (diffCurM >= 0 ? '+' : '') + diffCurM + '건</div>' +
       '</div>' +
       '<div class="lbl-num-card" onclick="switchView(\'label\')">' +
-        '<div class="lnc-row">' +
-          '<span class="lnc-title">2026년 누적</span>' +
-          '<span class="lnc-pill">' + (lb.cnt_26_all || 0) + '건</span>' +
-        '</div>' +
+        '<div class="lnc-row"><span class="lnc-title">2026년 누적</span><span class="lnc-pill">' + (lb.cnt_26_all || 0) + '건</span></div>' +
         '<div class="lnc-sub">검토완료 ' + (lb.completed_26_cnt || 0) + '건 (월평균 ' + (lb.m_avg_26 || 0) + '건)</div>' +
       '</div>'
     );
 
-    const dashLaws = (lw.dashboard_laws && lw.dashboard_laws.length)
-      ? lw.dashboard_laws
-      : ((lw.all_laws || []).slice(0, 5));
-
     if (!dashLaws.length) {
-      setHtml('q2LawList', '<div style="color:var(--text-muted); font-size:11.5px; padding:8px;">대시보드에 고정된 법규가 없습니다.</div>');
+      setHtml('q2LawList', '<div style="color:var(--text-muted); font-size:12px; padding:10px;">법규정보 시트에 등록된 법규 내역이 없습니다.</div>');
     } else {
       setHtml('q2LawList', dashLaws.map(function(item) {
         const stCls = item['예고여부'] ? 'badge-purple' : 'badge-info';
-        return '<div class="mini-item" onclick="openLawDetailModal(\'' + esc(item.law_id) + '\')">' +
+        return '<div class="mini-item" onclick="openLawDetailModal(\'' + esc(item.law_id || '') + '\')">' +
           '<div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">' +
             '<div style="display:flex; align-items:center; gap:4px; min-width:0;">' +
               '<span class="badge ' + stCls + '">' + esc(item['법규단계'] || '고시') + '</span>' +
@@ -2313,22 +2324,72 @@ function renderHome() {
             '<span class="badge ' + esc(item.prep_timing_cls || 'badge-neutral') + '">' + esc(item.prep_status || '검토전') + '</span>' +
           '</div>' +
           '<div class="law-mini-title">' + esc(item['법규명'] || '-') + '</div>' +
-          '<div class="law-mini-sum">' + esc(item['실무조치요약'] || '-') + '</div>' +
+          '<div class="law-mini-sum">' + esc(item['실무조치요약'] || item['자동조치요약'] || '-') + '</div>' +
         '</div>';
       }).join(''));
     }
 
     const rawMemo = (BUNDLE.special_boards && BUNDLE.special_boards.label_memo) ? String(BUNDLE.special_boards.label_memo).trim() : '';
-    const cleanMemo = (rawMemo && rawMemo !== '-') ? rawMemo : '';
-    setTxt('q2LabelMemoTxt', cleanMemo || '• 원자재 변경 품목 전성분 및 알레르기 유발물질 표시 교차 점검 진행\n• 표시사항 신규·변경 의뢰 건 부자재 발주 전 최종 확인필 여부 상시 체크');
-  } catch (e2) {
-    console.error('Q2 render error:', e2);
+    setTxt('q2LabelMemoTxt', (rawMemo && rawMemo !== '-')
+      ? rawMemo
+      : '• 원자재 변경 품목 전성분 및 알레르기 유발물질 표시 교차 점검 진행\n• 표시사항 신규·변경 의뢰 건 부자재 발주 전 최종 확인필 여부 상시 체크');
+  } catch (errQ2) {
+    console.error('Q2 렌더링 오류:', errQ2);
   }
 
-  // --- [Q3] 방문심사 · 협력업체 방문 일정 현황 ---
+  // =========================================================================
+  // [Q3] 좌하단 : 방문심사 · 협력업체 방문 일정 (수검·점검 이력 자동 연동 포함)
+  // =========================================================================
   try {
-    const auObj = BUNDLE.audit || {};
-    const au = auObj.summary || {};
+    const auWrap = BUNDLE.audit || {};
+    const au = auWrap.summary || {};
+    const allScheds = (auWrap.schedules || []).slice().sort(function(a, b) {
+      return String(b['심사일자'] || '').localeCompare(String(a['심사일자'] || ''));
+    });
+
+    let visitList = allScheds.filter(function(s) { return s['구분'] !== '협력업체 방문'; });
+    let supVisitList = allScheds.filter(function(s) { return s['구분'] === '협력업체 방문'; });
+
+    // [일정] 탭이 비어 있으면 왼쪽 '심사점수' 탭과 '협력업체' 탭의 시트 이력을 자동으로 끌어와 표시
+    const audHistRows = (auWrap.kpi_sheet && auWrap.kpi_sheet.history_rows) || [];
+    if (!visitList.length && audHistRows.length) {
+      visitList = audHistRows.slice(0, 8).map(function(r) {
+        return {
+          '구분': '방문심사',
+          '심사일자': String(r['심사일'] || '-'),
+          '심사명': String(r['심사업체'] || '-'),
+          '진행현황': '심사종료'
+        };
+      });
+    }
+
+    const supKpiRows = (BUNDLE.supplier && BUNDLE.supplier.kpi_sheet && BUNDLE.supplier.kpi_sheet.visit_rows) || [];
+    if (!supVisitList.length && supKpiRows.length) {
+      supVisitList = supKpiRows.slice(0, 8).map(function(r) {
+        const aff = r['계열사 구분'] ? ('[' + r['계열사 구분'] + '] ') : '';
+        return {
+          '구분': '협력업체 방문',
+          '심사일자': String(r['점검일'] || '-'),
+          '심사명': aff + String(r['업체명'] || '-'),
+          '진행현황': '심사종료'
+        };
+      });
+    }
+
+    let heroTitle = au.visit_title || '';
+    let heroStatus = au.status || '심사준비중';
+    let heroPct = (au.pct !== undefined && au.pct !== null) ? au.pct : 0;
+    let heroColor = au.color || '#003378';
+
+    if ((!heroTitle || heroTitle.indexOf('없습니다') !== -1) && visitList.length) {
+      heroTitle = '[최근 수검 완료] ' + visitList[0]['심사명'] + ' (' + visitList[0]['심사일자'] + ')';
+      heroStatus = '심사종료';
+      heroPct = 100;
+      heroColor = '#0F3A7D';
+    }
+
+    const isRecentDone = (heroTitle.indexOf('최근') !== -1 && heroStatus === '심사종료');
+    const heroBadgeTxt = isRecentDone ? '최근 수검' : '차기 최우선';
     const steps = [
       ['심사준비중', '준비중 20%'],
       ['심사중', '심사중 50%'],
@@ -2336,49 +2397,48 @@ function renderHome() {
       ['현장심사중', '현장 85%'],
       ['심사종료', '종료 100%']
     ];
-    const isRecentDone = String(au.visit_title || '').indexOf('최근 방문심사') !== -1 && au.status === '심사종료';
-    const heroBadgeTxt = isRecentDone ? '최근 수검' : '차기 최우선';
 
     setHtml('q3HeroBox',
       '<div class="q3-banner-line">' +
         '<span class="q3-tag-navy">' + heroBadgeTxt + '</span>' +
-        '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + esc(au.visit_title || '-') + '"><b>' + esc(au.visit_title || '등록된 방문심사 일정 확인') + '</b></span>' +
+        '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + esc(heroTitle || '-') + '"><b>' + esc(heroTitle || '방문심사 일정 대기') + '</b></span>' +
       '</div>' +
-      '<div class="gauge-track"><div class="gauge-fill" style="width:' + (au.pct || 0) + '%; background-color:' + esc(au.color || '#003378') + ';">' + (au.pct || 0) + '%</div></div>' +
+      '<div class="gauge-track"><div class="gauge-fill" style="width:' + heroPct + '%; background-color:' + esc(heroColor) + ';">' + heroPct + '%</div></div>' +
       '<div class="step-btn-row">' +
         steps.map(function(st) {
-          const isAct = au.status === st[0] ? ' active' : '';
+          const isAct = heroStatus === st[0] ? ' active' : '';
           return '<button class="step-btn' + isAct + '" onclick="quickChangeAuditStatus(\'' + esc(au.active_uid || '') + '\', \'' + st[0] + '\')">' + st[1] + '</button>';
         }).join('') +
       '</div>'
     );
 
-    const allScheds = (auObj.schedules || []).slice().sort(function(a, b) {
-      return String(b['심사일자'] || '').localeCompare(String(a['심사일자'] || ''));
-    });
-    const visitList = allScheds.filter(function(s) { return s['구분'] !== '협력업체 방문'; });
-    const supVisitList = allScheds.filter(function(s) { return s['구분'] === '협력업체 방문'; });
+    const fmtShortDt = function(rawDt) {
+      const s = String(rawDt || '').trim();
+      return (/^20\d{2}[\-\.]/.test(s) && s.length >= 10) ? s.slice(5) : s;
+    };
 
     setHtml('q3VisitList', visitList.length ? visitList.map(function(s) {
       const bCls = s['진행현황'] === '심사종료' ? 'badge-ok' : 'badge-info';
-      return '<div class="mini-item" onclick="switchView(\'audit\', \'schedule\')" style="display:flex; justify-content:space-between; align-items:center; gap:5px;">' +
-        '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><b>' + esc((s['심사일자'] || '').slice(5)) + '</b> ' + esc(s['심사명'] || '-') + '</span>' +
+      return '<div class="mini-item" onclick="switchView(\'audit\')" style="display:flex; justify-content:space-between; align-items:center; gap:5px;">' +
+        '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><b>' + esc(fmtShortDt(s['심사일자'])) + '</b> ' + esc(s['심사명'] || '-') + '</span>' +
         '<span class="badge ' + bCls + '">' + esc(s['진행현황'] || '-') + '</span>' +
       '</div>';
     }).join('') : '<div style="font-size:11.5px; color:var(--text-muted); padding:6px;">등록된 방문심사 없음</div>');
 
     setHtml('q3SupVisitList', supVisitList.length ? supVisitList.map(function(s) {
       const bCls = s['진행현황'] === '심사종료' ? 'badge-ok' : 'badge-warn';
-      return '<div class="mini-item" onclick="switchView(\'audit\', \'schedule\')" style="display:flex; justify-content:space-between; align-items:center; gap:5px;">' +
-        '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><b>' + esc((s['심사일자'] || '').slice(5)) + '</b> ' + esc(s['심사명'] || '-') + '</span>' +
+      return '<div class="mini-item" onclick="switchView(\'supplier\')" style="display:flex; justify-content:space-between; align-items:center; gap:5px;">' +
+        '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><b>' + esc(fmtShortDt(s['심사일자'])) + '</b> ' + esc(s['심사명'] || '-') + '</span>' +
         '<span class="badge ' + bCls + '">' + esc(s['진행현황'] || '-') + '</span>' +
       '</div>';
     }).join('') : '<div style="font-size:11.5px; color:var(--text-muted); padding:6px;">등록된 협력업체 방문 없음</div>');
-  } catch (e3) {
-    console.error('Q3 render error:', e3);
+  } catch (errQ3) {
+    console.error('Q3 렌더링 오류:', errQ3);
   }
 
-  // --- [Q4] 클레임 · 부적합 진행 현황 ---
+  // =========================================================================
+  // [Q4] 우하단 : 클레임 · 부적합 진행 현황 및 LOT 역추적
+  // =========================================================================
   try {
     const cnh = BUNDLE.claim_nc_hist || {};
     const cnts = cnh.counts || { active: 0, total: 0, claim: 0, nc: 0 };
@@ -2412,19 +2472,19 @@ function renderHome() {
           const cCls = it['구분'] === '부적합' ? 'badge-err' : 'badge-warn';
           return '<div class="mini-item" onclick="openLotViewWithScope(\'HIST\')">' +
             '<div style="display:flex; justify-content:space-between; align-items:center; gap:4px;">' +
-              '<div><span class="badge ' + cCls + '">' + esc(it['구분']) + '</span> <strong style="font-size:12.5px;">' + esc(it['제품명']) + '</strong> <span style="font-size:11px; color:var(--text-muted);">(' + esc(it['소비기한']) + ')</span></div>' +
-              '<span class="badge badge-info">' + esc(it['진행상태']) + '</span>' +
+              '<div><span class="badge ' + cCls + '">' + esc(it['구분'] || '-') + '</span> <strong style="font-size:12.5px;">' + esc(it['제품명'] || '-') + '</strong> <span style="font-size:11px; color:var(--text-muted);">(' + esc(it['소비기한'] || '-') + ')</span></div>' +
+              '<span class="badge badge-info">' + esc(it['진행상태'] || '-') + '</span>' +
             '</div>' +
             '<div style="font-size:11.5px; color:var(--text-sub); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' +
-              esc(it['상세사유']) + ' → ' + esc(it['추가검사_조치내역']) +
+              esc(it['상세사유'] || '-') + ' → ' + esc(it['추가검사_조치내역'] || '-') +
             '</div>' +
           '</div>';
         }).join('') +
         '</div>'
       );
     }
-  } catch (e4) {
-    console.error('Q4 render error:', e4);
+  } catch (errQ4) {
+    console.error('Q4 렌더링 오류:', errQ4);
   }
 }
 

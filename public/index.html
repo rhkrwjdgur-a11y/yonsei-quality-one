@@ -2207,19 +2207,27 @@ function renderHome() {
     if (el) el.textContent = txt;
   };
 
-  // --- [Q1] 공정 · 배양 · 미생물 출고 판정 ---
+ // --- [Q1] 공정 · 배양 · 미생물 출고 판정 (소비기한 이상 감지 시 최우선 알림 연동) ---
   try {
     const ps = (BUNDLE.process && BUNDLE.process.summary) || {};
     const mc = (BUNDLE.special_boards && BUNDLE.special_boards.micro_status) || { status: '출고적합', note: '', mode: '자동연동' };
+    const expAlerts = ps.exp_alerts || [];
+    const expRedCnt = ps.exp_red_cnt || 0;
+    const expWarnCnt = ps.exp_warn_cnt || 0;
 
     setTxt('q1Title', '● 어제 마감(' + (BUNDLE.yest_mmdd || '-') + ') & 오늘 실시간(' + (BUNDLE.today_mmdd || '-') + ') 공정 · 출고 판정');
 
-    const rtBadgeCls = ps.red_rt_cnt > 0 ? 'badge-err' : (ps.wait_rt_cnt > 0 ? 'badge-warn' : 'badge-ok');
-    const rtBadgeTxt = ps.red_rt_cnt > 0 ? ('이탈 ' + ps.red_rt_cnt + '건') : (ps.wait_rt_cnt > 0 ? ('확인대기 ' + ps.wait_rt_cnt + '건') : '정상가동');
+    const rtBadgeCls = (ps.red_rt_cnt > 0) ? 'badge-err' : (ps.wait_rt_cnt > 0 ? 'badge-warn' : 'badge-ok');
+    const rtBadgeTxt = (ps.red_rt_cnt > 0) ? ('확인필요 ' + ps.red_rt_cnt + '건') : (ps.wait_rt_cnt > 0 ? ('확인대기 ' + ps.wait_rt_cnt + '건') : '정상가동');
     const rtHosTxt = (ps.rt_running_hos && ps.rt_running_hos.length) ? ps.rt_running_hos.join('·') : '비가동';
 
     const soyBadgeCls = ps.soy_contam_total > 0 ? 'badge-err' : (ps.soy_uninspected_cnt > 0 ? 'badge-warn' : 'badge-ok');
     const soyBadgeTxt = ps.soy_contam_total > 0 ? ('오염 ' + ps.soy_contam_total + '건') : (ps.soy_uninspected_cnt > 0 ? ('검사전 ' + ps.soy_uninspected_cnt + '호기') : '판정완료');
+
+    const dyExpIssues = expAlerts.filter(function(a) { return String(a.msg || '').indexOf('[상온') !== 0; });
+    const dyHasRed = dyExpIssues.some(function(a) { return a.level === 'red'; });
+    const dyBadgeCls = dyHasRed ? 'badge-err' : (dyExpIssues.length > 0 ? 'badge-warn' : 'badge-ok');
+    const dyBadgeTxt = dyExpIssues.length > 0 ? ('소비기한 확인 ' + dyExpIssues.length + '건') : '금일생산';
 
     const mcStatus = mc.status || '출고적합';
     const mcBadgeCls = mcStatus.indexOf('보류') !== -1 ? 'badge-err' : (mcStatus === '검사중' ? 'badge-warn' : 'badge-ok');
@@ -2236,7 +2244,7 @@ function renderHome() {
         '<div class="pt-sub">탭 ' + esc(ps.soy_default_tab || '-') + ' (' + Number(ps.soy_total_samples || 0).toLocaleString() + '개)</div>' +
       '</div>' +
       '<div class="proc-tile" onclick="switchView(\'process\', \'dairy\')">' +
-        '<div class="pt-top"><span class="pt-name">유제품 포장 (카톤·병·발효)</span><span class="badge badge-ok">금일생산</span></div>' +
+        '<div class="pt-top"><span class="pt-name">유제품 포장 (카톤·병·발효)</span><span class="badge ' + dyBadgeCls + '">' + esc(dyBadgeTxt) + '</span></div>' +
         '<div class="pt-val">생산 ' + (ps.active_dairy_cnt || 0) + ' 품목</div>' +
         '<div class="pt-sub">우유카톤 ' + (ps.active_milk_carton_cnt || 0) + ' · 병 ' + (ps.active_milk_bottle_cnt || 0) + ' · 발효 ' + (ps.active_ferm_cnt || 0) + '</div>' +
       '</div>' +
@@ -2251,15 +2259,33 @@ function renderHome() {
     const tNotes = ps.today_notes || [];
     const notesBox = document.getElementById('q1NotesBox');
     if (notesBox) {
-      const hasSpecial = (yNotes.length > 0 || tNotes.length > 0 || ps.red_rt_cnt > 0);
+      const hasExpErr = (expRedCnt > 0 || expWarnCnt > 0);
+      const hasSpecial = (hasExpErr || yNotes.length > 0 || tNotes.length > 0 || ps.red_rt_cnt > 0);
       notesBox.className = 'bottom-notes-3line ' + (hasSpecial ? 'q1-warn' : 'q1-ok');
+      if (expRedCnt > 0) {
+        notesBox.style.background = '#FEF2F2';
+        notesBox.style.borderColor = '#FCA5A5';
+        notesBox.style.color = '#991B1B';
+      } else {
+        notesBox.style.background = '';
+        notesBox.style.borderColor = '';
+        notesBox.style.color = '';
+      }
+
+      let linesHtml = '';
+      if (expAlerts.length > 0) {
+        linesHtml += expAlerts.map(function(a) {
+          const ic = a.level === 'red' ? '🚨 ' : '⚠️ ';
+          return '<div>' + ic + esc(a.msg) + '</div>';
+        }).join('');
+      }
       const line1 = yNotes.length > 0
         ? '✓ [전일(' + esc(ps.rt_yest_tab || '-') + ') 마감] ' + esc(yNotes.join(' / '))
-        : '✓ [전일 마감(' + esc(ps.rt_yest_tab || '-') + ')] 상온·유제품·배양 전 호기 기준이탈 및 설비 특이사항 없음';
+        : '✓ [전일 마감(' + esc(ps.rt_yest_tab || '-') + ')] 상온·유제품·배양 전 호기 설비 특이사항 없음';
       const line2 = tNotes.length > 0
         ? '★ [금일(' + esc(ps.rt_today_tab || '-') + ') 전달사항] ' + esc(tNotes.join(' / '))
-        : '✓ [금일 실시간(' + esc(ps.rt_today_tab || '-') + ')] 상온 ' + (ps.active_rt_cnt || 0) + '품목 · 우유(카톤 ' + (ps.active_milk_carton_cnt || 0) + '·병 ' + (ps.active_milk_bottle_cnt || 0) + ') · 발효유 ' + (ps.active_ferm_cnt || 0) + '품목 정상 가동 중';
-      notesBox.innerHTML = '<div>' + line1 + '</div><div>' + line2 + '</div>';
+        : '✓ [금일 실시간(' + esc(ps.rt_today_tab || '-') + ')] 상온 ' + (ps.active_rt_cnt || 0) + '품목 · 우유(카톤 ' + (ps.active_milk_carton_cnt || 0) + '·병 ' + (ps.active_milk_bottle_cnt || 0) + ') · 발효유 ' + (ps.active_ferm_cnt || 0) + '품목 가동 중';
+      notesBox.innerHTML = linesHtml + '<div>' + line1 + '</div><div>' + line2 + '</div>';
     }
   } catch (err1) {
     setHtml('q1NotesBox', '공정 표시 오류: ' + esc(err1.message));
@@ -3090,6 +3116,27 @@ function isDairyActiveStatus(st) {
   return s.indexOf('금일생산') !== -1 || s.indexOf('생산마감') !== -1;
 }
 
+function renderExpAlertBannerHtml(alertsList) {
+  const list = alertsList || [];
+  if (!list.length) return '';
+  const hasRed = list.some(function(a) { return a.level === 'red'; });
+  const bg = hasRed ? '#FEF2F2' : '#FFFBEB';
+  const bd = hasRed ? '#FCA5A5' : '#FCD34D';
+  const fg = hasRed ? '#991B1B' : '#92400E';
+  const title = hasRed
+    ? '🚨 소비기한 기준 초과 · 역전 감지 — 지금 확인이 필요합니다!'
+    : '⚠️ 소비기한 운영기준 확인 알림 — 현장 확인이 필요합니다.';
+
+  return '<div class="panel-card" style="background:' + bg + '; border:1.5px solid ' + bd + '; color:' + fg + '; padding:11px 15px; margin-bottom:10px;">' +
+    '<div style="font-weight:900; font-size:13.5px; margin-bottom:5px;">' + title + '</div>' +
+    '<div style="display:flex; flex-direction:column; gap:3px; font-size:12.5px; font-weight:700; line-height:1.45;">' +
+      list.map(function(a) {
+        return '<div>• ' + esc(a.msg) + '</div>';
+      }).join('') +
+    '</div>' +
+  '</div>';
+}
+
 function renderDairyPackTableHtml(rows, isBottleMode) {
   const activeOnly = (rows || []).filter(function(r) { return isDairyActiveStatus(r['가동여부']); });
   const targetRows = activeOnly.length ? activeOnly : (rows || []);
@@ -3100,17 +3147,18 @@ function renderDairyPackTableHtml(rows, isBottleMode) {
 
   if (isBottleMode) {
     return '<div class="tbl-wrap"><table class="data-tbl">' +
-      '<thead><tr><th>라인구분</th><th>작성일</th><th>가동여부</th><th>병우유 제품명 (용량)</th><th>확인시간</th><th>표기 소비기한 (Tank)</th><th>표시사항</th><th>캡 속지 접착</th><th>제품용량</th><th>관능(5점법)</th></tr></thead>' +
+      '<thead><tr><th>라인구분</th><th>작성일</th><th>가동여부</th><th>병우유 제품명 (용량)</th><th>확인시간</th><th>표기 소비기한 (검증)</th><th>표시사항</th><th>캡 속지 접착</th><th>제품용량</th><th>관능(5점법)</th></tr></thead>' +
       '<tbody>' +
       targetRows.map(function(r) {
         const isRun = isDairyActiveStatus(r['가동여부']);
+        const expCls = isRun ? (r._cls_exp || 'cell-green') : '';
         return '<tr>' +
           '<td><span class="badge badge-purple">' + esc(r['라인구분']) + '</span></td>' +
           '<td>' + esc(r['작성일']) + '</td>' +
           '<td><span class="badge ' + (isRun ? 'badge-ok' : 'badge-neutral') + '">' + esc(r['가동여부']) + '</span></td>' +
           '<td class="td-left"><strong>' + esc(r['제품명']) + '</strong></td>' +
           '<td>' + esc(r['확인시간']) + '</td>' +
-          '<td><b>' + esc(r['표기 소비기한']) + '</b></td>' +
+          '<td class="' + esc(expCls) + '" title="' + esc(r._exp_tip || '') + '"><b>' + esc(r['표기 소비기한']) + '</b></td>' +
           '<td>' + esc(r['표시사항']) + '</td>' +
           '<td><b>' + esc(r['캡속지접착'] || r['상부/실링'] || '-') + '</b></td>' +
           '<td>' + esc(r['제품용량']) + '</td>' +
@@ -3121,17 +3169,18 @@ function renderDairyPackTableHtml(rows, isBottleMode) {
   }
 
   return '<div class="tbl-wrap"><table class="data-tbl">' +
-    '<thead><tr><th>라인구분</th><th>작성일</th><th>가동여부</th><th>제품명 (용량)</th><th>확인시간</th><th>표기 소비기한 (Tank)</th><th>표시사항</th><th>상부/실링</th><th>하부/라벨</th><th>제품용량</th><th>관능(5점법)</th></tr></thead>' +
+    '<thead><tr><th>라인구분</th><th>작성일</th><th>가동여부</th><th>제품명 (용량)</th><th>확인시간</th><th>표기 소비기한 (검증)</th><th>표시사항</th><th>상부/실링</th><th>하부/라벨</th><th>제품용량</th><th>관능(5점법)</th></tr></thead>' +
     '<tbody>' +
     targetRows.map(function(r) {
       const isRun = isDairyActiveStatus(r['가동여부']);
+      const expCls = isRun ? (r._cls_exp || 'cell-green') : '';
       return '<tr>' +
         '<td><span class="badge badge-info">' + esc(r['라인구분']) + '</span></td>' +
         '<td>' + esc(r['작성일']) + '</td>' +
         '<td><span class="badge ' + (isRun ? 'badge-ok' : 'badge-neutral') + '">' + esc(r['가동여부']) + '</span></td>' +
         '<td class="td-left"><strong>' + esc(r['제품명']) + '</strong></td>' +
         '<td>' + esc(r['확인시간']) + '</td>' +
-        '<td><b>' + esc(r['표기 소비기한']) + '</b></td>' +
+        '<td class="' + esc(expCls) + '" title="' + esc(r._exp_tip || '') + '"><b>' + esc(r['표기 소비기한']) + '</b></td>' +
         '<td>' + esc(r['표시사항']) + '</td>' +
         '<td>' + esc(r['상부/실링']) + '</td>' +
         '<td>' + esc(r['하부/라벨']) + '</td>' +
@@ -3192,7 +3241,10 @@ function mapHistDairyRowToPackFormat(r, isTodayTarget) {
     '하부/라벨': mBot ? mBot[1] : (r['하부_외포장'] || '-'),
     '캡속지접착': mCap ? mCap[1] : (r['캡속지접착'] || sealRaw || '-'),
     '제품용량': r['제품용량'] || '-',
-    '관능(5점법)': r['관능검사'] || r['관능'] || '-'
+    '관능(5점법)': r['관능검사'] || r['관능'] || '-',
+    '_cls_exp': r._cls_exp || 'cell-green',
+    '_exp_tip': r._exp_tip || '',
+    '_exp_alert': r._exp_alert || ''
   };
 }
 
@@ -3204,7 +3256,7 @@ function renderProcessView() {
     '<div class="page-hdr">' +
       '<div>' +
         '<h2 class="page-h2">공정 및 배양 실시간 통합 관제</h2>' +
-        '<div class="page-desc">금일 · 전일 및 지난 날짜 버튼을 클릭하면 동일한 일보 화면 구성으로 깔끔하게 전환됩니다.</div>' +
+        '<div class="page-desc">DB 확정 생산일 기준으로 소비기한 상한·역전을 자동 검증하여 정상 시 초록 음영, 주의·부적합 시 상단 경고 배너를 표시합니다.</div>' +
       '</div>' +
       '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
     '</div>' +
@@ -3217,7 +3269,7 @@ function renderProcessView() {
 
   const box = document.getElementById('procTabBox');
 
-  // ==================== [1] 상온 제품 공정·멸균 CCP (모든 날짜를 금일·전일 탭과 동일한 3단 구성으로 표시) ====================
+  // ==================== [1] 상온 제품 공정·멸균 CCP ====================
   if (PROC_MAIN_TAB === 'rt') {
     const dateViews = (pr.rt_today && pr.rt_today.date_views) ? pr.rt_today.date_views : {};
     const todayIso = pr.rt_today ? pr.rt_today.prod_date : '';
@@ -3229,6 +3281,7 @@ function renderProcessView() {
     else if (PROC_RT_SEL_KEY !== 'TODAY' && dateViews[PROC_RT_SEL_KEY]) rtObj = dateViews[PROC_RT_SEL_KEY];
 
     const spNotes = (rtObj && rtObj.ster_special_notes) ? rtObj.ster_special_notes : [];
+    const rtExpAlerts = (rtObj && rtObj.exp_alerts) ? rtObj.exp_alerts : [];
 
     box.innerHTML =
       '<div class="panel-card" style="padding:10px 14px; background:#F8FAFC; margin-bottom:10px;">' +
@@ -3247,19 +3300,29 @@ function renderProcessView() {
                 }).join('') +
               '</select>' : '') +
           '</div>' +
-          (spNotes.length ? '<span class="badge badge-warn">특이·전달사항 ' + spNotes.length + '건</span>' : '<span class="badge badge-ok">기준이탈 및 설비 특이사항 없음</span>') +
+          (rtExpAlerts.length
+            ? '<span class="badge badge-err">소비기한 확인 ' + rtExpAlerts.length + '건</span>'
+            : (spNotes.length ? '<span class="badge badge-warn">특이·전달사항 ' + spNotes.length + '건</span>' : '<span class="badge badge-ok">소비기한 및 CCP 이상 없음</span>')) +
         '</div>' +
       '</div>' +
       (!rtObj ? '<div class="panel-card">선택한 일자의 상온 공정 데이터를 불러올 수 없습니다.</div>' :
+        renderExpAlertBannerHtml(rtExpAlerts) +
         (spNotes.length ? '<div class="panel-card" style="background:#FFFBEB; border-color:#FDE68A; padding:10px 14px; font-weight:700; color:#78350F;">' +
           spNotes.map(function(n) { return '<div>• ' + esc(n) + '</div>'; }).join('') +
         '</div>' : '') +
         '<div class="panel-card">' +
-          '<div class="panel-title"><span>1. 상온 포장호기별 가동 제품 및 멸균 요약 (' + esc(rtObj.prod_date || rtObj.tab_title) + ')</span><span class="badge badge-info">' + (rtObj.compact_rows ? rtObj.compact_rows.length : 0) + '품목</span></div>' +
+          '<div class="panel-title"><span>1. 상온 포장호기별 가동 제품 · 소비기한 검증 및 멸균 요약 (' + esc(rtObj.prod_date || rtObj.tab_title) + ')</span><span class="badge badge-info">' + (rtObj.compact_rows ? rtObj.compact_rows.length : 0) + '품목</span></div>' +
           '<div class="tbl-wrap"><table class="data-tbl">' +
-            '<thead><tr><th>포장호기</th><th>생산 제품명</th><th>소비기한</th><th>확인시간</th><th>멸균기 · CCP 요약</th><th>특이사항</th></tr></thead><tbody>' +
+            '<thead><tr><th>포장호기</th><th>생산 제품명</th><th>소비기한 (검증)</th><th>확인시간</th><th>멸균기 · CCP 요약</th><th>특이사항</th></tr></thead><tbody>' +
             (rtObj.compact_rows && rtObj.compact_rows.length ? rtObj.compact_rows.map(function(r) {
-              return '<tr><td><b>' + esc(r['포장호기']) + '</b></td><td class="td-left"><strong>' + esc(r['생산 제품명']) + '</strong></td><td><b>' + esc(r['소비기한']) + '</b></td><td class="' + esc(r._cls_status) + '">' + esc(r['확인시간']) + '</td><td class="td-left">' + esc(r['멸균기·CCP 요약']) + '</td><td class="' + esc(r._cls_rem) + '">' + esc(r['특이사항']) + '</td></tr>';
+              return '<tr>' +
+                '<td><b>' + esc(r['포장호기']) + '</b></td>' +
+                '<td class="td-left"><strong>' + esc(r['생산 제품명']) + '</strong></td>' +
+                '<td class="' + esc(r._cls_exp || 'cell-green') + '" title="' + esc(r._exp_tip || '') + '"><b>' + esc(r['소비기한']) + '</b></td>' +
+                '<td class="' + esc(r._cls_status) + '">' + esc(r['확인시간']) + '</td>' +
+                '<td class="td-left">' + esc(r['멸균기·CCP 요약']) + '</td>' +
+                '<td class="' + esc(r._cls_rem) + '">' + esc(r['특이사항']) + '</td>' +
+              '</tr>';
             }).join('') : '<tr><td colspan="6" class="cell-gray">해당 일자에 가동 기록이 없습니다.</td></tr>') +
           '</tbody></table></div>' +
         '</div>' +
@@ -3289,7 +3352,7 @@ function renderProcessView() {
           '</div>' : '')
       );
 
-  // ==================== [2] 유제품 포장일보 (상온과 동일하게 금일 실시간(날짜) · 전일 마감(날짜) · 자동 DB 폴백 적용) ====================
+  // ==================== [2] 유제품 포장일보 (소비기한 상한·역전 음영 및 상단 경고 연동) ====================
   } else if (PROC_MAIN_TAB === 'dairy') {
     if (PROC_DAIRY_SEL_KEY === 'LIVE') PROC_DAIRY_SEL_KEY = 'TODAY';
 
@@ -3319,7 +3382,6 @@ function renderProcessView() {
 
     const isTodayTarget = (targetIso === todayIso);
 
-    // 해당 날짜의 _이력DB 데이터 추출
     const dbDayProds = (pr.dairy_hist_p || [])
       .filter(function(r) { return r['생산일자'] === targetIso; })
       .map(function(r) { return mapHistDairyRowToPackFormat(r, isTodayTarget); });
@@ -3331,7 +3393,6 @@ function renderProcessView() {
     const dbMilkTimes = dbAllTimes.filter(function(t) { return String(t['라인구분'] || '').indexOf('발효') === -1; });
     const dbFermTimes = dbAllTimes.filter(function(t) { return String(t['라인구분'] || '').indexOf('발효') !== -1; });
 
-    // 실시간 시트 탭이 살아있고 활성 품목이 있으면 실시간 우선, 마감 후 탭이 삭제·초기화되었으면 _이력DB 자동 표시
     const liveCartonAct = (pr.milk_carton_pack || []).filter(function(r) { return isDairyActiveStatus(r['가동여부']); });
     const liveBottleAct = (pr.milk_bottle_pack || []).filter(function(r) { return isDairyActiveStatus(r['가동여부']); });
     const liveFermAct = (pr.ferm_pack || []).filter(function(r) { return isDairyActiveStatus(r['가동여부']); });
@@ -3359,6 +3420,7 @@ function renderProcessView() {
     const cntB = viewBottleRows.filter(function(r) { return isDairyActiveStatus(r['가동여부']); }).length;
     const cntF = viewFermRows.filter(function(r) { return isDairyActiveStatus(r['가동여부']); }).length;
 
+    const dyAlertsForDay = (pr.dairy_exp_alerts_map && pr.dairy_exp_alerts_map[targetIso]) ? pr.dairy_exp_alerts_map[targetIso] : [];
     const todayBtnLbl = '금일 실시간 (' + fmtIsoToSlashMmDd(dairyTodayIso) + ')';
     const yestBtnLbl = '전일 마감 (' + fmtIsoToSlashMmDd(dairyYestIso) + ')';
 
@@ -3380,27 +3442,32 @@ function renderProcessView() {
                 }).join('') +
               '</select>' : '') +
           '</div>' +
-          '<span class="badge badge-info">우유 카톤 ' + cntC + ' · 병 ' + cntB + ' · 발효유 ' + cntF + '품목</span>' +
+          '<div style="display:flex; gap:6px; align-items:center;">' +
+            (dyAlertsForDay.length ? '<span class="badge badge-err">소비기한 확인 ' + dyAlertsForDay.length + '건</span>' : '<span class="badge badge-ok">소비기한 기준 적합</span>') +
+            '<span class="badge badge-info">우유 카톤 ' + cntC + ' · 병 ' + cntB + ' · 발효유 ' + cntF + '품목</span>' +
+          '</div>' +
         '</div>' +
       '</div>' +
+      renderExpAlertBannerHtml(dyAlertsForDay) +
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>🕒 [우유] 라인 가동 현황 (' + esc(targetIso) + ') — 카톤 / 병포장 분리</span></div>' +
+        '<div class="panel-title"><span>🕒 [우유] 라인 가동 현황 (' + esc(targetIso) + ') — 카톤 / 병포장 분리 (상한 +14일 · 전일 중복 허용)</span></div>' +
         renderRuntimeCardsHtml(viewMilkTimes) +
         '<div style="margin-top:8px; margin-bottom:14px;">' +
-          '<div style="font-size:14px; font-weight:800; color:var(--yonsei-blue); margin-bottom:6px;">① [우유(카톤)] 생산 품목 및 상·하부접착 점검 (생산 ' + cntC + '품목)</div>' +
+          '<div style="font-size:14px; font-weight:800; color:var(--yonsei-blue); margin-bottom:6px;">① [우유(카톤)] 생산 품목 · 소비기한 검증 및 상·하부접착 점검 (생산 ' + cntC + '품목)</div>' +
           renderDairyPackTableHtml(viewCartonRows, false) +
         '</div>' +
         '<div style="margin-top:14px; padding-top:12px; border-top:1px dashed #CBD5E1;">' +
-          '<div style="font-size:14px; font-weight:800; color:var(--purple-fg); margin-bottom:6px;">② [우유(병포장)] 생산 품목 및 캡 속지 접착 점검 (생산 ' + cntB + '품목)</div>' +
+          '<div style="font-size:14px; font-weight:800; color:var(--purple-fg); margin-bottom:6px;">② [우유(병포장)] 생산 품목 · 소비기한 검증 및 캡 속지 접착 점검 (생산 ' + cntB + '품목)</div>' +
           renderDairyPackTableHtml(viewBottleRows, true) +
         '</div>' +
       '</div>' +
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>🕒 [발효유 · 호상] 라인 가동 현황 (' + esc(targetIso) + ') (생산 ' + cntF + '품목)</span></div>' +
+        '<div class="panel-title"><span>🕒 [발효유 · 호상] 라인 가동 현황 (' + esc(targetIso) + ') — 품목별 최대 소비기한 및 직전 재고 역전 감시 (생산 ' + cntF + '품목)</span></div>' +
         renderRuntimeCardsHtml(viewFermTimes) +
         renderDairyPackTableHtml(viewFermRows, false) +
       '</div>';
-  // ==================== [3] 두유 배양검사 일보 (시트탭 + 누적 생산일 버튼 통합 전환) ====================
+
+  // ==================== [3] 두유 배양검사 일보 ====================
   } else {
     const soyMap = pr.soy_tabs_map || {};
     const tabKeys = Object.keys(soyMap);
@@ -4631,7 +4698,7 @@ function renderScopedLotResultHtml(data, isDairyScope) {
               '<td><b>' + esc(r['생산일자']) + '</b></td>' +
               '<td><span class="badge ' + (isBot ? 'badge-purple' : 'badge-info') + '">' + esc(r['라인구분']) + '</span></td>' +
               '<td class="td-left"><strong>' + esc(r['제품명']) + '</strong></td>' +
-              '<td><b>' + esc(r['표기소비기한_원문'] || '-') + '</b></td>' +
+              '<td class="' + esc(r._cls_exp || 'cell-green') + '" title="' + esc(r._exp_tip || '') + '"><b>' + esc(r['표기소비기한_원문'] || '-') + '</b></td>' +
               '<td>' + esc(r['확인시간'] || '-') + '</td>' +
               '<td class="td-left"><b>' + esc(r['포장기_시작~종료시간'] || '-') + '</b></td>' +
               '<td class="td-left">' + esc(r['살균기온도_균질압_CCP'] || '-') + '</td>' +
@@ -4685,7 +4752,7 @@ function renderScopedLotResultHtml(data, isDairyScope) {
               '<td>' + esc(r['원본탭명'] || '-') + '</td>' +
               '<td><b>' + esc(r['포장호기']) + '</b></td>' +
               '<td class="td-left"><strong>' + esc(r['제품명']) + '</strong></td>' +
-              '<td><b>' + esc(r['표기소비기한_원문'] || '-') + '</b></td>' +
+              '<td class="' + esc(r._cls_exp || 'cell-green') + '" title="' + esc(r._exp_tip || '') + '"><b>' + esc(r['표기소비기한_원문'] || '-') + '</b></td>' +
               '<td class="' + esc(r._cls_time || '') + '"><b>' + esc(r['확인시간'] || '-') + '</b></td>' +
               '<td class="td-left">' + esc(r['멸균요약'] || '-') + '</td>' +
               '<td class="' + esc(r._cls_rem || '') + '">' + esc(r['특이사항'] || '이상없음') + '</td>' +

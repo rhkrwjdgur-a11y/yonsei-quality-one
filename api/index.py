@@ -825,10 +825,15 @@ def expand_micro_alias_pool(rep_name: str, saved_alias_col: str = "", custom_not
     rep_ns = re.sub(r"\s+", "", rep_s)
     rep_low = rep_ns.lower()
 
-    m_ju = re.search(r"\(주\s*(\d+)\)", rep_s)
+  m_ju = re.search(r"\(주\s*(\d+)\)", rep_s)
     ju_key = f"주{m_ju.group(1)}" if m_ju else ""
-    if not ju_key and rep_ns in ["연세플레인", "호상플레인"]:
-        ju_key = "주10"
+    if not ju_key:
+        if rep_ns in ["연세딸기", "호상딸기", "부산요네뜨딸기"]:
+            ju_key = "주10"
+        elif rep_ns in ["연세플레인", "호상플레인", "부산요네뜨플레인"]:
+            ju_key = "주11"
+        elif rep_ns in ["연세복숭아", "호상복숭아", "부산요네뜨복숭아"]:
+            ju_key = "주12"
 
     parts = [rep_s]
     saved_s = str(saved_alias_col or "").strip()
@@ -1864,11 +1869,22 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[str, dict
     return alerts_by_date
 
 
-def validate_dairy_shelf_life_on_db(dairy_hist_p: List[dict], ferm_days_map: Dict[str, int]) -> Dict[str, List[dict]]:
+def _ferm_sub_kind(ln_str: str, sec_str: str = "") -> str:
+    s = re.sub(r"\s+", "", f"{ln_str} {sec_str}")
+    if "호상" in s:
+        return "호상"
+    if "병" in s:
+        return "병발효"
+    if "카톤" in s:
+        return "카톤발효"
+    return "발효유"
+
+
+def validate_dairy_shelf_life_on_db(dairy_hist_p: List[dict], ferm_days_map: Dict[Tuple[str, str], int]) -> Dict[str, List[dict]]:
     """
     [_이력DB_유제품포장] 확정 데이터 기준 검증:
-    - 우유(카톤·병): 생산일 + 14일(제조일 포함 15일) 초과 시 부적합(빨강) / 전일 부족분 동일 날짜 중복은 적합(초록) 허용 / 직전 최소일보다 감소 시 역전(빨강)
-    - 발효유·호상: 품목별 최대 소비기한(생산일 + N - 1일) 초과 시 부적합(빨강) / 직전 생산 재고보다 짧아지면 즉시 역전(빨강)
+    - 우유(카톤·병): 생산일 + 14일(제조일 포함 15일) 초과 시 부적합(빨강) / 전일 부족분 동일 날짜 중복은 적합(초록) 허용 / 본생산 소비기한 역전 시(빨강)
+    - 발효유·호상: 세부유형(호상/병/카톤)별 최대 소비기한(생산일 + N - 1일) 초과 시 부적합(빨강) / 직전 본생산(max_e) 대비 당일 본생산(max_e) 역전 시(빨강)
     """
     grouped: Dict[Tuple[bool, str, str], List[dict]] = {}
     for rec in dairy_hist_p:
@@ -1876,7 +1892,7 @@ def validate_dairy_shelf_life_on_db(dairy_hist_p: List[dict], ferm_days_map: Dic
         sec = str(rec.get("세부유형", "")).strip()
         p_nm = str(rec.get("제품명", "")).strip()
         is_ferm = ("발효" in ln) or ("호상" in ln) or ("발효" in sec) or ("호상" in sec)
-        ln_grp = "발효유" if is_ferm else ("우유(병)" if "병" in ln else "우유(카톤)")
+        ln_grp = _ferm_sub_kind(ln, sec) if is_ferm else ("우유(병)" if "병" in ln else "우유(카톤)")
         gk = (is_ferm, ln_grp, clean_product_for_match(p_nm))
         grouped.setdefault(gk, []).append(rec)
 
@@ -1884,12 +1900,14 @@ def validate_dairy_shelf_life_on_db(dairy_hist_p: List[dict], ferm_days_map: Dic
 
     for (is_ferm, ln_grp, pk), recs in grouped.items():
         recs.sort(key=lambda x: str(x.get("생산일자", "")))
-        ferm_n_days = ferm_days_map.get(pk, 0)
+        ferm_n_days = ferm_days_map.get((ln_grp, pk), 0) or ferm_days_map.get(("발효유", pk), 0)
         if is_ferm and ferm_n_days <= 0:
-            # '부산요네뜨 딸기'가 '딸기'(18일)로 오인식되지 않도록 자사 접두어('연세'·'세브란스') 차이만 허용
+            # 반드시 동일한 세부유형(예: 호상끼리만, 병발효끼리만) 안에서만 연세/세브란스 접두어 차이 허용!
             pk_strip = re.sub(r"^(?:연세대학교|연세우유|연세|세브란스)", "", pk)
-            if len(pk_strip) >= 3:
-                for map_k, map_d in ferm_days_map.items():
+            if len(pk_strip) >= 2:
+                for (m_grp, map_k), map_d in ferm_days_map.items():
+                    if m_grp != ln_grp:
+                        continue
                     mk_strip = re.sub(r"^(?:연세대학교|연세우유|연세|세브란스)", "", map_k)
                     if mk_strip == pk_strip:
                         ferm_n_days = map_d
@@ -1911,7 +1929,7 @@ def validate_dairy_shelf_life_on_db(dairy_hist_p: List[dict], ferm_days_map: Dic
                 r["_exp_tip"] = ""
                 continue
 
-            exp_offset_hint = (ferm_n_days - 1) if (is_ferm and ferm_n_days > 0) else (20 if is_ferm else 12)
+            exp_offset_hint = (ferm_n_days - 1) if (is_ferm and ferm_n_days > 0) else (22 if ln_grp == "호상" else (18 if is_ferm else 12))
             exp_dates = parse_exp_dates_against_prod(exp_raw, prod_d, expected_days=exp_offset_hint)
 
             if not exp_dates:
@@ -1941,18 +1959,14 @@ def validate_dairy_shelf_life_on_db(dairy_hist_p: List[dict], ferm_days_map: Dic
                 alert_lv = "red"
                 std_lbl = f"최대 소비기한({ferm_n_days}일 기준, {limit_d.strftime('%m.%d')})" if is_ferm else f"제조일+14일 상한({limit_d.strftime('%m.%d')})"
                 alert_msg = f"[{ln_disp} · {p_nm}] 표기 소비기한({exp_raw})이 {std_lbl}을 초과하여 기입되었습니다. 지금 확인이 필요합니다."
-            elif is_ferm and prev_max_e and prev_prod_d and prev_prod_d < prod_d and (prod_d - prev_prod_d).days <= 30 and min_e < prev_max_e:
+            elif is_ferm and prev_max_e and prev_prod_d and prev_prod_d < prod_d and (prod_d - prev_prod_d).days <= 30 and max_e < prev_max_e:
                 cls_v = "cell-red"
                 alert_lv = "red"
-                alert_msg = f"[{ln_disp} · {p_nm}] 표기 소비기한({exp_raw})이 직전 생산 재고({prev_prod_d.strftime('%m/%d')} 생산, {prev_max_e.strftime('%m.%d')})보다 짧게 역전 기입되었습니다. 지금 확인이 필요합니다."
-            elif (not is_ferm) and prev_min_e and prev_prod_d and prev_prod_d < prod_d and (prod_d - prev_prod_d).days <= 10 and min_e < prev_min_e:
+                alert_msg = f"[{ln_disp} · {p_nm}] 당일 소비기한({max_e.strftime('%m.%d')})이 직전 생산 재고({prev_prod_d.strftime('%m/%d')} 생산, {prev_max_e.strftime('%m.%d')})보다 짧게 역전 기입되었습니다. 지금 확인이 필요합니다."
+            elif (not is_ferm) and prev_min_e and prev_prod_d and prev_prod_d < prod_d and (prod_d - prev_prod_d).days <= 10 and max_e < prev_min_e:
                 cls_v = "cell-red"
                 alert_lv = "red"
-                alert_msg = f"[{ln_disp} · {p_nm}] 표기 소비기한({exp_raw})이 직전 생산({prev_prod_d.strftime('%m/%d')} 생산, 최소 {prev_min_e.strftime('%m.%d')})보다 과거 날짜로 역전 기입되었습니다. 지금 확인이 필요합니다."
-            elif is_ferm and limit_d and min_e < (limit_d - timedelta(days=6)):
-                cls_v = "cell-yellow"
-                alert_lv = "yellow"
-                alert_msg = f"[{ln_disp} · {p_nm}] 표기 소비기한({exp_raw})이 기준일({limit_d.strftime('%m.%d')}) 대비 6일 이상 짧습니다. 오타 확인이 필요합니다."
+                alert_msg = f"[{ln_disp} · {p_nm}] 표기 소비기한({exp_raw})이 직전 생산({prev_prod_d.strftime('%m/%d')} 생산, {prev_min_e.strftime('%m.%d')})보다 과거 날짜로 역전 기입되었습니다. 지금 확인이 필요합니다."
 
             tip_txt = alert_msg
             if not tip_txt:
@@ -2497,6 +2511,14 @@ def extract_clean_line_time_for_trace(item_title: str, raw_val: str, target_line
             b_card = build_run_time_card("우유(병포장)", "우유 병포장 생산시간", val_s)
         return f"우유(병포장): {b_card['시작~종료']}" if b_card["가동상태"] == "가동" else None
 
+    tl_ns = re.sub(r"\s+", "", str(target_line or ""))
+    if "호상" in tl_ns and ("병" in title_ns or "카톤" in title_ns) and "호상" not in title_ns:
+        return None
+    if "병" in tl_ns and ("호상" in title_ns or "카톤" in title_ns) and "병" not in title_ns:
+        return None
+    if "카톤" in tl_ns and ("호상" in title_ns or "병" in title_ns) and "카톤" not in title_ns:
+        return None
+
     f_card = build_run_time_card(target_line, item_title, val_s)
     if f_card["가동상태"] != "가동":
         return None
@@ -2606,11 +2628,6 @@ def parse_dairy_pack_rows(tab_title_raw: str, rows: list, line_label: str):
             continue
 
         block_seq += 1
-        is_milk_top_block = (line_label == "우유" and block_seq == 1)
-        if line_label == "우유":
-            sec_pos_name = f"우유-{'상단' if block_seq == 1 else '하단'}"
-        else:
-            sec_pos_name = current_cat if current_cat != line_label else f"발효유-{block_seq}"
 
         # 발효유 블록 바로 위 행('최대 소비기한 | 제조일로부터 18일 ...')에서 열별 고정 기준일수 추출
         max_days_row = []
@@ -2933,14 +2950,16 @@ def fetch_process_milk_sheet(sheet_urls_map: dict):
         coord_master.update(coord_m)
         coord_master.update(coord_f)
 
-        ferm_days_master: Dict[str, int] = {}
-        for (_, _), (f_nm, f_ln, base_nm, m_days) in coord_master.items():
-            if m_days > 0 and ("발효" in f_ln or "호상" in f_ln):
-                ferm_days_master[clean_product_for_match(f_nm)] = m_days
-                ferm_days_master[clean_product_for_match(base_nm)] = m_days
+       ferm_days_master: Dict[Tuple[str, str], int] = {}
+        for (sec_k, _), (f_nm, f_ln, base_nm, m_days) in coord_master.items():
+            if m_days > 0 and ("발효" in f_ln or "호상" in f_ln or "발효" in sec_k or "호상" in sec_k):
+                sub_k = _ferm_sub_kind(f_ln, sec_k)
+                ferm_days_master[(sub_k, clean_product_for_match(f_nm))] = m_days
+                ferm_days_master[(sub_k, clean_product_for_match(base_nm))] = m_days
         for fr in f_rows:
             if fr.get("_max_days", 0) > 0:
-                ferm_days_master[clean_product_for_match(fr.get("제품명", ""))] = int(fr["_max_days"])
+                sub_k = _ferm_sub_kind(fr.get("라인구분", ""), fr.get("세부유형", ""))
+                ferm_days_master[(sub_k, clean_product_for_match(fr.get("제품명", "")))] = int(fr["_max_days"])
 
         raw_dp_matrix = batch_map.get(t_dp, []) if t_dp else []
         if t_dp and len(raw_dp_matrix) >= 2:

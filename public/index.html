@@ -4425,28 +4425,75 @@ function renderScopedLotResultHtml(data, isDairyScope) {
   } else {
     const rt = data.matched_rt || [];
     const rtCcp = data.matched_rt_ccp || [];
+    const rtCcp3b = data.matched_rt_ccp3b || [];
     const soy = data.matched_soy || [];
 
     resBox.innerHTML =
       '<div class="panel-card">' +
         '<div class="panel-title"><span>① 상온제품 공정관리 일보 생산·포장 매칭 결과</span><span class="badge badge-info">' + rt.length + '건 매칭</span></div>' +
         '<div class="tbl-wrap"><table class="data-tbl">' +
-          '<thead><tr><th>생산일자</th><th>원본탭</th><th>포장호기</th><th>생산 제품명</th><th>표기 소비기한</th><th>확인시간</th></tr></thead>' +
+          '<thead><tr><th>생산일자</th><th>원본탭</th><th>포장호기</th><th>생산 제품명</th><th>표기 소비기한</th><th>확인시간</th><th>멸균기 · CCP 요약</th><th>특이사항</th></tr></thead>' +
           '<tbody>' +
           (rt.length ? rt.map(function(r) {
-            return '<tr><td><b>' + esc(r['생산일자']) + '</b></td><td>' + esc(r['원본탭명'] || '-') + '</td><td><b>' + esc(r['포장호기']) + '</b></td><td class="td-left"><strong>' + esc(r['제품명']) + '</strong></td><td><b>' + esc(r['표기소비기한_원문'] || '-') + '</b></td><td>' + esc(r['확인시간'] || '-') + '</td></tr>';
-          }).join('') : '<tr><td colspan="6" class="cell-gray">일치하는 상온 포장 기록이 없습니다.</td></tr>') +
+            return '<tr>' +
+              '<td><b>' + esc(r['생산일자']) + '</b></td>' +
+              '<td>' + esc(r['원본탭명'] || '-') + '</td>' +
+              '<td><b>' + esc(r['포장호기']) + '</b></td>' +
+              '<td class="td-left"><strong>' + esc(r['제품명']) + '</strong></td>' +
+              '<td><b>' + esc(r['표기소비기한_원문'] || '-') + '</b></td>' +
+              '<td class="' + esc(r._cls_time || '') + '"><b>' + esc(r['확인시간'] || '-') + '</b></td>' +
+              '<td class="td-left">' + esc(r['멸균요약'] || '-') + '</td>' +
+              '<td class="' + esc(r._cls_rem || '') + '">' + esc(r['특이사항'] || '이상없음') + '</td>' +
+            '</tr>';
+          }).join('') : '<tr><td colspan="8" class="cell-gray">일치하는 상온 포장 기록이 없습니다.</td></tr>') +
           '</tbody></table></div>' +
       '</div>' +
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>② 당일 상온 UHT 멸균기 · 무균포장기 CCP 기록</span><span class="badge badge-neutral">' + rtCcp.length + '건 매칭</span></div>' +
+        '<div class="panel-title"><span>② 당일 상온 UHT 멸균기 CCP 모니터링 (멸균온도 · 균질압 · 멸균시간 · 여과망)</span><span class="badge badge-ok">' + rtCcp.length + '건 매칭</span></div>' +
         '<div class="tbl-wrap"><table class="data-tbl">' +
-          '<thead><tr><th>생산일자</th><th>구분</th><th>설비·호기</th><th>세부항목</th><th>실측치 · 기준</th><th>특이사항</th></tr></thead>' +
+          '<thead><tr><th>생산일자</th><th>멸균기(포장)</th><th>매칭 제품명</th><th>확인시간</th><th>멸균온도</th><th>균질압</th><th>멸균시간</th><th>유량/냉각</th><th>여과망/서명</th><th>특이사항</th></tr></thead>' +
           '<tbody>' +
-          (rtCcp.length ? rtCcp.slice(0, 80).map(function(c) {
-            const keys = Object.keys(c);
-            return '<tr><td>' + esc(c['생산일자'] || '-') + '</td><td>' + esc(c['기록분류'] || c[keys[2]] || '-') + '</td><td><b>' + esc(c['설비_호기'] || c['포장호기'] || c[keys[3]] || '-') + '</b></td><td>' + esc(c['세부항목'] || c[keys[4]] || '-') + '</td><td class="td-left">' + esc(c['기록내용_수치'] || c[keys[5]] || '-') + '</td><td class="td-left">' + esc(c['특이사항'] || '-') + '</td></tr>';
-          }).join('') : '<tr><td colspan="6" class="cell-gray">연동된 상온 CCP 세부 기록이 없습니다.</td></tr>') +
+          (rtCcp.length ? rtCcp.slice(0, 80).map(function(r) {
+            return '<tr>' +
+              '<td><b>' + esc(r['생산일자'] || '-') + '</b></td>' +
+              '<td><b>' + esc(r['멸균기_포장'] || '-') + '</b></td>' +
+              '<td class="td-left">' + esc(r['매칭 제품명'] || '-') + '</td>' +
+              '<td class="' + esc(r._c_time || '') + '">' + esc(r['확인시간'] || '-') + '</td>' +
+              '<td class="' + esc(r._c_temp || '') + '"><b>' + esc(r['멸균온도'] || '-') + '</b></td>' +
+              '<td class="' + esc(r._c_press || '') + '"><b>' + esc(r['균질압'] || '-') + '</b></td>' +
+              '<td class="' + esc(r._c_hold || '') + '"><b>' + esc(r['멸균시간'] || '-') + '</b></td>' +
+              '<td>' + esc(r['유량_냉각'] || '-') + '</td>' +
+              '<td class="' + esc(r._c_flt || '') + '">' + esc(r['여과망_서명'] || '-') + '</td>' +
+              '<td class="td-left ' + esc(r._c_rem || '') + '">' + esc(r['특이사항'] || '없음') + '</td>' +
+            '</tr>';
+          }).join('') : '<tr><td colspan="10" class="cell-gray">연동된 상온 UHT 멸균기 CCP 기록이 없습니다.</td></tr>') +
+          '</tbody></table></div>' +
+      '</div>' +
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>②-2 당일 CCP-3B 무균포장기 공정관리 (과산화수소 농도 · 무균실 살균온도)</span><span class="badge badge-info">' + rtCcp3b.length + '건 매칭</span></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>생산일자</th><th>점검항목</th><th>관리기준</th><th>적용설비</th><th style="background:#EFF6FF; color:#003378;">해당 포장호기 실측치</th><th>A호기</th><th>B호기</th><th>C호기</th><th>D호기</th><th>E호기</th><th>F호기</th></tr></thead>' +
+          '<tbody>' +
+          (rtCcp3b.length ? rtCcp3b.map(function(r) {
+            const cm = r._cls_map || {};
+            const thos = r._target_hos || [];
+            const targetSummary = thos.length
+              ? thos.map(function(h) { return h + ': ' + (r[h] || '-'); }).join(' / ')
+              : '-';
+            const targetCls = (thos.length && cm[thos[0]]) ? cm[thos[0]] : 'cell-green';
+            return '<tr>' +
+              '<td><b>' + esc(r['생산일자'] || '-') + '</b></td>' +
+              '<td><b>' + esc(r['항목'] || '-') + '</b></td>' +
+              '<td>' + esc(r['관리기준'] || '-') + '</td>' +
+              '<td>' + esc(r['적용설비'] || '-') + '</td>' +
+              '<td class="' + esc(targetCls) + '"><strong>' + esc(targetSummary) + '</strong></td>' +
+              ['A호기', 'B호기', 'C호기', 'D호기', 'E호기', 'F호기'].map(function(h) {
+                const isTarget = thos.indexOf(h) !== -1;
+                const st = isTarget ? 'outline:2px solid #003378; font-weight:900;' : 'opacity:0.72;';
+                return '<td class="' + esc(cm[h] || '') + '" style="' + st + '">' + esc(r[h] || '-') + '</td>';
+              }).join('') +
+            '</tr>';
+          }).join('') : '<tr><td colspan="11" class="cell-gray">해당 일자의 무균포장기(CCP-3B) 세부 기록이 없습니다. (시트 날짜 탭 유지 시 자동 표출)</td></tr>') +
           '</tbody></table></div>' +
       '</div>' +
       '<div class="panel-card">' +
@@ -4475,7 +4522,6 @@ function renderScopedLotResultHtml(data, isDairyScope) {
       '</div>';
   }
 }
-
 // ==============================================================================
 // [VIEW 11] 클레임 발생률(PPM) 분석 (유형별 건수 누적기둥[우측축] + PPM 실선·AI 추세선[좌측축] 이중축)
 // ==============================================================================

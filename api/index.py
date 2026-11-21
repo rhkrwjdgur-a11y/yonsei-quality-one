@@ -825,7 +825,7 @@ def expand_micro_alias_pool(rep_name: str, saved_alias_col: str = "", custom_not
     rep_ns = re.sub(r"\s+", "", rep_s)
     rep_low = rep_ns.lower()
 
-  m_ju = re.search(r"\(주\s*(\d+)\)", rep_s)
+    m_ju = re.search(r"\(주\s*(\d+)\)", rep_s)
     ju_key = f"주{m_ju.group(1)}" if m_ju else ""
     if not ju_key:
         if rep_ns in ["연세딸기", "호상딸기", "부산요네뜨딸기"]:
@@ -2628,6 +2628,14 @@ def parse_dairy_pack_rows(tab_title_raw: str, rows: list, line_label: str):
             continue
 
         block_seq += 1
+        is_milk_top_block = (line_label == "우유" and block_seq == 1)
+        if line_label == "우유":
+            sec_pos_name = f"우유-{'상단' if block_seq == 1 else '하단'}"
+        else:
+            sec_pos_name = current_cat if current_cat != line_label else f"발효유-{block_seq}"
+            # 단산된 '카톤발효유'(딸기·플레인·복숭아·사과·블루베리, 18일) 블록 원천 배제
+            if "카톤" in re.sub(r"\s+", "", sec_pos_name):
+                continue
 
         # 발효유 블록 바로 위 행('최대 소비기한 | 제조일로부터 18일 ...')에서 열별 고정 기준일수 추출
         max_days_row = []
@@ -2950,7 +2958,7 @@ def fetch_process_milk_sheet(sheet_urls_map: dict):
         coord_master.update(coord_m)
         coord_master.update(coord_f)
 
-       ferm_days_master: Dict[Tuple[str, str], int] = {}
+        ferm_days_master: Dict[Tuple[str, str], int] = {}
         for (sec_k, _), (f_nm, f_ln, base_nm, m_days) in coord_master.items():
             if m_days > 0 and ("발효" in f_ln or "호상" in f_ln or "발효" in sec_k or "호상" in sec_k):
                 sub_k = _ferm_sub_kind(f_ln, sec_k)

@@ -6692,6 +6692,7 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
         },
         "matched_rt": matched_rt,
         "matched_rt_ccp": matched_rt_ccp,
+        "matched_rt_ccp3b": matched_rt_ccp3b,
         "matched_soy": matched_soy,
         "matched_dairy": matched_dy,
         "matched_micro": matched_micro[:120]

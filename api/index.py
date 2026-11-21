@@ -825,23 +825,21 @@ def expand_micro_alias_pool(rep_name: str, saved_alias_col: str = "", custom_not
     rep_ns = re.sub(r"\s+", "", rep_s)
     rep_low = rep_ns.lower()
 
-    # 미생물 일보 시트 원본에 (주1)~(주12)가 실제로 표기된 품목만 공통원액 각주 인정
     m_ju = re.search(r"\(주\s*(\d+)\)", rep_s)
     ju_key = f"주{m_ju.group(1)}" if m_ju else ""
-
-    # 시트 내 유일하게 번호 표기가 생략된 호상 요구르트 '연세 플레인'만 예외 매칭
     if not ju_key and rep_ns in ["연세플레인", "호상플레인"]:
         ju_key = "주10"
 
     parts = [rep_s]
-    # 기존 DB(_이력DB_미생물)에 잘못 백업된 주석 텍스트가 (주N) 없는 별개 품목에 섞이지 않도록 차단
-    if saved_alias_col and m_ju:
-        parts.append(str(saved_alias_col))
+    saved_s = str(saved_alias_col or "").strip()
 
-    if ju_key:
+    # 1순위: [_이력DB_미생물]에 당시 날짜 스냅샷으로 저장된 주석 데이터가 있으면 최우선 보존·신뢰!
+    if saved_s and saved_s != "-":
+        parts.append(saved_s)
+    elif ju_key:
         if custom_note_map and custom_note_map.get(ju_key):
             parts.append(custom_note_map[ju_key])
-        if DEFAULT_MICRO_FOOTNOTES.get(ju_key):
+        elif DEFAULT_MICRO_FOOTNOTES.get(ju_key):
             parts.append(DEFAULT_MICRO_FOOTNOTES[ju_key])
 
     if ju_key == "주1":
@@ -851,9 +849,14 @@ def expand_micro_alias_pool(rep_name: str, saved_alias_col: str = "", custom_not
     elif ju_key == "주9":
         parts.append("마켓컬리 1800mL, 마켓컬리 병 1800mL, 컬리 1800mL")
 
-    # 수출용(Milk Talk/밀크톡) 및 요거트/발효유가 아닌 순수 자사 품목에 한해서만 약칭 보강
-    is_export_or_yogurt = any(k in rep_low for k in ["milktalk", "밀크톡", "yogurt", "요거트", "요구르트"])
-    if not is_export_or_yogurt:
+    # 자사 수출품 Milk Talk <-> 밀크톡 한·영 표기 양방향 호환
+    if "milktalk" in rep_low or "밀크톡" in rep_low:
+        kor_mt = re.sub(r"milk\s*talk", "밀크톡", rep_s, flags=re.IGNORECASE)
+        eng_mt = re.sub(r"밀크톡", "Milk Talk", rep_s)
+        parts.extend([kor_mt, eng_mt])
+
+    is_yogurt = any(k in rep_low for k in ["yogurt", "요거트", "요구르트"])
+    if not is_yogurt and "milktalk" not in rep_low and "밀크톡" not in rep_low:
         if "건강박사" in rep_ns:
             parts.append("헬스닥터, 오메가3건강박사")
         if "골드플러스" in rep_ns:
@@ -878,68 +881,103 @@ def expand_micro_alias_pool(rep_name: str, saved_alias_col: str = "", custom_not
 
 VARIANT_MODIFIERS = [
     "a2", "저지방", "무지방", "락토프리", "고칼슘", "무항생제", "유기농", "디카페인",
-    "밀크톡", "milktalk", "yogurt", "요거트", "요구르트"
+    "밀크톡", "yogurt", "요거트", "요구르트"
 ]
 
-def is_product_match(record_prod: str, selected_prod: str, kw_text: str = "", allow_no_vol_record: bool = False) -> bool:
+
+def _norm_modifier_str(s: str) -> str:
+    out = re.sub(r"\s+", "", str(s or "")).lower()
+    out = out.replace("milktalk", "밀크톡")
+    out = out.replace("ωmega3", "오메가3").replace("omega3", "오메가3")
+    return out
+
+
+def _strip_pack_and_vol_tokens(s: str) -> str:
+    out = str(s or "").strip()
+    out = re.sub(r"\(\s*(?:카톤|병|병포장)?\s*\d+(?:\.\d+)?\s*(?:mL|ml|ML|㎖|L|g|kg)?\s*\)", " ", out)
+    out = re.sub(r"\(\s*(?:카톤|병포장|병)\s*\)", " ", out)
+    out = re.sub(r"(?:카톤팩|카톤|병포장|병우유|병)(?=\s|$|\d|\()", " ", out)
+    out = re.sub(r"(?<!\d)(170|180|190|200|500|750|900|930|1000|1800|2300)(?:\s*(?:mL|ml|ML|㎖|g))?(?!\d)", " ", out)
+    return clean_product_for_match(out)
+
+
+def is_product_match(
+    record_prod: str,
+    selected_prod: str,
+    kw_text: str = "",
+    allow_no_vol_record: bool = False,
+    record_line_hint: str = ""
+) -> bool:
     """
-    동일 브랜드 다품종(예: 마켓컬리 900mL vs 마켓컬리 저지방 900mL vs 마켓컬리 병 1800mL) 혼선 방지:
-    1) 검색어에 용량(1800, 900 등)이 있으면 다른 용량 품목 즉시 배제
-    2) 검색어에 없는 파생 속성(저지방·고칼슘·무항생제·락토프리·유기농)이 품목에 있으면 배제
-    3) 검색어에 '병' 또는 '카톤' 지정 시 포장형태 불일치 배제
+    1) 목록 선택(selected_prod) 시: 부분일치 배제 및 1:1 정확 일치 적용
+       - '마켓컬리' 선택 시 '마켓컬리 (병 1800mL)' 및 '마켓컬리 저지방' 완전 분리
+       - '연세딸기' 선택 시 '연세' 브랜드명을 유지하여 '푸르밀 딸기'·'오늘좋은 딸기' 혼입 원천 차단
+    2) 자유 키워드(kw_text) 검색 시에만 부분 포함 허용
     """
     rec_raw = str(record_prod or "").strip()
     if not rec_raw or rec_raw == "-":
         return False
 
-    query_terms = []
-    if selected_prod and selected_prod not in ["", "ALL", "전체"]:
-        query_terms.append(selected_prod.strip())
-    if kw_text and kw_text.strip() and kw_text.strip() not in query_terms:
-        query_terms.append(kw_text.strip())
-
-    if not query_terms:
+    has_exact_sel = bool(selected_prod and selected_prod not in ["", "ALL", "전체"])
+    has_kw = bool(kw_text and kw_text.strip())
+    if not has_exact_sel and not has_kw:
         return True
 
     rec_candidates = [p.strip() for p in re.split(r"[|/,]", rec_raw) if p.strip()]
     if not rec_candidates:
         rec_candidates = [rec_raw]
 
-    for q_str in query_terms:
+    hint_ns = re.sub(r"\s+", "", str(record_line_hint or "")).lower()
+    hint_is_bottle = ("병" in hint_ns)
+    hint_is_carton = ("카톤" in hint_ns) and not hint_is_bottle
+
+    queries = []
+    if has_exact_sel:
+        queries.append((selected_prod.strip(), True))
+    if has_kw and (not has_exact_sel or kw_text.strip() != selected_prod.strip()):
+        queries.append((kw_text.strip(), False))
+
+    # '연세'는 자사 고유 브랜드 식별자이므로 불용어에서 제외!
+    stop_words = {"우유", "발효유", "요구르트", "요거트", "카톤", "병포장"}
+
+    for q_str, is_exact_mode in queries:
         q_vol = extract_volume_ml_token(q_str)
-        q_ns = re.sub(r"\s+", "", q_str).lower()
-        q_wants_bottle = ("병" in q_ns) and ("카톤" not in q_ns)
-        q_wants_carton = ("카톤" in q_ns) and ("병" not in q_ns)
+        q_ns = _norm_modifier_str(q_str)
+        q_is_bottle = ("병" in q_ns) or (q_vol in ("1800", "2300", "750", "170"))
+        q_is_carton = ("카톤" in q_ns) or (q_vol in ("900", "930", "1000", "200", "180"))
+        q_core = _strip_pack_and_vol_tokens(q_str)
 
-        # 용량·포장형태 표기를 걷어낸 순수 제품명 토큰
-        q_stripped = re.sub(r"\(\s*(?:카톤|병|병포장)?\s*\d+(?:\.\d+)?\s*(?:mL|ml|ML|㎖|L|g|kg)?\s*\)", "", q_str)
-        q_stripped = re.sub(r"(?:카톤|병포장|병)\s*", " ", q_stripped)
-        q_stripped = re.sub(r"(?<!\d)(170|180|190|200|500|750|900|930|1000|1800|2300)(?:\s*(?:mL|ml|ML|㎖|g))?(?!\d)", " ", q_stripped)
-        q_clean = clean_product_for_match(q_stripped)
-
-        stop_words = {"연세", "연세우유", "전용목장", "우유", "발효유", "요구르트", "요거트", "떠먹는", "카톤", "병포장"}
-        q_toks = [clean_product_for_match(t) for t in re.split(r"[\s\(\)\[\]/+\-]+", q_stripped)]
+        q_toks = [_strip_pack_and_vol_tokens(t) for t in re.split(r"[\s\(\)\[\]/+\-]+", q_str)]
         sig_toks = [t for t in q_toks if len(t) >= 2 and t not in stop_words]
 
         cand_matched = False
         for cand in rec_candidates:
-            cand_ns = re.sub(r"\s+", "", cand).lower()
+            cand_ns = _norm_modifier_str(cand)
             cand_vol = extract_volume_ml_token(cand)
+            cand_is_bottle = ("병" in cand_ns) or (cand_vol in ("1800", "2300", "750", "170")) or (len(rec_candidates) == 1 and hint_is_bottle)
+            cand_is_carton = ("카톤" in cand_ns) or (cand_vol in ("900", "930", "1000", "200", "180")) or (len(rec_candidates) == 1 and hint_is_carton)
 
-            # (1) 용량 검증: 검색어에 용량이 있을 때 다른 용량이면 즉시 제외
+            # (1) 용량 충돌 배제
             if q_vol:
                 if cand_vol and cand_vol != q_vol:
                     continue
                 if not cand_vol and not allow_no_vol_record:
                     continue
 
-            # (2) 포장형태 검증 ('병' vs '카톤')
-            if q_wants_bottle and ("카톤" in cand_ns or cand_vol in ("900", "930", "1000", "200", "180")):
-                continue
-            if q_wants_carton and ("병" in cand_ns or cand_vol in ("1800", "2300", "750", "170")):
-                continue
+            # (2) 카톤 vs 병포장 엄격 분리 ('마켓컬리' 선택 시 '마켓컬리 병 1800mL' 즉시 차단)
+            if is_exact_mode:
+                if q_is_bottle != cand_is_bottle:
+                    if not (allow_no_vol_record and q_is_bottle and hint_is_bottle and not cand_is_carton):
+                        continue
+                if q_is_carton and cand_is_bottle:
+                    continue
+            else:
+                if q_is_bottle and cand_is_carton:
+                    continue
+                if q_is_carton and cand_is_bottle:
+                    continue
 
-            # (3) 파생 속성 검증 ('마켓컬리' 검색 시 '마켓컬리 저지방' 혼입 차단)
+            # (3) 파생 속성 충돌 배제 (저지방·고칼슘·무항생제·유기농·A2·락토프리·밀크톡 등)
             mod_conflict = False
             for mod in VARIANT_MODIFIERS:
                 if (mod in q_ns) != (mod in cand_ns):
@@ -948,21 +986,31 @@ def is_product_match(record_prod: str, selected_prod: str, kw_text: str = "", al
             if mod_conflict:
                 continue
 
-            # (4) 순수 제품명 매칭 (역방향 부분일치 버그 제거: 짧은 후보가 긴 검색어에 잘못 걸리지 않도록 방어)
-            rc = clean_product_for_match(cand)
-            if not q_clean:
-                # 용량만으로 검색한 경우(예: '1800') 위 용량 검증 통과 시 매칭 인정
+            # (4) 순수 제품명 매칭 (목록 선택 시 정확 일치, 자유 검색 시에만 부분 일치 허용)
+            rc_core = _strip_pack_and_vol_tokens(cand)
+            if not q_core:
                 if q_vol and cand_vol == q_vol:
                     cand_matched = True
                     break
                 continue
 
-            if q_clean == rc or (len(q_clean) >= 2 and q_clean in rc):
-                cand_matched = True
-                break
-            if sig_toks and all(t in rc for t in sig_toks):
-                cand_matched = True
-                break
+            if is_exact_mode:
+                if q_core == rc_core:
+                    cand_matched = True
+                    break
+                # '연세 전용목장 우유' <-> '전용목장 우유' 처럼 '연세/전용목장' 유무 차이만 허용하되 타 브랜드('푸르밀 딸기' 등)는 완전 차단
+                q_strip_ys = re.sub(r"^(?:연세대학교|연세우유|연세)", "", q_core)
+                r_strip_ys = re.sub(r"^(?:연세대학교|연세우유|연세)", "", rc_core)
+                if len(q_strip_ys) >= 4 and q_strip_ys == r_strip_ys:
+                    cand_matched = True
+                    break
+            else:
+                if q_core == rc_core or (len(q_core) >= 2 and q_core in rc_core):
+                    cand_matched = True
+                    break
+                if sig_toks and all(t in rc_core for t in sig_toks):
+                    cand_matched = True
+                    break
 
         if not cand_matched:
             return False
@@ -3142,9 +3190,9 @@ def fetch_process_micro_sheet(sheet_urls_map: dict):
                     if id_obj:
                         r_vals[c_i] = id_obj.strftime("%Y-%m-%d")
                 if c_rep >= 0 and c_ali >= 0:
-                    rep_txt = r_vals[c_rep]
-                    clean_pool, _ = expand_micro_alias_pool(rep_txt, "")
-                    if r_vals[c_ali] != clean_pool:
+                    # 이미 저장된 당일 주석 스냅샷은 영구 보존하고, 아예 비어 있는 초기 행만 보충
+                    if not str(r_vals[c_ali]).strip() or str(r_vals[c_ali]).strip() == "-":
+                        clean_pool, _ = expand_micro_alias_pool(r_vals[c_rep], "")
                         r_vals[c_ali] = clean_pool
 
             if heal_db_worksheet_if_dirty(sh, t_db, raw_db_matrix, _fix_micro_row):
@@ -6684,7 +6732,7 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
         dy_prod_names_matched = []
 
         for dr in dy_hp:
-            if is_product_match(dr.get("제품명", ""), product, kw) and is_exp_match(dr.get("표기소비기한_원문", ""), dr.get("표준소비기한_검색용", ""), exp_q):
+            if is_product_match(dr.get("제품명", ""), product, kw, record_line_hint=dr.get("라인구분", "")) and is_exp_match(dr.get("표기소비기한_원문", ""), dr.get("표준소비기한_검색용", ""), exp_q):
                 d_dt = str(dr.get("생산일자", "")).strip()
                 d_ln = str(dr.get("라인구분", "")).strip()
                 base_ln = "발효유" if "발효" in d_ln else "우유"
@@ -6737,12 +6785,13 @@ def api_lot_trace(product: str = "", exp: str = "", kw: str = "", scope: str = "
                 if not dy_prod_dates_info or m_insp_dt not in dy_prod_dates_info:
                     continue
 
+            m_cat_hint = mr.get("대분류", "")
             matched_target_label = ""
             for dp_nm in dy_prod_names_matched:
-                if is_product_match(full_alias_pool, dp_nm, "", allow_no_vol_record=True):
+                if is_product_match(full_alias_pool, dp_nm, "", allow_no_vol_record=True, record_line_hint=m_cat_hint):
                     matched_target_label = dp_nm
                     break
-            if not matched_target_label and has_prod_filter and is_product_match(full_alias_pool, product, kw, allow_no_vol_record=True):
+            if not matched_target_label and has_prod_filter and is_product_match(full_alias_pool, product, kw, allow_no_vol_record=True, record_line_hint=m_cat_hint):
                 matched_target_label = product if (product and product != "ALL") else kw
             if not matched_target_label and not has_prod_filter and m_insp_dt in dy_prod_dates_info:
                 matched_target_label = rep_nm

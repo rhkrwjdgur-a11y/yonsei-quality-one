@@ -123,9 +123,9 @@ DEFAULT_MICRO_FOOTNOTES = {
     "주7": "프로바이오틱스 위Y, 비락 위요, 세브란스 위플러스, 곰곰 위티처, 위락, 세브란스 위락",
     "주8": "프로바이오틱스 오메가3, 세브란스 장플러스, 곰곰 장티처, 오메가-3",
     "주9": "전용목장우유 컬리 1.8L, 연세우유 쿠팡 2.3L, 쿠팡전용, sim+ 2300, Simplus 1A, Homeplus simplus 국내산 1급A 원유로 만든 1A우유",
-    "주10": "연세딸기, 호상딸기, 푸르밀 요거스푼 딸기, 푸르밀 딸기, simplus 딸기, 오늘좋은 딸기, 오늘 좋은 떠먹는 딸기, 건국 하이요 딸기, 건국 딸기",
-    "주11": "연세플레인, 호상플레인, 푸르밀 요거스푼 플레인, 푸르밀 플레인, simplus 플레인, 오늘좋은 플레인, 오늘 좋은 떠먹는 플레인, 건국 하이요 플레인, 건국 플레인",
-    "주12": "연세복숭아, 호상복숭아, 푸르밀 요거스푼 복숭아, 푸르밀 복숭아, 오늘좋은 복숭아, 오늘 좋은 떠먹는 복숭아, 건국 복숭아"
+   "주10": "연세딸기, 호상딸기, 푸르밀 요거스푼 딸기, 푸르밀 딸기, simplus 딸기, 오늘좋은 딸기, 오늘 좋은 떠먹는 딸기, 건국 하이요 딸기, 건국 딸기, 부산요네뜨 딸기",
+    "주11": "연세플레인, 호상플레인, 푸르밀 요거스푼 플레인, 푸르밀 플레인, simplus 플레인, 오늘좋은 플레인, 오늘 좋은 떠먹는 플레인, 건국 하이요 플레인, 건국 플레인, 부산요네뜨 플레인",
+    "주12": "연세복숭아, 호상복숭아, 푸르밀 요거스푼 복숭아, 푸르밀 복숭아, 오늘좋은 복숭아, 오늘 좋은 떠먹는 복숭아, 건국 복숭아, 부산요네뜨 복숭아"
 }
 
 AUDIT_SCHED_TAB = "일정"
@@ -1886,11 +1886,14 @@ def validate_dairy_shelf_life_on_db(dairy_hist_p: List[dict], ferm_days_map: Dic
         recs.sort(key=lambda x: str(x.get("생산일자", "")))
         ferm_n_days = ferm_days_map.get(pk, 0)
         if is_ferm and ferm_n_days <= 0:
-            # 품목명 매칭 폴백 (예: 호상/병발효유 기본값 탐색)
-            for map_k, map_d in ferm_days_map.items():
-                if map_k and (map_k in pk or pk in map_k):
-                    ferm_n_days = map_d
-                    break
+            # '부산요네뜨 딸기'가 '딸기'(18일)로 오인식되지 않도록 자사 접두어('연세'·'세브란스') 차이만 허용
+            pk_strip = re.sub(r"^(?:연세대학교|연세우유|연세|세브란스)", "", pk)
+            if len(pk_strip) >= 3:
+                for map_k, map_d in ferm_days_map.items():
+                    mk_strip = re.sub(r"^(?:연세대학교|연세우유|연세|세브란스)", "", map_k)
+                    if mk_strip == pk_strip:
+                        ferm_n_days = map_d
+                        break
 
         prev_prod_d: Optional[date] = None
         prev_min_e: Optional[date] = None
@@ -2907,22 +2910,26 @@ def fetch_process_milk_sheet(sheet_urls_map: dict):
         t_m = milk_cands[0][1] if milk_cands else None
         t_f = ferm_cands[0][1] if ferm_cands else None
 
-        t_m_tpl = next((t for t in ws_titles if "우유" in t and "발효" not in t and ("수정" in t or "복사" in t)), None)
-        t_f_tpl = next((t for t in ws_titles if "발효유" in t and ("수정" in t or "복사" in t)), None)
+        t_m_tpls = [t for t in ws_titles if "우유" in t and "발효" not in t and "호상" not in t and any(k in t for k in ["수정", "복사"])]
+        t_f_tpls = [t for t in ws_titles if ("발효" in t or "호상" in t) and any(k in t for k in ["수정", "복사", "추가"])]
 
         t_dp = next((t for t in ws_titles if t.strip() == HIST_TABS["dairy_prod"]), None)
         t_dc = next((t for t in ws_titles if t.strip() == HIST_TABS["dairy_ccp"]), None)
 
-        batch_map = batch_fetch_tabs(sh_milk, [t_m, t_f, t_m_tpl, t_f_tpl, t_dp, t_dc])
+        fetch_milk_tabs = list(dict.fromkeys([x for x in ([t_m, t_f] + t_m_tpls[:2] + t_f_tpls[:3] + [t_dp, t_dc]) if x]))
+        batch_map = batch_fetch_tabs(sh_milk, fetch_milk_tabs)
 
         m_rows, m_times, m_dt, coord_m = parse_dairy_pack_rows(t_m, batch_map.get(t_m, []), "우유") if t_m else ([], [], "-", {})
         f_rows, f_times, f_dt, coord_f = parse_dairy_pack_rows(t_f, batch_map.get(t_f, []), "발효유") if t_f else ([], [], "-", {})
 
+        # 구 양식(수정X) -> 신규 복사용/추가 양식 -> 당일 실시간 탭 순으로 덮어써서 최신 기준일수(예: 부산요네뜨 23일) 최우선 적용
         coord_master: Dict[Tuple[str, str], Tuple[str, str, str, int]] = {}
-        for tpl_t, lbl in [(t_m_tpl, "우유"), (t_f_tpl, "발효유")]:
-            if tpl_t:
-                _, _, _, c_tpl = parse_dairy_pack_rows(tpl_t, batch_map.get(tpl_t, []), lbl)
-                coord_master.update(c_tpl)
+        for tpl_t in sorted(t_m_tpls[:2], key=lambda x: (0 if "수정" in x else 1)):
+            _, _, _, c_tpl = parse_dairy_pack_rows(tpl_t, batch_map.get(tpl_t, []), "우유")
+            coord_master.update(c_tpl)
+        for tpl_t in sorted(t_f_tpls[:3], key=lambda x: (0 if "수정" in x else 1)):
+            _, _, _, c_tpl = parse_dairy_pack_rows(tpl_t, batch_map.get(tpl_t, []), "발효유")
+            coord_master.update(c_tpl)
         coord_master.update(coord_m)
         coord_master.update(coord_f)
 

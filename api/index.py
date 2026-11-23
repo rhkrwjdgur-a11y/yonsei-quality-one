@@ -5443,14 +5443,20 @@ def fetch_law_info_sheet(sheet_urls_map: dict):
         ws_titles = [w.title for w in ws_all]
         t_dash = next((t for t in ws_titles if t.strip() == LAW_DASH_TAB), None)
         t_sdb = next((t for t in ws_titles if t.strip() == LAW_SUMMARY_DB_TAB), None)
+        t_weekly = next((t for t in ws_titles if re.sub(r"\s+", "", t) == "주간식품안전"), None)
 
-        exclude_sys = {t for t in [t_dash, t_sdb] if t}
+        exclude_sys = {t for t in [t_dash, t_sdb, t_weekly] if t}
         target_tabs = [t for t in ws_titles if t not in exclude_sys and any(yr in t for yr in ["2026", "2025", "2027"])]
         if not target_tabs:
             target_tabs = [t for t in ws_titles if t not in exclude_sys][:4]
 
-        fetch_list = target_tabs + ([t_dash] if t_dash else []) + ([t_sdb] if t_sdb else [])
+        fetch_list = target_tabs + ([t_dash] if t_dash else []) + ([t_sdb] if t_sdb else []) + ([t_weekly] if t_weekly else [])
         batch_map = batch_fetch_tabs(sh, fetch_list, "FORMATTED_VALUE")
+
+        if t_weekly is not None:
+            _WEEKLY_SAFETY_CACHE["data"] = parse_weekly_safety_tab_rows(batch_map.get(t_weekly, []))
+        else:
+            _WEEKLY_SAFETY_CACHE["data"] = {"active_week_id": "", "weeks": []}
 
         dash_initialized, dash_tab_map = parse_law_dashboard_tab(batch_map.get(t_dash, [])) if t_dash else (False, {})
         summary_db_map = parse_law_summary_db_tab(batch_map.get(t_sdb, [])) if t_sdb else {}
@@ -6783,6 +6789,7 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
             },
             "law": law_bundle,
             "claim_nc_hist": claim_nc_data,
+            "safety_news": _WEEKLY_SAFETY_CACHE.get("data", {"active_week_id": "", "weeks": []}),
             "manual_kpis": merged_manual,
             "special_boards": {
                 "label_memo": label_memo_final,
@@ -8370,4 +8377,420 @@ def api_generate_ai_briefing(_u: dict = Depends(require_auth_user)):
             continue
 
     return {"ok": True, "source": "Q-Safety 교차진단 엔진", "sections": structured_sections, "briefing": fallback_plain}
+
+# ==============================================================================
+# 10. '법규정보' 시트 내 [주간 식품안전] 탭 직결 파서 · 1회성 요약 · 누적 저장 API
+# ==============================================================================
+LAW_WEEKLY_SAFETY_TAB = "주간 식품안전"
+LAW_WEEKLY_SAFETY_COLS = [
+    "주차ID", "집계기간", "번호", "국내외구분", "발생보도일",
+    "위해요소분류", "당사유관여부", "제목", "전광판_1줄요약",
+    "상세내용", "원문출처", "주간핵심요약", "등록일시"
+]
+
+_WEEKLY_SAFETY_CACHE: Dict[str, Any] = {
+    "data": {"active_week_id": "", "weeks": []}
+}
+
+CIRCLED_NUM_MAP = {
+    "①": 1, "②": 2, "③": 3, "④": 4, "⑤": 5,
+    "⑥": 6, "⑦": 7, "⑧": 8, "⑨": 9, "⑩": 10,
+    "⑪": 11, "⑫": 12, "⑬": 13, "⑭": 14, "⑮": 15,
+    "⑯": 16, "⑰": 17, "⑱": 18, "⑲": 19, "⑳": 20
+}
+INT_TO_CIRCLED = {v: k for k, v in CIRCLED_NUM_MAP.items()}
+
+
+def classify_safety_hazard_and_relevance(title: str, detail: str) -> Tuple[str, bool]:
+    pool = f"{title} {detail}".lower()
+    if any(k in pool for k in ["알레르겐", "알레르기", "미표시", "소비기한", "유통기한", "잘못 표시", "잘못 포장"]):
+        hazard = "표시·알레르겐"
+    elif any(k in pool for k in ["금속", "플라스틱", "유리", "이물", "조각"]):
+        hazard = "이물혼입"
+    elif any(k in pool for k in ["대장균", "세균수", "리스테리아", "listeria", "살모넬라", "salmonella", "보툴리눔", "botulinum", "o157", "식중독", "미생물"]):
+        hazard = "미생물·식중독"
+    elif any(k in pool for k in ["잔류농약", "에티온", "살충제", "파튤린", "아플라톡신", "곰팡이독소", "중금속"]):
+        hazard = "잔류농약·독소"
+    else:
+        hazard = "기타 품질·안전"
+
+    is_rel = any(rk in pool for rk in [
+        "우유", "유제품", "치즈", "두유", "두부", "콩", "견과", "아몬드", "피스타치오",
+        "알레르겐", "미표시", "소비기한", "대장균군", "세균수", "리스테리아", "금속", "플라스틱"
+    ])
+    return hazard, is_rel
+
+
+def make_crisp_one_line_headline(dt_str: str, title: str, detail: str) -> str:
+    t_clean = re.sub(r"\s+", " ", str(title or "")).strip()
+    d_clean = re.sub(r"\s+", " ", str(detail or "")).strip()
+
+    extra_fact = ""
+    if "소비기한" in d_clean and ("잘못 표시" in d_clean or "오표시" in d_clean):
+        extra_fact = " (소비기한 오표시 확인)"
+    elif "우유" in d_clean and "미표시" in t_clean:
+        extra_fact = " (포장 오인 우유·견과류 등 미표시)"
+    elif re.search(r"기준\([^)]+\)의\s*\d+배", d_clean) and "배" not in t_clean:
+        m_mul = re.search(r"(기준\([^)]+\)의\s*\d+배)", d_clean)
+        if m_mul:
+            extra_fact = f" ({m_mul.group(1)})"
+
+    dt_short = re.sub(r"\s*보도$", "", str(dt_str or "").strip())
+    prefix = f"[{dt_short}] " if dt_short and dt_short != "-" else ""
+    headline = f"{prefix}{t_clean}{extra_fact}"
+    if len(headline) > 84:
+        headline = headline[:82].rstrip(" ,·(") + "…"
+    return headline
+
+
+def parse_weekly_safety_news_raw(raw_text: str, use_ai_polish: bool = False) -> dict:
+    lines = [ln.strip() for ln in str(raw_text or "").splitlines()]
+    clean_lines = []
+    skip_greeting_patterns = [
+        r"(?:부장|팀장|부문장|과장|차장|대리|주임|사원|선생|대표)님\s*,?\s*안녕",
+        r"소중한\s*인연에\s*항상",
+        r"영업본부\s+[가-힣]{2,4}입니다",
+        r"공유드립니다\.?\s*품질[·\s]*안전\s*관리\s*업무에\s*참고",
+        r"^\(주\)바이오메드\s*영업본부"
+    ]
+    for ln in lines:
+        if not ln:
+            continue
+        if any(re.search(pat, ln) for pat in skip_greeting_patterns):
+            continue
+        if ln in ("주간 식품 안전 사고·리콜", "주간 식품 안전 소식", "주간 식품안전"):
+            continue
+        clean_lines.append(ln)
+
+    period_str = ""
+    week_id = now_kst().strftime("%Y-%m-%d")
+    highlights = []
+    items = []
+    cur_scope = "국내"
+    in_highlights = False
+    cur_item = None
+
+    for ln in clean_lines:
+        if "집계 기간" in ln or re.search(r"20\d{2}\.\d{1,2}\.\d{1,2}\s*\([^)]+\)\s*~", ln):
+            m_per = re.search(r"(20\d{2}\.\d{1,2}\.\d{1,2}[^·\n]+)", ln)
+            period_str = m_per.group(1).strip() if m_per else ln.replace("집계 기간", "").strip()
+            m_wid = re.search(r"(20\d{2})\.(\d{1,2})\.(\d{1,2})", period_str)
+            if m_wid:
+                week_id = f"{int(m_wid.group(1)):04d}-{int(m_wid.group(2)):02d}-{int(m_wid.group(3)):02d}"
+            continue
+
+        if "한눈에 보기" in ln:
+            in_highlights = True
+            continue
+
+        if re.match(r"^국내\s*\d*\s*건?$", ln):
+            cur_scope = "국내"
+            in_highlights = False
+            continue
+        if re.match(r"^해외\s*\d*\s*건?$", ln):
+            cur_scope = "해외"
+            in_highlights = False
+            continue
+
+        first_ch = ln[0]
+        m_num_dot = re.match(r"^(\d{1,2})[\.\)]\s+(.+)$", ln)
+        if first_ch in CIRCLED_NUM_MAP or m_num_dot:
+            in_highlights = False
+            if cur_item:
+                items.append(cur_item)
+            if first_ch in CIRCLED_NUM_MAP:
+                num_int = CIRCLED_NUM_MAP[first_ch]
+                badge_no = first_ch
+                item_title = ln[1:].strip()
+            else:
+                num_int = int(m_num_dot.group(1))
+                badge_no = INT_TO_CIRCLED.get(num_int, f"#{num_int}")
+                item_title = m_num_dot.group(2).strip()
+
+            auto_scope = "해외" if item_title.startswith("[") else cur_scope
+            cur_item = {
+                "idx": num_int,
+                "no": badge_no,
+                "scope": auto_scope,
+                "title": item_title,
+                "date": "",
+                "detail_lines": [],
+                "source": ""
+            }
+            continue
+
+        if in_highlights and (ln.startswith("·") or ln.startswith("•") or ln.startswith("-")):
+            highlights.append(ln.lstrip("·•- ").strip())
+            continue
+
+        if cur_item is not None:
+            if not cur_item["date"] and not cur_item["detail_lines"] and re.match(r"^\d{1,2}\.\d{1,2}", ln) and len(ln) <= 24:
+                cur_item["date"] = ln
+            elif ln.startswith("원문:") or ln.startswith("원문 :") or ln.startswith("출처:"):
+                cur_item["source"] = re.sub(r"^(?:원문|출처)\s*:\s*", "", ln).strip()
+            else:
+                cur_item["detail_lines"].append(ln)
+
+    if cur_item:
+        items.append(cur_item)
+
+    enriched_items = []
+    for it in items:
+        detail_txt = " ".join(it["detail_lines"]).strip()
+        hazard_cat, is_rel = classify_safety_hazard_and_relevance(it["title"], detail_txt)
+        one_line = make_crisp_one_line_headline(it["date"], it["title"], detail_txt)
+        enriched_items.append({
+            "idx": it["idx"],
+            "no": it["no"],
+            "scope": it["scope"],
+            "date": it["date"] or "-",
+            "title": it["title"],
+            "one_line": one_line,
+            "detail": detail_txt,
+            "source": it["source"] or "-",
+            "hazard": hazard_cat,
+            "yonsei_check": is_rel
+        })
+
+    # 신규 등록 버튼을 눌렀을 때만 딱 1회 Gemini 요약 실행 후 시트에 영구 기록 (일반 조회 시 호출 0회)
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if use_ai_polish and api_key and enriched_items:
+        try:
+            src_brief = [
+                {"idx": x["idx"], "scope": x["scope"], "date": x["date"], "title": x["title"], "detail": x["detail"]}
+                for x in enriched_items
+            ]
+            prompt = (
+                "아래 주간 식품안전 사고·리콜 목록을 대시보드 상단 뉴스속보 전광판용 1줄 문장(공백 포함 42~64자 이내, 명사형 종결)으로 요약해줘. "
+                "날짜·수치·품목명·위해요소 팩트는 절대 왜곡하지 말고 순수 JSON 배열만 반환해: "
+                '[{"idx":1,"one_line":"..."}, ...]\n\n'
+                f"{json.dumps(src_brief, ensure_ascii=False)}"
+            )
+            resp = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}",
+                json={"contents": [{"role": "user", "parts": [{"text": prompt}]}]},
+                timeout=9
+            )
+            if resp.status_code == 200:
+                cands = resp.json().get("candidates", [])
+                if cands:
+                    raw_j = cands[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+                    raw_j = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_j, flags=re.IGNORECASE).strip()
+                    ai_list = json.loads(raw_j)
+                    ai_map = {int(a["idx"]): str(a["one_line"]).strip() for a in ai_list if "idx" in a and a.get("one_line")}
+                    for x in enriched_items:
+                        if x["idx"] in ai_map and 12 <= len(ai_map[x["idx"]]) <= 88:
+                            dt_tag = x["date"].replace(" 보도", "").strip()
+                            x["one_line"] = f"[{dt_tag}] {ai_map[x['idx']]}" if dt_tag != "-" and not ai_map[x["idx"]].startswith("[") else ai_map[x["idx"]]
+        except Exception:
+            pass
+
+    dom_cnt = sum(1 for x in enriched_items if x["scope"] == "국내")
+    ovr_cnt = sum(1 for x in enriched_items if x["scope"] != "국내")
+    rel_cnt = sum(1 for x in enriched_items if x["yonsei_check"])
+
+    return {
+        "week_id": week_id,
+        "period": period_str or f"{week_id} 주간",
+        "dom_cnt": dom_cnt,
+        "ovr_cnt": ovr_cnt,
+        "total_cnt": len(enriched_items),
+        "rel_cnt": rel_cnt,
+        "highlights": highlights,
+        "items": enriched_items,
+        "updated_at": now_kst().strftime("%Y-%m-%d %H:%M")
+    }
+
+
+def parse_weekly_safety_tab_rows(rows: list) -> dict:
+    """'법규정보' 시트의 [주간 식품안전] 탭 행 데이터를 주차별 구조로 파싱 (하드코딩 없음)"""
+    empty_res = {"active_week_id": "", "weeks": []}
+    if not rows:
+        return empty_res
+
+    r0_ns = [re.sub(r"\s+", "", str(c)) for c in rows[0]]
+    is_table_fmt = ("주차ID" in r0_ns) or ("전광판_1줄요약" in r0_ns) or ("제목" in r0_ns and "상세내용" in r0_ns)
+
+    if not is_table_fmt:
+        raw_lines = [" ".join([str(x).strip() for x in r if str(x).strip()]) for r in rows]
+        joined_raw = "\n".join([ln for ln in raw_lines if ln])
+        if len(joined_raw) >= 20:
+            parsed_single = parse_weekly_safety_news_raw(joined_raw, use_ai_polish=False)
+            if parsed_single.get("items"):
+                return {"active_week_id": parsed_single["week_id"], "weeks": [parsed_single]}
+        return empty_res
+
+    def col_i(name_ns: str, default_idx: int) -> int:
+        return r0_ns.index(name_ns) if name_ns in r0_ns else default_idx
+
+    c_wid = col_i("주차ID", 0)
+    c_per = col_i("집계기간", 1)
+    c_no  = col_i("번호", 2)
+    c_scp = col_i("국내외구분", 3)
+    c_dt  = col_i("발생보도일", 4)
+    c_haz = col_i("위해요소분류", 5)
+    c_rel = col_i("당사유관여부", 6)
+    c_ttl = col_i("제목", 7)
+    c_one = col_i("전광판_1줄요약", 8)
+    c_dtl = col_i("상세내용", 9)
+    c_src = col_i("원문출처", 10)
+    c_hl  = col_i("주간핵심요약", 11)
+    c_ts  = col_i("등록일시", 12)
+
+    weeks_grouped: Dict[str, dict] = {}
+    for r in rows[1:]:
+        if not any(str(x).strip() for x in r):
+            continue
+
+        def g(idx: int) -> str:
+            return str(r[idx]).strip() if (0 <= idx < len(r)) else ""
+
+        wid = g(c_wid)
+        ttl = g(c_ttl)
+        if not wid or not ttl:
+            continue
+
+        w_obj = weeks_grouped.setdefault(wid, {
+            "week_id": wid,
+            "period": g(c_per) or f"{wid} 주간",
+            "highlights": [],
+            "items": [],
+            "updated_at": g(c_ts)
+        })
+
+        hl_raw = g(c_hl)
+        if hl_raw:
+            for hl_ln in hl_raw.splitlines():
+                hl_c = hl_ln.lstrip("·•- ").strip()
+                if hl_c and hl_c not in w_obj["highlights"]:
+                    w_obj["highlights"].append(hl_c)
+
+        no_str = g(c_no)
+        idx_num = CIRCLED_NUM_MAP.get(no_str, 0)
+        if idx_num == 0:
+            m_d = re.search(r"\d+", no_str)
+            idx_num = int(m_d.group(0)) if m_d else (len(w_obj["items"]) + 1)
+        if not no_str:
+            no_str = INT_TO_CIRCLED.get(idx_num, f"#{idx_num}")
+
+        dtl_s = g(c_dtl)
+        haz_s = g(c_haz)
+        rel_raw = g(c_rel).upper()
+        if not haz_s:
+            haz_s, auto_rel = classify_safety_hazard_and_relevance(ttl, dtl_s)
+        else:
+            _, auto_rel = classify_safety_hazard_and_relevance(ttl, dtl_s)
+        is_rel = (rel_raw in ("Y", "TRUE", "1", "유관", "해당")) if rel_raw else auto_rel
+
+        one_s = g(c_one) or make_crisp_one_line_headline(g(c_dt), ttl, dtl_s)
+        scp_s = "해외" if "해외" in g(c_scp) else "국내"
+
+        w_obj["items"].append({
+            "idx": idx_num,
+            "no": no_str,
+            "scope": scp_s,
+            "date": g(c_dt) or "-",
+            "title": ttl,
+            "one_line": one_s,
+            "detail": dtl_s,
+            "source": g(c_src) or "-",
+            "hazard": haz_s,
+            "yonsei_check": is_rel
+        })
+
+    if not weeks_grouped:
+        return empty_res
+
+    sorted_weeks = []
+    for wid in sorted(weeks_grouped.keys(), reverse=True):
+        w = weeks_grouped[wid]
+        w["items"].sort(key=lambda x: x["idx"])
+        w["dom_cnt"] = sum(1 for x in w["items"] if x["scope"] == "국내")
+        w["ovr_cnt"] = sum(1 for x in w["items"] if x["scope"] != "국내")
+        w["total_cnt"] = len(w["items"])
+        w["rel_cnt"] = sum(1 for x in w["items"] if x["yonsei_check"])
+        sorted_weeks.append(w)
+
+    return {
+        "active_week_id": sorted_weeks[0]["week_id"],
+        "weeks": sorted_weeks
+    }
+
+
+def build_weekly_safety_sheet_rows(sorted_weeks: List[dict]) -> list:
+    payload = [LAW_WEEKLY_SAFETY_COLS]
+    now_s = now_kst().strftime("%Y-%m-%d %H:%M")
+    for w in sorted_weeks:
+        wid = str(w.get("week_id", ""))
+        per = str(w.get("period", ""))
+        hl_joined = "\n".join(w.get("highlights", []))
+        ts_val = str(w.get("updated_at") or now_s)
+        for i_idx, it in enumerate(w.get("items", [])):
+            payload.append([
+                wid,
+                per,
+                str(it.get("no", "")),
+                str(it.get("scope", "국내")),
+                str(it.get("date", "-")),
+                str(it.get("hazard", "")),
+                "Y" if it.get("yonsei_check") else "N",
+                str(it.get("title", "")),
+                str(it.get("one_line", "")),
+                str(it.get("detail", "")),
+                str(it.get("source", "-")),
+                hl_joined if i_idx == 0 else "",
+                ts_val
+            ])
+    return payload
+
+
+class SafetyNewsSavePayload(BaseModel):
+    action: str = "save"  # save | delete
+    raw_text: Optional[str] = ""
+    week_id: Optional[str] = ""
+
+
+@app.post("/api/safety-news")
+def api_save_weekly_safety_news(body: SafetyNewsSavePayload, _u: dict = Depends(require_auth_user)):
+    sheet_urls_map = get_sheet_urls_map()
+    sh_law, err_law = open_sheet_isolated(sheet_urls_map, "law_info")
+    if sh_law is None:
+        raise HTTPException(status_code=500, detail=f"'법규정보' 시트를 열 수 없습니다: {err_law}")
+
+    ws_all = api_call_with_retry(sh_law.worksheets)
+    ws_weekly = next((w for w in ws_all if re.sub(r"\s+", "", w.title) == "주간식품안전"), None)
+    if ws_weekly is None:
+        ws_weekly = api_call_with_retry(sh_law.add_worksheet, title=LAW_WEEKLY_SAFETY_TAB, rows=300, cols=15)
+
+    cur_parsed = parse_weekly_safety_tab_rows(get_values_formatted(ws_weekly))
+    weeks_map: Dict[str, dict] = {w["week_id"]: w for w in cur_parsed.get("weeks", [])}
+
+    if body.action == "delete":
+        target_id = (body.week_id or "").strip()
+        weeks_map.pop(target_id, None)
+        msg = f"[{target_id}] 주차 소식이 '주간 식품안전' 탭에서 삭제되었습니다."
+    else:
+        raw_in = (body.raw_text or "").strip()
+        if len(raw_in) < 20:
+            raise HTTPException(status_code=400, detail="붙여넣을 주간 식품안전 원문을 입력해 주세요.")
+        parsed_new = parse_weekly_safety_news_raw(raw_in, use_ai_polish=True)
+        if not parsed_new.get("items"):
+            raise HTTPException(status_code=400, detail="번호(①, ② 또는 1., 2.) 형식의 사고·리콜 항목을 찾지 못했습니다.")
+        weeks_map[parsed_new["week_id"]] = parsed_new
+        msg = f"'법규정보 > 주간 식품안전' 탭에 [{parsed_new['period']}] 국내 {parsed_new['dom_cnt']}건 · 해외 {parsed_new['ovr_cnt']}건이 저장되었습니다."
+
+    sorted_weeks = sorted(weeks_map.values(), key=lambda x: x.get("week_id", ""), reverse=True)
+    sheet_payload = build_weekly_safety_sheet_rows(sorted_weeks)
+    api_call_with_retry(ws_weekly.clear)
+    safe_ws_update(ws_weekly, sheet_payload)
+
+    new_snews = {
+        "active_week_id": sorted_weeks[0]["week_id"] if sorted_weeks else "",
+        "weeks": sorted_weeks
+    }
+    _WEEKLY_SAFETY_CACHE["data"] = new_snews
+    if _BUNDLE_CACHE["data"] is not None:
+        _BUNDLE_CACHE["data"]["safety_news"] = new_snews
+
+    return {"ok": True, "message": msg, "safety_news": new_snews}
 # ============================ [api/index.py - PART 4 / 4 끝] ============================

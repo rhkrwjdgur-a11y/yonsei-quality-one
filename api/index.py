@@ -1710,18 +1710,18 @@ def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int 
 
 
 def extract_rt_shelf_specs_from_rows(rows: list, spec_map: Dict[str, dict]):
-    """상온 시트의 기준표 및 '제품명 식품안전나라' 탭에서 품목별 고정 품목제조·실운영 기간 추출"""
+    """상온 시트 하단 기준표(품목코드+제품명 구조 포함) 및 '제품명 식품안전나라' 탭에서 품목제조·실운영 기간 추출"""
     if not rows:
         return
     c_prod, c_mfg, c_ops, c_exp_ops = -1, -1, -1, -1
     for r in rows:
         if not r:
             continue
-        r_ns = [re.sub(r"\s+", "", str(x)) for x in r[:26]]
+        r_ns = [re.sub(r"\s+", "", str(x)) for x in r[:28]]
         joined = "".join(r_ns)
         if ("제품명" in joined or "품목명" in joined or "품목제조" in joined) and ("실운영" in joined or "소비기한" in joined):
             for idx, h in enumerate(r_ns):
-                if h in ("제품명", "품목명", "품목") and c_prod < 0:
+                if h in ("제품명", "품목명", "품목", "호기별제품") and c_prod < 0:
                     c_prod = idx
                 elif "품목제조" in h and c_mfg < 0:
                     c_mfg = idx
@@ -1732,9 +1732,12 @@ def extract_rt_shelf_specs_from_rows(rows: list, spec_map: Dict[str, dict]):
             continue
 
         if c_prod >= 0 and c_prod < len(r):
-            p_nm = re.sub(r"\s+", " ", str(r[c_prod])).strip()
-            pk = clean_product_for_match(p_nm)
-            if len(pk) >= 2:
+            raw_cell = re.sub(r"\s+", " ", str(r[c_prod])).strip()
+            # 앞열이 5자리 품목코드(예: 10474)인 경우 바로 옆 열의 실제 제품명을 참조
+            if re.match(r"^\d{4,6}$", raw_cell) and (c_prod + 1) < len(r):
+                raw_cell = re.sub(r"\s+", " ", str(r[c_prod + 1])).strip()
+            pk = clean_product_for_match(raw_cell)
+            if len(pk) >= 2 and not pk.isdigit():
                 mfg_t = extract_duration_spec_token(r[c_mfg]) if (0 <= c_mfg < len(r)) else ""
                 ops_t = extract_duration_spec_token(r[c_ops]) if (0 <= c_ops < len(r)) else ""
                 exp_t = extract_duration_spec_token(r[c_exp_ops]) if (0 <= c_exp_ops < len(r)) else ""
@@ -1748,11 +1751,21 @@ def extract_rt_shelf_specs_from_rows(rows: list, spec_map: Dict[str, dict]):
                         cur["exp_ops"] = exp_t
             continue
 
-        # 헤더 없는 기준표 행 스캔 (A~D열 품목명 + 우측 기간 토큰)
-        cand_p = re.sub(r"\s+", " ", str(r[0] if len(r) > 0 and str(r[0]).strip() else (r[1] if len(r) > 1 else ""))).strip()
+        # 헤더 없는 하단 기준표 스캔: 앞쪽 품목코드(숫자)는 건너뛰고 첫 한글/영문 품목명 + 우측 기간(개월·주·일) 추출
+        cand_p, p_col = "", -1
+        for ci in range(min(5, len(r))):
+            cs = re.sub(r"\s+", " ", str(r[ci])).strip()
+            if not cs or cs == "-" or re.match(r"^\d+(?:\.\d+)?$", cs):
+                continue
+            if re.match(r"^[A-F0-9]+호기$", cs) or cs in ("포장호기", "멸균기", "특이사항", "구분"):
+                break
+            if re.search(r"[가-힣A-Za-z]", cs):
+                cand_p, p_col = cs, ci
+                break
+
         pk2 = clean_product_for_match(cand_p)
-        if len(pk2) >= 2 and not re.match(r"^\d+호기$", cand_p) and cand_p not in ("포장호기", "멸균기"):
-            durs = [extract_duration_spec_token(x) for x in r[1:12]]
+        if len(pk2) >= 2 and p_col >= 0:
+            durs = [extract_duration_spec_token(x) for x in r[p_col + 1 : min(len(r), p_col + 14)]]
             durs = [x for x in durs if x]
             if durs:
                 cur = spec_map.setdefault(pk2, {"mfg": "", "ops": "", "exp_ops": ""})
@@ -1760,6 +1773,71 @@ def extract_rt_shelf_specs_from_rows(rows: list, spec_map: Dict[str, dict]):
                     cur["mfg"] = durs[0]
                 if len(durs) >= 2 and not cur["ops"]:
                     cur["ops"] = durs[1]
+                if len(durs) >= 3 and not cur["exp_ops"]:
+                    cur["exp_ops"] = durs[2]
+
+
+def fix_rt_today_shifted_exp(
+    exp_raw: str,
+    prod_iso: str,
+    p_name: str,
+    spec_map: Dict[str, dict],
+    saved_ts_raw: str = ""
+) -> Tuple[str, str]:
+    """
+    과거 날짜 탭의 소비기한 셀에 '=TODAY()' 연동 수식이 남아 있어 조회일/저장일 기준으로
+    소비기한이 밀려버린 경우(예: 11/12 생산분이 11/23 조회 시 2027.05.22로 변동),
+    원래 생산일(prod_d) 기준의 정상 소비기한(2027. 05. 11)으로 역산 복원한다.
+    """
+    raw_s = re.sub(r"\s+", " ", str(exp_raw or "")).strip()
+    prod_d = parse_date_obj(prod_iso)
+    today_d = now_kst().date()
+    if not raw_s or raw_s == "-" or not prod_d:
+        return raw_s, ""
+
+    exp_dates = parse_exp_dates_against_prod(raw_s, prod_d, expected_days=210)
+    if not exp_dates:
+        return raw_s, ""
+
+    std_iso = ", ".join([d.strftime("%Y-%m-%d") for d in exp_dates])
+    if prod_d >= today_d or len(exp_dates) != 1:
+        return raw_s, std_iso
+
+    actual_e = exp_dates[0]
+    ref_cands = {today_d - timedelta(days=k) for k in range(4)}
+    saved_d = parse_date_obj(saved_ts_raw)
+    if saved_d and saved_d > prod_d:
+        ref_cands.add(saved_d)
+
+    pk = clean_product_for_match(p_name)
+    spec = spec_map.get(pk, {})
+    cand_specs = []
+    for k_sp in ("ops", "mfg", "exp_ops"):
+        sv = spec.get(k_sp, "")
+        if sv and sv not in cand_specs:
+            cand_specs.append(sv)
+
+    for ref_d in sorted(ref_cands, reverse=True):
+        gap_days = (ref_d - prod_d).days
+        if gap_days < 2 or (ref_d != today_d and ref_d != saved_d and gap_days < 3):
+            continue
+
+        # 1) 품목 기준표(실운영·품목제조) 기간 대조: ref_d 기준 '=TODAY()' 결과값과 일치하면 prod_d 기준으로 복원
+        for sp_tok in cand_specs:
+            shifted_lim = calc_rt_limit_date_from_spec(ref_d, sp_tok)
+            if shifted_lim and actual_e == shifted_lim:
+                true_lim = calc_rt_limit_date_from_spec(prod_d, sp_tok)
+                if true_lim:
+                    return true_lim.strftime("%Y. %m. %d"), true_lim.strftime("%Y-%m-%d")
+
+        # 2) 기준표 미등록 품목 폴백: 4일 이상 지난 과거 탭인데 ref_d로부터 정확히 N개월(초일산입)인 경우 복원
+        if not cand_specs and gap_days >= 4:
+            for m_try in range(3, 19):
+                if actual_e == add_months_inclusive(ref_d, m_try):
+                    true_lim = add_months_inclusive(prod_d, m_try)
+                    return true_lim.strftime("%Y. %m. %d"), true_lim.strftime("%Y-%m-%d")
+
+    return raw_s, std_iso
 
 
 def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[str, dict]) -> Dict[str, List[dict]]:
@@ -3938,7 +4016,42 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
         fetch_targets = list(dict.fromkeys([t for t in ([t_today, t_yest] + recent_date_tabs + [t_hp, t_hc, t_fsk, t_std]) if t]))
         batch_map = batch_fetch_tabs(sh_rt, fetch_targets)
 
-        def _fix_rt_db_date_row(r_vals: list, cmap: dict):
+        # 0) 기준표(품목제조·실운영 기간) 선행 수집 — DB 오염 소비기한 자동 복구에 즉시 활용
+        rt_spec_map: Dict[str, dict] = {}
+        if t_fsk:
+            extract_rt_shelf_specs_from_rows(batch_map.get(t_fsk, []), rt_spec_map)
+        if t_std:
+            extract_rt_shelf_specs_from_rows(batch_map.get(t_std, []), rt_spec_map)
+        for ref_t in [t_today, t_yest]:
+            if ref_t and batch_map.get(ref_t):
+                extract_rt_shelf_specs_from_rows(batch_map[ref_t][30:], rt_spec_map)
+
+        # 1) [시트 원본 자동 수리] _이력DB_상온생산의 TODAY 오기입 생산일자 및 =TODAY()로 밀린 과거 소비기한 영구 복구
+        def _fix_rt_db_p_row(r_vals: list, cmap: dict):
+            c_dt = cmap.get("생산일자", -1)
+            c_tb = cmap.get("원본탭명", -1)
+            c_pnm = cmap.get("제품명", -1)
+            c_exp = cmap.get("표기소비기한_원문", -1)
+            c_std = cmap.get("표준소비기한_검색용", -1)
+            c_sav = cmap.get("저장일시", -1)
+
+            if c_dt >= 0 and c_tb >= 0:
+                pd = parse_date_obj(r_vals[c_dt])
+                true_iso = tab_title_to_iso_date(r_vals[c_tb], pd)
+                if true_iso and r_vals[c_dt] != true_iso:
+                    r_vals[c_dt] = true_iso
+
+            if c_dt >= 0 and c_pnm >= 0 and c_exp >= 0:
+                sav_s = r_vals[c_sav] if c_sav >= 0 else ""
+                fixed_exp, fixed_std = fix_rt_today_shifted_exp(
+                    r_vals[c_exp], r_vals[c_dt], r_vals[c_pnm], rt_spec_map, sav_s
+                )
+                if fixed_exp and fixed_exp != r_vals[c_exp]:
+                    r_vals[c_exp] = fixed_exp
+                    if c_std >= 0 and fixed_std:
+                        r_vals[c_std] = fixed_std
+
+        def _fix_rt_db_c_row(r_vals: list, cmap: dict):
             c_dt = cmap.get("생산일자", -1)
             c_tb = cmap.get("원본탭명", -1)
             if c_dt >= 0 and c_tb >= 0:
@@ -3948,17 +4061,11 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
                     r_vals[c_dt] = true_iso
 
         if t_hp and len(batch_map.get(t_hp, [])) >= 2:
-            if heal_db_worksheet_if_dirty(sh_rt, t_hp, batch_map[t_hp], _fix_rt_db_date_row):
+            if heal_db_worksheet_if_dirty(sh_rt, t_hp, batch_map[t_hp], _fix_rt_db_p_row):
                 batch_map[t_hp] = get_values_formatted(api_call_with_retry(sh_rt.worksheet, t_hp))
         if t_hc and len(batch_map.get(t_hc, [])) >= 2:
-            if heal_db_worksheet_if_dirty(sh_rt, t_hc, batch_map[t_hc], _fix_rt_db_date_row):
+            if heal_db_worksheet_if_dirty(sh_rt, t_hc, batch_map[t_hc], _fix_rt_db_c_row):
                 batch_map[t_hc] = get_values_formatted(api_call_with_retry(sh_rt.worksheet, t_hc))
-
-        rt_spec_map: Dict[str, dict] = {}
-        if t_fsk:
-            extract_rt_shelf_specs_from_rows(batch_map.get(t_fsk, []), rt_spec_map)
-        if t_std:
-            extract_rt_shelf_specs_from_rows(batch_map.get(t_std, []), rt_spec_map)
 
         rt_today_parsed = parse_rt_process_rows(t_today, batch_map.get(t_today, [])) if t_today else None
         rt_yest_parsed = parse_rt_process_rows(t_yest, batch_map.get(t_yest, [])) if t_yest else None
@@ -3966,7 +4073,7 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
             if p_obj and p_obj.get("spec_map"):
                 rt_spec_map.update(p_obj["spec_map"])
 
-        # 1) 기존 _이력DB_상온생산 로드 (동일 일자·호기·품목 슬롯 매핑으로 소비기한 수정 시 Upsert 지원)
+        # 2) 복구 완료된 _이력DB_상온생산 로드
         rt_hist_p = []
         slot_index_map: Dict[Tuple[str, str, str], int] = {}
         db_p_dates_with_items = set()
@@ -3982,6 +4089,18 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
             p_nm_val = str(rc.get("제품명", "")).strip()
             if not p_nm_val or p_nm_val in ["-", "(비가동)"]:
                 continue
+
+            fixed_e, fixed_std = fix_rt_today_shifted_exp(
+                rc.get("표기소비기한_원문", ""),
+                rc.get("생산일자", ""),
+                p_nm_val,
+                rt_spec_map,
+                rc.get("저장일시", "")
+            )
+            if fixed_e:
+                rc["표기소비기한_원문"] = fixed_e
+            if fixed_std:
+                rc["표준소비기한_검색용"] = fixed_std
 
             slot_k = (rc.get("생산일자", ""), str(rc.get("포장호기", "")).strip(), clean_product_for_match(p_nm_val))
             if slot_k in slot_index_map:
@@ -4005,12 +4124,13 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
                 db_c_dates.add(cc["생산일자"])
             rt_hist_c.append(cc)
 
-        # 2) 실시간 날짜 탭 파싱 + 소비기한/확인시간 변경 시 _이력DB_상온생산 즉시 Upsert 동기화
+        # 3) 날짜 탭 파싱 — Upsert(수정 덮어쓰기)는 오직 금일(t_today)·전일(t_yest) 탭만 허용하여 과거 탭 =TODAY() 재오염 차단!
         rt_date_views: Dict[str, dict] = {}
         missing_db_p_rows = []
         missing_db_c_rows = []
         rt_p_updated_in_place = False
         now_saved_str = now_kst().strftime("%Y-%m-%d %H:%M:%S")
+        live_upsert_tabs = {x for x in (t_today, t_yest) if x}
 
         for raw_dt_tab in recent_date_tabs:
             try:
@@ -4027,35 +4147,40 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
                 dt_iso = tab_title_to_iso_date(parsed_t["tab_title"]) or parsed_t["tab_title"]
                 parsed_t["prod_date"] = dt_iso
                 rt_date_views[dt_iso] = parsed_t
+                allow_upsert = (raw_dt_tab in live_upsert_tabs)
 
                 for lr in parsed_t.get("lines_records", []):
                     p_nm = str(lr.get("생산 제품명", "")).strip()
                     if not p_nm or p_nm == "(비가동)":
                         continue
-                    exp_raw = str(lr.get("소비기한", "-")).strip()
+                    raw_exp_cell = str(lr.get("소비기한", "-")).strip()
                     chk_raw = str(lr.get("확인시간", "-")).strip()
-                    prod_d_obj = parse_date_obj(dt_iso) or now_kst().date()
-                    exp_d_list = parse_exp_dates_against_prod(exp_raw, prod_d_obj, expected_days=210)
-                    std_iso_str = ", ".join([d.strftime("%Y-%m-%d") for d in exp_d_list]) if exp_d_list else ""
+
+                    exp_clean, std_iso_str = fix_rt_today_shifted_exp(
+                        raw_exp_cell, dt_iso, p_nm, rt_spec_map, now_saved_str
+                    )
+                    if not exp_clean:
+                        exp_clean = "-"
 
                     slot_k = (dt_iso, str(lr.get("포장호기", "")).strip(), clean_product_for_match(p_nm))
                     if slot_k in slot_index_map:
-                        exist_rec = rt_hist_p[slot_index_map[slot_k]]
-                        if exp_raw != "-" and str(exist_rec.get("표기소비기한_원문", "")).strip() != exp_raw:
-                            exist_rec["표기소비기한_원문"] = exp_raw
-                            exist_rec["표준소비기한_검색용"] = std_iso_str
-                            exist_rec["저장일시"] = now_saved_str
-                            rt_p_updated_in_place = True
-                        if chk_raw not in ("", "-", "미기입(대기)") and str(exist_rec.get("확인시간", "")).strip() != chk_raw:
-                            exist_rec["확인시간"] = chk_raw
-                            rt_p_updated_in_place = True
+                        if allow_upsert:
+                            exist_rec = rt_hist_p[slot_index_map[slot_k]]
+                            if exp_clean != "-" and str(exist_rec.get("표기소비기한_원문", "")).strip() != exp_clean:
+                                exist_rec["표기소비기한_원문"] = exp_clean
+                                exist_rec["표준소비기한_검색용"] = std_iso_str
+                                exist_rec["저장일시"] = now_saved_str
+                                rt_p_updated_in_place = True
+                            if chk_raw not in ("", "-", "미기입(대기)") and str(exist_rec.get("확인시간", "")).strip() != chk_raw:
+                                exist_rec["확인시간"] = chk_raw
+                                rt_p_updated_in_place = True
                     else:
                         new_p_rec = {
                             "생산일자": dt_iso,
                             "원본탭명": parsed_t["tab_title"],
                             "포장호기": lr.get("포장호기", "-"),
                             "제품명": p_nm,
-                            "표기소비기한_원문": exp_raw,
+                            "표기소비기한_원문": exp_clean,
                             "표준소비기한_검색용": std_iso_str,
                             "확인시간": chk_raw,
                             "저장일시": now_saved_str
@@ -4101,7 +4226,7 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
             except Exception:
                 continue
 
-        # 3) 소비기한 수정(Upsert) 또는 신규 행 발생 시 _이력DB_상온생산 시트 즉시 반영
+        # 4) DB 업데이트 반영
         if t_hp and (rt_p_updated_in_place or missing_db_p_rows):
             try:
                 hp_matrix = batch_map.get(t_hp, [])
@@ -4131,7 +4256,7 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
             except Exception:
                 pass
 
-        # 4) DB 저장 데이터 기반으로 상온 전 기간 소비기한 상한·역전 검증 실행 후 일자별 뷰에 투영
+        # 5) 확정·복구된 DB 데이터 기준으로 전 기간 소비기한 검증 후 일자별 뷰의 표시값까지 DB 확정값으로 동기화
         rt_alerts_by_dt = validate_rt_shelf_life_on_db(rt_hist_p, rt_spec_map)
         exp_val_lookup: Dict[Tuple[str, str, str], dict] = {}
         for r in rt_hist_p:
@@ -4154,14 +4279,21 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
             for cp in view_obj.get("compact_rows", []):
                 lk = (v_dt, str(cp.get("포장호기", "")).strip(), clean_product_for_match(cp.get("생산 제품명", "")))
                 matched_r = exp_val_lookup.get(lk)
-                cp["_cls_exp"] = matched_r.get("_cls_exp", "cell-green") if matched_r else "cell-green"
-                cp["_exp_tip"] = matched_r.get("_exp_tip", "") if matched_r else ""
+                if matched_r:
+                    if matched_r.get("표기소비기한_원문"):
+                        cp["소비기한"] = matched_r["표기소비기한_원문"]
+                    cp["_cls_exp"] = matched_r.get("_cls_exp", "cell-green")
+                    cp["_exp_tip"] = matched_r.get("_exp_tip", "")
+                else:
+                    cp["_cls_exp"] = "cell-green"
             for lr in view_obj.get("lines_records", []):
                 if lr.get("생산 제품명") == "(비가동)":
                     continue
                 lk = (v_dt, str(lr.get("포장호기", "")).strip(), clean_product_for_match(lr.get("생산 제품명", "")))
                 matched_r = exp_val_lookup.get(lk)
                 if matched_r:
+                    if matched_r.get("표기소비기한_원문"):
+                        lr["소비기한"] = matched_r["표기소비기한_원문"]
                     lr["_cls_exp"] = matched_r.get("_cls_exp", "cell-green")
                     lr["_exp_tip"] = matched_r.get("_exp_tip", "")
                     if matched_r.get("_cls_exp") == "cell-red":

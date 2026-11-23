@@ -2118,18 +2118,20 @@ def parse_rt_process_rows(tab_title_raw: str, rows: list):
 
             if p_name and len(spec_cells) >= 3:
                 pk_s = clean_product_for_match(p_name)
+                ho_norm_s = re.sub(r"\s+", "", current_ho)
                 mfg_tok = extract_duration_spec_token(spec_cells[0])
                 ops_tok = extract_duration_spec_token(spec_cells[1])
                 exp_ops_tok = extract_duration_spec_token(spec_cells[2])
                 if pk_s and (mfg_tok or ops_tok or exp_ops_tok):
-                    sp_entry = slot_spec_map.setdefault(pk_s, {"mfg": "", "ops": "", "exp_ops": ""})
-                    if mfg_tok:
-                        sp_entry["mfg"] = mfg_tok
-                    if ops_tok:
-                        sp_entry["ops"] = ops_tok
-                    if exp_ops_tok:
-                        sp_entry["exp_ops"] = exp_ops_tok
-
+                    for sp_key in [(ho_norm_s, pk_s), pk_s]:
+                        sp_entry = slot_spec_map.setdefault(sp_key, {"mfg": "", "ops": "", "exp_ops": ""})
+                        if mfg_tok:
+                            sp_entry["mfg"] = mfg_tok
+                        if ops_tok:
+                            sp_entry["ops"] = ops_tok
+                        if exp_ops_tok:
+                            sp_entry["exp_ops"] = exp_ops_tok
+                            
             if p_name or exp_v:
                 has_time = bool(re.search(r"\d{1,2}:\d{2}", t_str))
                 if p_name and has_time and exp_v:
@@ -4015,8 +4017,7 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
         fetch_targets = list(dict.fromkeys([t for t in ([t_today, t_yest] + recent_date_tabs + [t_hp, t_hc, t_fsk, t_std]) if t]))
         batch_map = batch_fetch_tabs(sh_rt, fetch_targets)
 
-        # 0) 기준표(품목제조·실운영 기간) 선행 수집 — DB 오염 소비기한 자동 복구에 즉시 활용
-        rt_spec_map: Dict[str, dict] = {}
+        rt_spec_map: Dict[Any, dict] = {}
         if t_fsk:
             extract_rt_shelf_specs_from_rows(batch_map.get(t_fsk, []), rt_spec_map)
         if t_std:
@@ -4025,10 +4026,16 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
             if ref_t and batch_map.get(ref_t):
                 extract_rt_shelf_specs_from_rows(batch_map[ref_t][30:], rt_spec_map)
 
-        # 1) [시트 원본 자동 수리] _이력DB_상온생산의 TODAY 오기입 생산일자 및 =TODAY()로 밀린 과거 소비기한 영구 복구
+        rt_today_parsed = parse_rt_process_rows(t_today, batch_map.get(t_today, [])) if t_today else None
+        rt_yest_parsed = parse_rt_process_rows(t_yest, batch_map.get(t_yest, [])) if t_yest else None
+        for p_obj in [rt_today_parsed, rt_yest_parsed]:
+            if p_obj and p_obj.get("spec_map"):
+                rt_spec_map.update(p_obj["spec_map"])
+
         def _fix_rt_db_p_row(r_vals: list, cmap: dict):
             c_dt = cmap.get("생산일자", -1)
             c_tb = cmap.get("원본탭명", -1)
+            c_ho = cmap.get("포장호기", -1)
             c_pnm = cmap.get("제품명", -1)
             c_exp = cmap.get("표기소비기한_원문", -1)
             c_std = cmap.get("표준소비기한_검색용", -1)
@@ -4041,9 +4048,10 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
                     r_vals[c_dt] = true_iso
 
             if c_dt >= 0 and c_pnm >= 0 and c_exp >= 0:
+                ho_v = r_vals[c_ho] if c_ho >= 0 else ""
                 sav_s = r_vals[c_sav] if c_sav >= 0 else ""
                 fixed_exp, fixed_std = fix_rt_today_shifted_exp(
-                    r_vals[c_exp], r_vals[c_dt], r_vals[c_pnm], rt_spec_map, sav_s
+                    r_vals[c_exp], r_vals[c_dt], ho_v, r_vals[c_pnm], rt_spec_map, sav_s
                 )
                 if fixed_exp and fixed_exp != r_vals[c_exp]:
                     r_vals[c_exp] = fixed_exp
@@ -4066,13 +4074,6 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
             if heal_db_worksheet_if_dirty(sh_rt, t_hc, batch_map[t_hc], _fix_rt_db_c_row):
                 batch_map[t_hc] = get_values_formatted(api_call_with_retry(sh_rt.worksheet, t_hc))
 
-        rt_today_parsed = parse_rt_process_rows(t_today, batch_map.get(t_today, [])) if t_today else None
-        rt_yest_parsed = parse_rt_process_rows(t_yest, batch_map.get(t_yest, [])) if t_yest else None
-        for p_obj in [rt_today_parsed, rt_yest_parsed]:
-            if p_obj and p_obj.get("spec_map"):
-                rt_spec_map.update(p_obj["spec_map"])
-
-        # 2) 복구 완료된 _이력DB_상온생산 로드
         rt_hist_p = []
         slot_index_map: Dict[Tuple[str, str, str], int] = {}
         db_p_dates_with_items = set()
@@ -4089,9 +4090,11 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
             if not p_nm_val or p_nm_val in ["-", "(비가동)"]:
                 continue
 
+            ho_val = str(rc.get("포장호기", "")).strip()
             fixed_e, fixed_std = fix_rt_today_shifted_exp(
                 rc.get("표기소비기한_원문", ""),
                 rc.get("생산일자", ""),
+                ho_val,
                 p_nm_val,
                 rt_spec_map,
                 rc.get("저장일시", "")
@@ -4101,7 +4104,7 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
             if fixed_std:
                 rc["표준소비기한_검색용"] = fixed_std
 
-            slot_k = (rc.get("생산일자", ""), str(rc.get("포장호기", "")).strip(), clean_product_for_match(p_nm_val))
+            slot_k = (rc.get("생산일자", ""), ho_val, clean_product_for_match(p_nm_val))
             if slot_k in slot_index_map:
                 continue
             slot_index_map[slot_k] = len(rt_hist_p)
@@ -4123,7 +4126,6 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
                 db_c_dates.add(cc["생산일자"])
             rt_hist_c.append(cc)
 
-        # 3) 날짜 탭 파싱 — Upsert(수정 덮어쓰기)는 오직 금일(t_today)·전일(t_yest) 탭만 허용하여 과거 탭 =TODAY() 재오염 차단!
         rt_date_views: Dict[str, dict] = {}
         missing_db_p_rows = []
         missing_db_c_rows = []
@@ -4152,16 +4154,17 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
                     p_nm = str(lr.get("생산 제품명", "")).strip()
                     if not p_nm or p_nm == "(비가동)":
                         continue
+                    ho_cur = str(lr.get("포장호기", "-")).strip()
                     raw_exp_cell = str(lr.get("소비기한", "-")).strip()
                     chk_raw = str(lr.get("확인시간", "-")).strip()
 
                     exp_clean, std_iso_str = fix_rt_today_shifted_exp(
-                        raw_exp_cell, dt_iso, p_nm, rt_spec_map, now_saved_str
+                        raw_exp_cell, dt_iso, ho_cur, p_nm, rt_spec_map, now_saved_str
                     )
                     if not exp_clean:
                         exp_clean = "-"
 
-                    slot_k = (dt_iso, str(lr.get("포장호기", "")).strip(), clean_product_for_match(p_nm))
+                    slot_k = (dt_iso, ho_cur, clean_product_for_match(p_nm))
                     if slot_k in slot_index_map:
                         if allow_upsert:
                             exist_rec = rt_hist_p[slot_index_map[slot_k]]
@@ -4177,7 +4180,7 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
                         new_p_rec = {
                             "생산일자": dt_iso,
                             "원본탭명": parsed_t["tab_title"],
-                            "포장호기": lr.get("포장호기", "-"),
+                            "포장호기": ho_cur,
                             "제품명": p_nm,
                             "표기소비기한_원문": exp_clean,
                             "표준소비기한_검색용": std_iso_str,
@@ -4225,7 +4228,6 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
             except Exception:
                 continue
 
-        # 4) DB 업데이트 반영
         if t_hp and (rt_p_updated_in_place or missing_db_p_rows):
             try:
                 hp_matrix = batch_map.get(t_hp, [])
@@ -4255,7 +4257,6 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
             except Exception:
                 pass
 
-        # 5) 확정·복구된 DB 데이터 기준으로 전 기간 소비기한 검증 후 일자별 뷰의 표시값까지 DB 확정값으로 동기화
         rt_alerts_by_dt = validate_rt_shelf_life_on_db(rt_hist_p, rt_spec_map)
         exp_val_lookup: Dict[Tuple[str, str, str], dict] = {}
         for r in rt_hist_p:

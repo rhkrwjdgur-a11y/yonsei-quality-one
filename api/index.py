@@ -1794,7 +1794,7 @@ def fix_rt_today_shifted_exp(
     prod_iso: str,
     ho_raw: str,
     p_name: str,
-    spec_map: Dict[Any, dict],
+    spec_map: Dict[str, dict],
     saved_ts_raw: str = ""
 ) -> Tuple[str, str]:
     """
@@ -1825,7 +1825,7 @@ def fix_rt_today_shifted_exp(
     ho_norm = re.sub(r"\s+", "", str(ho_raw or "").strip()).upper()
     ho_grp = _norm_rt_pack_group(ho_norm)
     pk = clean_product_for_match(p_name)
-    spec = spec_map.get((ho_norm, pk)) or spec_map.get((ho_grp, pk)) or spec_map.get(pk, {})
+    spec = spec_map.get(f"{ho_norm}|{pk}") or spec_map.get(f"{ho_grp}|{pk}") or spec_map.get(pk, {})
     cand_specs = []
     for k_sp in ("ops", "mfg", "exp_ops"):
         sv = spec.get(k_sp, "")
@@ -1853,7 +1853,7 @@ def fix_rt_today_shifted_exp(
     return raw_s, std_iso
 
 
-def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[Any, dict]) -> Dict[str, List[dict]]:
+def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[str, dict]) -> Dict[str, List[dict]]:
     """
     [_이력DB_상온생산] 확정 데이터 기준 검증:
     1) 포장재 동일 그룹([B·D호기 통합] vs [A / C / E / F호기 개별]) + 제품명 + 수출여부 단위로 시계열 그룹핑
@@ -1879,11 +1879,6 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[Any, dict
         prev_max_exp: Optional[date] = None
         prev_exp_raw = ""
 
-        # 같은 날짜에 B호기와 D호기가 동시에 가동된 경우 당일끼리 역전 오판하지 않도록 일자 단위 버퍼링
-        same_day_max_exp: Optional[date] = None
-        same_day_exp_raw = ""
-        same_day_ho = ""
-
         for r in recs:
             dt_iso = str(r.get("생산일자", "")).strip()
             ho = str(r.get("포장호기", ho_grp)).strip()
@@ -1892,11 +1887,7 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[Any, dict
             exp_raw = str(r.get("표기소비기한_원문", "-")).strip()
             prod_d = parse_date_obj(dt_iso)
 
-            # 날짜가 다음 생산일로 넘어갈 때 직전 생산일 최대 소비기한을 기준값으로 확정
-            if same_day_max_exp is not None and dt_iso > prev_prod_iso:
-                if prev_prod_iso != "":
-                    pass
-            spec = spec_map.get((ho_norm, pk)) or spec_map.get((ho_grp, pk)) or spec_map.get(pk, {})
+            spec = spec_map.get(f"{ho_norm}|{pk}") or spec_map.get(f"{ho_grp}|{pk}") or spec_map.get(pk, {})
             mfg_s = spec.get("mfg", "")
             ops_s = spec.get("exp_ops", "") if (is_exp_lot and spec.get("exp_ops")) else (spec.get("ops") or mfg_s)
             exp_ops_s = spec.get("exp_ops", "")
@@ -1965,7 +1956,6 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[Any, dict
             if alert_msg:
                 alerts_by_date.setdefault(dt_iso, []).append({"level": alert_lv, "msg": alert_msg})
 
-            # 정상 범위 소비기한인 경우 직전 재고 기준값 갱신 (동일 일자 B·D 동시 생산 시 최대치 유지)
             if min_e > prod_d and (eff_mfg_lim is None or max_e <= eff_mfg_lim) and not matches_export:
                 if prev_prod_iso != dt_iso:
                     prev_prod_iso = dt_iso
@@ -2158,7 +2148,7 @@ def parse_rt_process_rows(tab_title_raw: str, rows: list):
                 ops_tok = extract_duration_spec_token(spec_cells[1])
                 exp_ops_tok = extract_duration_spec_token(spec_cells[2])
                 if pk_s and (mfg_tok or ops_tok or exp_ops_tok):
-                    for sp_key in dict.fromkeys([(ho_norm_s, pk_s), (ho_grp_s, pk_s), pk_s]):
+                    for sp_key in dict.fromkeys([f"{ho_norm_s}|{pk_s}", f"{ho_grp_s}|{pk_s}", pk_s]):
                         sp_entry = slot_spec_map.setdefault(sp_key, {"mfg": "", "ops": "", "exp_ops": ""})
                         if mfg_tok:
                             sp_entry["mfg"] = mfg_tok

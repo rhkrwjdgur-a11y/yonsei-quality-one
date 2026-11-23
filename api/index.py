@@ -2093,7 +2093,6 @@ def parse_rt_process_rows(tab_title_raw: str, rows: list):
         return None
 
     tab_title = tab_title_raw.strip()
-    # 시트 내부 '생산일(=TODAY)' 셀을 무시하고 무조건 하단 탭 날짜를 생산일로 고정
     prod_date_str = tab_title_to_iso_date(tab_title) or tab_title
 
     r_pack_hdr, r_ccp3b_hdr, r_ster_hdr = None, None, None
@@ -2143,7 +2142,7 @@ def parse_rt_process_rows(tab_title_raw: str, rows: list):
             if p_name and len(spec_cells) >= 3:
                 pk_s = clean_product_for_match(p_name)
                 ho_norm_s = re.sub(r"\s+", "", current_ho).upper()
-                ho_grp_s = _norm_rt_pack_group(ho_norm_s)
+                ho_grp_s = "B·D호기" if ho_norm_s in ("B호기", "D호기", "B", "D") else (ho_norm_s or "-")
                 mfg_tok = extract_duration_spec_token(spec_cells[0])
                 ops_tok = extract_duration_spec_token(spec_cells[1])
                 exp_ops_tok = extract_duration_spec_token(spec_cells[2])
@@ -2156,7 +2155,7 @@ def parse_rt_process_rows(tab_title_raw: str, rows: list):
                             sp_entry["ops"] = ops_tok
                         if exp_ops_tok:
                             sp_entry["exp_ops"] = exp_ops_tok
-                            
+
             if p_name or exp_v:
                 has_time = bool(re.search(r"\d{1,2}:\d{2}", t_str))
                 if p_name and has_time and exp_v:
@@ -2204,7 +2203,6 @@ def parse_rt_process_rows(tab_title_raw: str, rows: list):
     hdr_3b = [re.sub(r"\s+", "", str(x)) for x in rows[r_3b_colhdr][:26]]
     ho_pos_list = sorted([(idx, cell) for idx, cell in enumerate(hdr_3b) if re.match(r"^[A-F]호기$", cell)], key=lambda x: x[0])
 
-    # 우측 요약표 침범 방지를 위해 F호기 다음 끝 열을 합리적 폭(최대 +4열)으로 설정
     first_ho_col = ho_pos_list[0][0] if ho_pos_list else 8
     ho_col_spans = {}
     for i_p, (c_start, h_lbl) in enumerate(ho_pos_list):

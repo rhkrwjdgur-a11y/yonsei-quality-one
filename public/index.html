@@ -1597,6 +1597,110 @@
       text-underline-offset: 2px;
     }
     .suw-pw-link:hover { color: #FFFFFF; }
+/* ==================== 통합 대시보드 상단 롤링 뉴스속보 전광판 ==================== */
+    .news-ticker-bar {
+      flex: 1;
+      min-width: 0;
+      height: calc(33px * var(--ui-scale));
+      background: #FFFFFF;
+      border: 1.5px solid #BFDBFE;
+      border-radius: 99px;
+      padding: 0 10px 0 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 1px 4px rgba(0, 51, 120, 0.07);
+      overflow: hidden;
+    }
+    .ticker-tag {
+      background: #B91C1C;
+      color: #FFFFFF;
+      font-size: var(--fs-xs);
+      font-weight: 900;
+      padding: 3px 9px;
+      border-radius: 99px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      letter-spacing: -0.2px;
+      cursor: pointer;
+    }
+    .ticker-scope-pill {
+      font-size: var(--fs-xs);
+      font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .ticker-scope-pill.dom { background: #FEF2F2; color: #B91C1C; border: 1px solid #FCA5A5; }
+    .ticker-scope-pill.ovr { background: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; }
+    .ticker-stage {
+      flex: 1;
+      min-width: 0;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    .ticker-text {
+      font-size: var(--fs-sm);
+      font-weight: 800;
+      color: #0F172A;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: transform 0.26s ease, opacity 0.26s ease;
+    }
+    .ticker-stage:hover .ticker-text {
+      color: var(--yonsei-mid);
+      text-decoration: underline;
+    }
+    .ticker-text.slide-out {
+      transform: translateY(-11px);
+      opacity: 0;
+    }
+    .ticker-ctrls {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .ticker-cnt {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--text-muted);
+      padding: 0 3px;
+      white-space: nowrap;
+    }
+    .ticker-nav-btn {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 1px solid #CBD5E1;
+      background: #F8FAFC;
+      color: #334155;
+      font-size: 10px;
+      font-weight: 900;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    .ticker-nav-btn:hover { background: #EFF6FF; color: var(--yonsei-blue); border-color: #93C5FD; }
+    @media (max-width: 1024px) {
+      .news-ticker-bar {
+        width: 100%;
+        flex: none;
+        order: 3;
+        height: 36px;
+        border-radius: 10px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -1713,6 +1817,7 @@
           <h1 class="home-h1">Q-Safety 품질안전 실시간 통합 관제</h1>
           <span class="date-chip" id="lblKstDateBanner">데이터 동기화 중...</span>
         </div>
+        <div class="news-ticker-bar" id="homeNewsTickerBar" onmouseenter="TICKER_PAUSED=true" onmouseleave="TICKER_PAUSED=false" style="display:none;"></div>
         <div class="quad-actions">
           <button class="btn btn-sm" onclick="switchView('kpi')">📊 2026 부문 8대 KPI 현황판 ›</button>
         </div>
@@ -2086,6 +2191,7 @@ function switchView(viewKey, subOpt) {
   if (subOpt && viewKey === 'audit') AUDIT_TAB = subOpt;
   if (subOpt && viewKey === 'defect_sub') DEFECT_SUB_TAB = subOpt;
   if (subOpt && viewKey === 'sub_mat') SUB_MAT_TAB = subOpt;
+  if (subOpt && viewKey === 'law') LAW_TAB = subOpt;
   if (BUNDLE && BUNDLE.ok) renderActiveView();
 }
 
@@ -2197,6 +2303,7 @@ function renderActiveView() {
 // ==============================================================================
 function renderHome() {
   if (!BUNDLE || !BUNDLE.ok) return;
+  renderHomeNewsTicker();
 
   const setHtml = function(id, html) {
     const el = document.getElementById(id);
@@ -2946,25 +3053,146 @@ function filterSimpleTable(kw, tblId) {
 // ==============================================================================
 // [VIEW 7] HACCP 강화 · 법적 RISK · 식품 법규 D-Day 관리 ([_법규요약DB] 1~2줄 요약)
 // ==============================================================================
+let TICKER_TIMER = null;
+let TICKER_IDX = 0;
+let TICKER_PAUSED = false;
+let SAFETY_NEWS_WEEK_ID = '';
+let SAFETY_NEWS_SCOPE_FILTER = 'ALL'; // 'ALL' | '국내' | '해외' | 'REL'
+let SAFETY_NEWS_HAZARD_FILTER = 'ALL';
+let SAFETY_NEWS_FOCUS_IDX = 0;
+
+function getActiveSafetyWeekObj(targetWeekId) {
+  const sn = (BUNDLE && BUNDLE.safety_news) || { weeks: [] };
+  const weeks = sn.weeks || [];
+  if (!weeks.length) return null;
+  const useId = targetWeekId || SAFETY_NEWS_WEEK_ID || sn.active_week_id;
+  return weeks.find(function(w) { return w.week_id === useId; }) || weeks[0];
+}
+
+function renderHomeNewsTicker() {
+  const bar = document.getElementById('homeNewsTickerBar');
+  if (!bar) return;
+
+  const latestWeek = getActiveSafetyWeekObj((BUNDLE.safety_news && BUNDLE.safety_news.active_week_id) || '');
+  if (!latestWeek || !latestWeek.items || !latestWeek.items.length) {
+    bar.style.display = 'flex';
+    bar.innerHTML =
+      '<span class="ticker-tag" onclick="switchView(\'law\', \'weekly\')">📢 주간 식품안전</span>' +
+      '<div class="ticker-stage" onclick="switchView(\'law\', \'weekly\'); setTimeout(openSafetyNewsUploadModal, 120);">' +
+        '<div class="ticker-text" style="color:var(--text-muted); font-weight:700;">현재 \'법규정보 &gt; 주간 식품안전\' 탭이 비어 있습니다 — 클릭하여 이번 주 소식을 등록해 주세요 ›</div>' +
+      '</div>';
+    return;
+  }
+
+  bar.style.display = 'flex';
+  const items = latestWeek.items;
+  if (TICKER_IDX >= items.length || TICKER_IDX < 0) TICKER_IDX = 0;
+
+  if (!bar.querySelector('#homeTickerText')) {
+    bar.innerHTML =
+      '<span class="ticker-tag" onclick="openSafetyNewsFromTicker(0)" title="HACCP · 법적 RISK > 주간 식품안전 탭 열기">📢 주간안전속보</span>' +
+      '<span class="ticker-scope-pill dom" id="homeTickerScope">국내</span>' +
+      '<div class="ticker-stage" onclick="openSafetyNewsFromTicker(getCurrentTickerItemIdx())" title="클릭 시 해당 사고·리콜 상세 내역으로 이동">' +
+        '<div class="ticker-text" id="homeTickerText"></div>' +
+      '</div>' +
+      '<div class="ticker-ctrls">' +
+        '<span class="ticker-cnt" id="homeTickerCnt">1/' + items.length + '</span>' +
+        '<button type="button" class="ticker-nav-btn" onclick="stepHomeTicker(-1)" title="이전 소식">▲</button>' +
+        '<button type="button" class="ticker-nav-btn" onclick="stepHomeTicker(1)" title="다음 소식">▼</button>' +
+      '</div>';
+  }
+
+  paintHomeTickerItem(items, TICKER_IDX, false);
+
+  if (!TICKER_TIMER) {
+    TICKER_TIMER = setInterval(function() {
+      if (CURRENT_VIEW !== 'home' || TICKER_PAUSED) return;
+      stepHomeTicker(1);
+    }, 4200);
+  }
+}
+
+function getCurrentTickerItemIdx() {
+  const w = getActiveSafetyWeekObj((BUNDLE && BUNDLE.safety_news && BUNDLE.safety_news.active_week_id) || '');
+  if (!w || !w.items || !w.items.length) return 0;
+  const it = w.items[TICKER_IDX] || w.items[0];
+  return it.idx || 0;
+}
+
+function paintHomeTickerItem(items, idx, animate) {
+  const scEl = document.getElementById('homeTickerScope');
+  const txEl = document.getElementById('homeTickerText');
+  const cnEl = document.getElementById('homeTickerCnt');
+  if (!txEl || !items.length) return;
+
+  const item = items[idx] || items[0];
+  const updateDom = function() {
+    const isDom = item.scope === '국내';
+    if (scEl) {
+      scEl.className = 'ticker-scope-pill ' + (isDom ? 'dom' : 'ovr');
+      scEl.textContent = item.scope + ' ' + item.no;
+    }
+    txEl.textContent = item.one_line || item.title;
+    if (cnEl) cnEl.textContent = (idx + 1) + '/' + items.length;
+  };
+
+  if (animate) {
+    txEl.classList.add('slide-out');
+    setTimeout(function() {
+      updateDom();
+      txEl.classList.remove('slide-out');
+    }, 220);
+  } else {
+    updateDom();
+  }
+}
+
+function stepHomeTicker(delta) {
+  const w = getActiveSafetyWeekObj((BUNDLE && BUNDLE.safety_news && BUNDLE.safety_news.active_week_id) || '');
+  if (!w || !w.items || !w.items.length) return;
+  TICKER_IDX = (TICKER_IDX + delta + w.items.length) % w.items.length;
+  paintHomeTickerItem(w.items, TICKER_IDX, true);
+}
+
+function openSafetyNewsFromTicker(focusItemIdx) {
+  const sn = (BUNDLE && BUNDLE.safety_news) || {};
+  SAFETY_NEWS_WEEK_ID = sn.active_week_id || '';
+  SAFETY_NEWS_SCOPE_FILTER = 'ALL';
+  SAFETY_NEWS_HAZARD_FILTER = 'ALL';
+  SAFETY_NEWS_FOCUS_IDX = focusItemIdx || 0;
+  switchView('law', 'weekly');
+  if (focusItemIdx > 0) {
+    setTimeout(function() {
+      const rowEl = document.getElementById('snews-item-' + focusItemIdx);
+      if (rowEl) rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
+  }
+}
+
 function renderLawView() {
   const lw = BUNDLE.law;
   const mk = BUNDLE.manual_kpis || {};
   const k8 = mk['kpi_8'] || { title: '3. 식품안전 및 HACCP 강화', actual_text: '-', target_text: '-', notes: [] };
   const k12 = mk['kpi_12'] || { title: '8. 식품안전 법적 RISK 최소화', actual_text: '-', target_text: '-', notes: [] };
+  const sn = BUNDLE.safety_news || { active_week_id: '', weeks: [] };
+  const latestW = getActiveSafetyWeekObj(sn.active_week_id);
+  const weeklyBtnBadge = latestW ? (' (' + latestW.total_cnt + '건)') : ' (미등록)';
 
   document.getElementById('view-law').innerHTML =
     '<div class="page-hdr">' +
       '<div>' +
-        '<h2 class="page-h2">HACCP 강화 · 법적 RISK · 식품 법규 D-Day 관리</h2>' +
-        '<div class="page-desc">법규정보 시트의 [_법규요약DB] 탭에 1~2줄 핵심 요약이 영구 저장되며, 신규 법규 등록 시 자동으로 요약·추가됩니다.</div>' +
+        '<h2 class="page-h2">HACCP 강화 · 법적 RISK · 식품 법규 · 주간 식품안전 관리</h2>' +
+        '<div class="page-desc">\'법규정보\' 시트의 [_법규요약DB] 및 [주간 식품안전] 탭과 실시간 양방향 연동됩니다.</div>' +
       '</div>' +
       '<div style="display:flex; gap:8px;">' +
+        (LAW_TAB === 'weekly' ? '<button class="btn btn-primary" onclick="openSafetyNewsUploadModal()">+ 주간 식품안전 원문 등록</button>' : '') +
         '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
         '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
       '</div>' +
     '</div>' +
     '<div class="tab-bar">' +
       '<button class="tab-btn ' + (LAW_TAB === 'laws' ? 'active' : '') + '" onclick="LAW_TAB=\'laws\'; renderLawView()">⚖️ 식품 법규 개정 · D-Day 선별 관리 ([대시보드] 탭 ' + lw.active_cnt + '건)</button>' +
+      '<button class="tab-btn ' + (LAW_TAB === 'weekly' ? 'active' : '') + '" onclick="LAW_TAB=\'weekly\'; renderLawView()">📰 주간 식품안전' + esc(weeklyBtnBadge) + '</button>' +
       '<button class="tab-btn ' + (LAW_TAB === 'haccp' ? 'active' : '') + '" onclick="LAW_TAB=\'haccp\'; renderLawView()">3. 식품안전 및 HACCP 강화</button>' +
       '<button class="tab-btn ' + (LAW_TAB === 'risk' ? 'active' : '') + '" onclick="LAW_TAB=\'risk\'; renderLawView()">8. 식품안전 법적 RISK 최소화</button>' +
     '</div>' +
@@ -3046,6 +3274,8 @@ function renderLawView() {
           }).join('') +
           '</tbody></table></div>' +
       '</div>';
+  } else if (LAW_TAB === 'weekly') {
+    renderWeeklySafetySubTab(box);
   } else {
     const targetK = LAW_TAB === 'haccp' ? k8 : k12;
     const targetKey = LAW_TAB === 'haccp' ? 'kpi_8' : 'kpi_12';
@@ -3063,6 +3293,185 @@ function renderLawView() {
           '</ul>' +
         '</div>' +
       '</div>';
+  }
+}
+
+function renderWeeklySafetySubTab(box) {
+  const sn = (BUNDLE && BUNDLE.safety_news) || { active_week_id: '', weeks: [] };
+  const weeks = sn.weeks || [];
+  const curWeek = getActiveSafetyWeekObj();
+
+  if (!curWeek) {
+    box.innerHTML =
+      '<div class="panel-card" style="padding:36px 20px; text-align:center;">' +
+        '<div style="font-size:16px; font-weight:800; color:#0F172A; margin-bottom:6px;">현재 \'법규정보 &gt; 주간 식품안전\' 시트 탭에 등록된 소식이 없습니다.</div>' +
+        '<div style="font-size:13px; color:var(--text-sub); margin-bottom:16px;">매주 월요일 수신하는 식품 안전 사고·리콜 원문을 붙여넣으면 1줄 요약 생성과 동시에 구글 시트에 누적 기록됩니다.</div>' +
+        '<button class="btn btn-primary" onclick="openSafetyNewsUploadModal()">+ 첫 주간 식품안전 원문 등록하기</button>' +
+      '</div>';
+    return;
+  }
+
+  SAFETY_NEWS_WEEK_ID = curWeek.week_id;
+  const allItems = curWeek.items || [];
+  const hazards = ['ALL', '미생물·식중독', '표시·알레르겐', '잔류농약·독소', '이물혼입'];
+
+  const filtered = allItems.filter(function(it) {
+    if (SAFETY_NEWS_SCOPE_FILTER === '국내' && it.scope !== '국내') return false;
+    if (SAFETY_NEWS_SCOPE_FILTER === '해외' && it.scope !== '해외') return false;
+    if (SAFETY_NEWS_SCOPE_FILTER === 'REL' && !it.yonsei_check) return false;
+    if (SAFETY_NEWS_HAZARD_FILTER !== 'ALL' && it.hazard !== SAFETY_NEWS_HAZARD_FILTER) return false;
+    return true;
+  });
+
+  const hazardBadgeCls = function(hz) {
+    if (hz === '미생물·식중독') return 'badge-err';
+    if (hz === '표시·알레르겐') return 'badge-warn';
+    if (hz === '이물혼입') return 'badge-purple';
+    return 'badge-info';
+  };
+
+  box.innerHTML =
+    '<div class="panel-card" style="padding:10px 14px; background:#F8FAFC;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">' +
+        '<div style="font-size:12.5px; color:var(--text-sub);">' +
+          '• <b>\'법규정보\' 시트의 [주간 식품안전] 탭</b>에 저장된 데이터입니다. 최신 주차의 1줄 요약이 통합 대시보드 상단 속보 전광판에 자동 순환 표출됩니다.' +
+        '</div>' +
+        '<div style="display:flex; gap:8px; align-items:center;">' +
+          '<select class="form-ctrl" style="width:250px; padding:4px 8px;" onchange="SAFETY_NEWS_WEEK_ID=this.value; SAFETY_NEWS_FOCUS_IDX=0; renderLawView()">' +
+            weeks.map(function(w) {
+              return '<option value="' + esc(w.week_id) + '" ' + (w.week_id === curWeek.week_id ? 'selected' : '') + '>' +
+                esc(w.period) + ' (' + w.total_cnt + '건)' +
+              '</option>';
+            }).join('') +
+          '</select>' +
+          '<button class="btn btn-sm" style="color:var(--err-fg);" onclick="deleteCurrentSafetyWeek(\'' + esc(curWeek.week_id) + '\')">선택 주차 삭제</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="kpi-grid-4">' +
+      '<div class="stat-card"><div class="stat-lbl">집계 사고·리콜 합계</div><div class="stat-val">' + curWeek.total_cnt + '건</div><div class="stat-sub">집계 기간 : ' + esc(curWeek.period) + '</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">국내 회수 · 부적합</div><div class="stat-val" style="color:var(--err-fg);">' + curWeek.dom_cnt + '건</div><div class="stat-sub">식약처 · 지자체 수거검사 회수</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">해외 식품사고 · 리콜</div><div class="stat-val" style="color:#1D4ED8;">' + curWeek.ovr_cnt + '건</div><div class="stat-sub">미국 · 유럽 · 오세아니아 · 아시아</div></div>' +
+      '<div class="stat-card" style="background:#FFFBEB; border-color:#FDE68A; cursor:pointer;" onclick="SAFETY_NEWS_SCOPE_FILTER=\'REL\'; renderLawView()">' +
+        '<div class="stat-lbl" style="color:#92400E;">당사 유관 중점 참고 항목</div>' +
+        '<div class="stat-val" style="color:#B45309;">' + (curWeek.rel_cnt || 0) + '건</div>' +
+        '<div class="stat-sub" style="color:#78350F; font-weight:700;">유제품·두부/두유·미생물·소비기한·알레르겐·이물</div>' +
+      '</div>' +
+    '</div>' +
+    ((curWeek.highlights && curWeek.highlights.length) ?
+      '<div class="panel-card" style="background:#EFF6FF; border-color:#BFDBFE; padding:12px 16px;">' +
+        '<div style="font-weight:900; font-size:14px; color:var(--yonsei-blue); margin-bottom:6px;">📌 이번 주 한눈에 보기 (국내 ' + curWeek.dom_cnt + '건 · 해외 ' + curWeek.ovr_cnt + '건)</div>' +
+        '<ul style="padding-left:18px; line-height:1.65; font-size:13.5px; font-weight:700; color:#1E293B;">' +
+          curWeek.highlights.map(function(h) { return '<li>' + esc(h) + '</li>'; }).join('') +
+        '</ul>' +
+      '</div>' : '') +
+    '<div class="panel-card">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px;">' +
+        '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' +
+          '<button class="btn btn-sm ' + (SAFETY_NEWS_SCOPE_FILTER === 'ALL' ? 'btn-primary' : '') + '" onclick="SAFETY_NEWS_SCOPE_FILTER=\'ALL\'; renderLawView()">전체 (' + allItems.length + ')</button>' +
+          '<button class="btn btn-sm ' + (SAFETY_NEWS_SCOPE_FILTER === '국내' ? 'btn-primary' : '') + '" onclick="SAFETY_NEWS_SCOPE_FILTER=\'국내\'; renderLawView()">🇰🇷 국내 (' + curWeek.dom_cnt + ')</button>' +
+          '<button class="btn btn-sm ' + (SAFETY_NEWS_SCOPE_FILTER === '해외' ? 'btn-primary' : '') + '" onclick="SAFETY_NEWS_SCOPE_FILTER=\'해외\'; renderLawView()">🌐 해외 (' + curWeek.ovr_cnt + ')</button>' +
+          '<button class="btn btn-sm ' + (SAFETY_NEWS_SCOPE_FILTER === 'REL' ? 'btn-primary' : '') + '" onclick="SAFETY_NEWS_SCOPE_FILTER=\'REL\'; renderLawView()">⚠️ 당사 유관 항목만 (' + (curWeek.rel_cnt || 0) + ')</button>' +
+          '<span style="color:#CBD5E1; margin:0 2px;">|</span>' +
+          hazards.map(function(hz) {
+            const lbl = hz === 'ALL' ? '위해요소 전체' : hz;
+            return '<button class="btn btn-sm ' + (SAFETY_NEWS_HAZARD_FILTER === hz ? 'btn-primary' : '') + '" onclick="SAFETY_NEWS_HAZARD_FILTER=\'' + hz + '\'; renderLawView()">' + esc(lbl) + '</button>';
+          }).join('') +
+        '</div>' +
+        '<input type="text" class="form-ctrl" style="width:240px; padding:5px 10px;" placeholder="품목 · 균주 · 국가 · 원인 검색" oninput="filterSafetyNewsCards(this.value)" />' +
+      '</div>' +
+      '<div id="safetyNewsCardList" style="display:flex; flex-direction:column; gap:10px;">' +
+        filtered.map(function(it) {
+          const isFocus = (SAFETY_NEWS_FOCUS_IDX === it.idx);
+          const isDom = it.scope === '국내';
+          return '<div class="snews-card" id="snews-item-' + it.idx + '" style="border:' + (isFocus ? '2px solid #0052B4' : '1px solid #E2E8F0') + '; background:' + (isFocus ? '#F0F7FF' : '#FFFFFF') + '; border-radius:10px; padding:12px 15px;">' +
+            '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">' +
+              '<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">' +
+                '<span class="badge ' + (isDom ? 'badge-err' : 'badge-info') + '">' + esc(it.scope) + ' ' + esc(it.no) + '</span>' +
+                '<span class="badge ' + hazardBadgeCls(it.hazard) + '">' + esc(it.hazard) + '</span>' +
+                (it.yonsei_check ? '<span class="badge badge-warn">★ 당사 유관 참고</span>' : '') +
+                '<strong style="font-size:14.5px; color:#0F172A;">' + esc(it.title) + '</strong>' +
+              '</div>' +
+              '<span style="font-size:12px; font-weight:800; color:var(--text-muted);">발생·보도일 : ' + esc(it.date) + '</span>' +
+            '</div>' +
+            '<div style="background:#F8FAFC; border-left:3px solid var(--yonsei-mid); padding:5px 10px; font-size:12.5px; font-weight:800; color:var(--yonsei-blue); margin-bottom:6px;">' +
+              '전광판 1줄 요약 : ' + esc(it.one_line) +
+            '</div>' +
+            '<div style="font-size:13.5px; color:#334155; line-height:1.6;">' + esc(it.detail) + '</div>' +
+            '<div style="margin-top:6px; font-size:11.5px; color:var(--text-muted); font-weight:600;">원문 출처 : ' + esc(it.source) + '</div>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>';
+}
+
+function filterSafetyNewsCards(kw) {
+  const q = String(kw || '').trim().toLowerCase();
+  document.querySelectorAll('#safetyNewsCardList .snews-card').forEach(function(card) {
+    card.style.display = (!q || card.textContent.toLowerCase().indexOf(q) !== -1) ? '' : 'none';
+  });
+}
+
+function openSafetyNewsUploadModal() {
+  openModal(
+    '📰 주간 식품안전 원문 등록 (\'법규정보 > 주간 식품안전\' 탭 저장)',
+    '<div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:10px 12px; margin-bottom:10px; font-size:12.5px; color:#1E3A8A; line-height:1.5;">' +
+      '• 수신하신 주간 식품안전 메일/메시지 원문을 <b>그대로 복사해서 붙여넣기</b>만 하세요.<br>' +
+      '• 개인 인사말은 자동 삭제되며, 1줄 요약 생성 후 <b>\'법규정보\' 시트의 [주간 식품안전] 탭</b>에 주차별 표 형태로 영구 기록됩니다.' +
+    '</div>' +
+    '<div class="form-row">' +
+      '<label class="form-lbl">주간 식품안전 원문 붙여넣기</label>' +
+      '<textarea id="txtSafetyNewsRaw" class="form-ctrl" rows="13" placeholder="집계 기간 2026.11.16(월) ~ 11.22(일) · 매주 월요일 발행&#10;이번 주 한눈에 보기 국내 5건 · 해외 8건&#10;① ..."></textarea>' +
+    '</div>',
+    '<button class="btn" onclick="closeModal()">취소</button>' +
+    '<button class="btn btn-primary" id="btnSaveSafetyNews" onclick="submitSafetyNewsRaw()">💾 자동 요약 및 [주간 식품안전] 탭 저장</button>'
+  );
+}
+
+async function submitSafetyNewsRaw() {
+  const rawTxt = (document.getElementById('txtSafetyNewsRaw').value || '').trim();
+  const btn = document.getElementById('btnSaveSafetyNews');
+  if (!rawTxt) {
+    showToast('원문을 붙여넣어 주세요.', 2500);
+    return;
+  }
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ 1줄 요약 생성 및 시트 저장 중...';
+  }
+  try {
+    const res = await apiPost('/api/safety-news', { action: 'save', raw_text: rawTxt });
+    BUNDLE.safety_news = res.safety_news;
+    SAFETY_NEWS_WEEK_ID = res.safety_news.active_week_id || '';
+    TICKER_IDX = 0;
+    const bar = document.getElementById('homeNewsTickerBar');
+    if (bar) bar.innerHTML = '';
+    closeModal();
+    renderActiveView();
+    showToast(res.message);
+  } catch (e) {
+    showToast(e.message, 3200);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '💾 자동 요약 및 [주간 식품안전] 탭 저장';
+    }
+  }
+}
+
+async function deleteCurrentSafetyWeek(weekId) {
+  if (!confirm('선택한 주차(' + weekId + ') 데이터를 시트에서 삭제하시겠습니까?')) return;
+  try {
+    const res = await apiPost('/api/safety-news', { action: 'delete', week_id: weekId });
+    BUNDLE.safety_news = res.safety_news;
+    SAFETY_NEWS_WEEK_ID = res.safety_news.active_week_id || '';
+    TICKER_IDX = 0;
+    const bar = document.getElementById('homeNewsTickerBar');
+    if (bar) bar.innerHTML = '';
+    renderActiveView();
+    showToast(res.message);
+  } catch (e) {
+    showToast(e.message, 3000);
   }
 }
 

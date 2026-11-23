@@ -1777,6 +1777,18 @@ def extract_rt_shelf_specs_from_rows(rows: list, spec_map: Dict[str, dict]):
                     cur["exp_ops"] = durs[2]
 
 
+def _norm_rt_pack_group(ho_raw: Any) -> str:
+    """
+    상온 포장재 동일성 기준 호기 그룹핑:
+    - B호기 · D호기 : 동일 포장재를 공용하므로 'B·D호기' 단일 재고 그룹으로 통합 비교
+    - A호기 · C호기 · E호기 · F호기 : 포장재가 서로 다르므로 각각 독립 호기로 분리 비교
+    """
+    h = re.sub(r"\s+", "", str(ho_raw or "")).upper()
+    if h in ("B호기", "D호기", "B", "D"):
+        return "B·D호기"
+    return h or "-"
+
+
 def fix_rt_today_shifted_exp(
     exp_raw: str,
     prod_iso: str,
@@ -1787,7 +1799,8 @@ def fix_rt_today_shifted_exp(
 ) -> Tuple[str, str]:
     """
     과거 날짜 탭의 소비기한 셀에 '=TODAY()' 연동 수식이 남아 있어 조회일/저장일 기준으로
-    소비기한이 밀려버린 경우, 해당 포장호기·품목 기준을 대조해 원래 생산일(prod_d) 기준 소비기한으로 복원한다.
+    소비기한이 밀려버린 경우, 해당 포장재 그룹(B·D 통합 / A·C·E·F 개별)·품목 기준을 대조해
+    원래 생산일(prod_d) 기준 소비기한으로 복원한다.
     """
     raw_s = re.sub(r"\s+", " ", str(exp_raw or "")).strip()
     prod_d = parse_date_obj(prod_iso)
@@ -1809,9 +1822,10 @@ def fix_rt_today_shifted_exp(
     if saved_d and saved_d > prod_d:
         ref_cands.add(saved_d)
 
-    ho_norm = re.sub(r"\s+", "", str(ho_raw or "").strip())
+    ho_norm = re.sub(r"\s+", "", str(ho_raw or "").strip()).upper()
+    ho_grp = _norm_rt_pack_group(ho_norm)
     pk = clean_product_for_match(p_name)
-    spec = spec_map.get((ho_norm, pk)) or spec_map.get(pk, {})
+    spec = spec_map.get((ho_norm, pk)) or spec_map.get((ho_grp, pk)) or spec_map.get(pk, {})
     cand_specs = []
     for k_sp in ("ops", "mfg", "exp_ops"):
         sv = spec.get(k_sp, "")
@@ -1842,38 +1856,50 @@ def fix_rt_today_shifted_exp(
 def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[Any, dict]) -> Dict[str, List[dict]]:
     """
     [_이력DB_상온생산] 확정 데이터 기준 검증:
-    1) 동일 [포장호기 + 제품명 + 수출여부] 단위로만 묶어 A호기·F호기 등 타 호기 간 소비기한 간섭 원천 차단
+    1) 포장재 동일 그룹([B·D호기 통합] vs [A / C / E / F호기 개별]) + 제품명 + 수출여부 단위로 시계열 그룹핑
     2) 호기별 품목제조보고 기간 초과(빨강) 및 실운영 기간 초과(노랑) 판별
-    3) 동일 포장호기 내 직전 생산 재고 소비기한 대비 날짜 역전(감소) 발생 시 즉시 부적합(빨강)
+    3) 동일 포장재 그룹 내 직전 생산 재고 소비기한 대비 날짜 역전(감소) 발생 시 즉시 부적합(빨강)
     """
     grouped: Dict[Tuple[str, str, bool], List[dict]] = {}
     for rec in rt_hist_p:
-        ho_norm = re.sub(r"\s+", "", str(rec.get("포장호기", "")).strip()) or "-"
+        ho_grp = _norm_rt_pack_group(rec.get("포장호기", ""))
         p_nm = str(rec.get("제품명", "")).strip()
         exp_raw = str(rec.get("표기소비기한_원문", "")).strip()
         is_exp_lot = ("수출" in p_nm) or ("export" in p_nm.lower()) or ("수출" in exp_raw)
-        gk = (ho_norm, clean_product_for_match(p_nm), is_exp_lot)
+        gk = (ho_grp, clean_product_for_match(p_nm), is_exp_lot)
         grouped.setdefault(gk, []).append(rec)
 
     alerts_by_date: Dict[str, List[dict]] = {}
 
-    for (ho_norm, pk, is_exp_lot), recs in grouped.items():
-        recs.sort(key=lambda x: str(x.get("생산일자", "")))
-        spec = spec_map.get((ho_norm, pk)) or spec_map.get(pk, {})
-        mfg_s = spec.get("mfg", "")
-        ops_s = spec.get("exp_ops", "") if (is_exp_lot and spec.get("exp_ops")) else (spec.get("ops") or mfg_s)
-        exp_ops_s = spec.get("exp_ops", "")
+    for (ho_grp, pk, is_exp_lot), recs in grouped.items():
+        recs.sort(key=lambda x: (str(x.get("생산일자", "")), str(x.get("포장호기", ""))))
 
         prev_prod_iso = ""
+        prev_ho_actual = ""
         prev_max_exp: Optional[date] = None
         prev_exp_raw = ""
 
+        # 같은 날짜에 B호기와 D호기가 동시에 가동된 경우 당일끼리 역전 오판하지 않도록 일자 단위 버퍼링
+        same_day_max_exp: Optional[date] = None
+        same_day_exp_raw = ""
+        same_day_ho = ""
+
         for r in recs:
             dt_iso = str(r.get("생산일자", "")).strip()
-            ho = str(r.get("포장호기", ho_norm)).strip()
+            ho = str(r.get("포장호기", ho_grp)).strip()
+            ho_norm = re.sub(r"\s+", "", ho).upper()
             p_nm = str(r.get("제품명", "-")).strip()
             exp_raw = str(r.get("표기소비기한_원문", "-")).strip()
             prod_d = parse_date_obj(dt_iso)
+
+            # 날짜가 다음 생산일로 넘어갈 때 직전 생산일 최대 소비기한을 기준값으로 확정
+            if same_day_max_exp is not None and dt_iso > prev_prod_iso:
+                if prev_prod_iso != "":
+                    pass
+            spec = spec_map.get((ho_norm, pk)) or spec_map.get((ho_grp, pk)) or spec_map.get(pk, {})
+            mfg_s = spec.get("mfg", "")
+            ops_s = spec.get("exp_ops", "") if (is_exp_lot and spec.get("exp_ops")) else (spec.get("ops") or mfg_s)
+            exp_ops_s = spec.get("exp_ops", "")
 
             if not prod_d:
                 r["_cls_exp"] = ""
@@ -1905,7 +1931,7 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[Any, dict
             if mfg_lim and mfg_s != ops_s:
                 tip_parts.append(f"품목제조({mfg_s}): {mfg_lim.strftime('%Y.%m.%d')}")
             if prev_max_exp and prev_prod_iso < dt_iso:
-                tip_parts.append(f"직전 {ho}({prev_prod_iso[5:]}): {prev_max_exp.strftime('%Y.%m.%d')}")
+                tip_parts.append(f"직전 {prev_ho_actual}({prev_prod_iso[5:]}): {prev_max_exp.strftime('%Y.%m.%d')}")
 
             alert_msg = ""
             alert_lv = ""
@@ -1921,7 +1947,8 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[Any, dict
             elif prev_max_exp and prev_prod_iso < dt_iso and (not matches_export) and min_e < prev_max_exp:
                 cls_v = "cell-red"
                 alert_lv = "red"
-                alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 동일 호기({ho}) 직전 생산 재고({prev_prod_iso[5:].replace('-', '/')} 생산, {prev_exp_raw})보다 짧게 역전 기입되었습니다. 지금 확인이 필요합니다."
+                grp_lbl = f"동일 포장재({prev_ho_actual})" if prev_ho_actual != ho else f"동일 호기({ho})"
+                alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 {grp_lbl} 직전 생산 재고({prev_prod_iso[5:].replace('-', '/')} 생산, {prev_exp_raw})보다 짧게 역전 기입되었습니다. 지금 확인이 필요합니다."
             elif ops_lim and (not matches_export) and max_e > (ops_lim + timedelta(days=1)):
                 cls_v = "cell-yellow"
                 alert_lv = "yellow"
@@ -1938,10 +1965,17 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[Any, dict
             if alert_msg:
                 alerts_by_date.setdefault(dt_iso, []).append({"level": alert_lv, "msg": alert_msg})
 
+            # 정상 범위 소비기한인 경우 직전 재고 기준값 갱신 (동일 일자 B·D 동시 생산 시 최대치 유지)
             if min_e > prod_d and (eff_mfg_lim is None or max_e <= eff_mfg_lim) and not matches_export:
-                prev_prod_iso = dt_iso
-                prev_max_exp = max_e
-                prev_exp_raw = exp_raw
+                if prev_prod_iso != dt_iso:
+                    prev_prod_iso = dt_iso
+                    prev_max_exp = max_e
+                    prev_exp_raw = exp_raw
+                    prev_ho_actual = ho
+                elif prev_max_exp is None or max_e >= prev_max_exp:
+                    prev_max_exp = max_e
+                    prev_exp_raw = exp_raw
+                    prev_ho_actual = f"{prev_ho_actual}·{ho}" if ho not in prev_ho_actual else prev_ho_actual
 
     return alerts_by_date
 
@@ -2118,12 +2152,13 @@ def parse_rt_process_rows(tab_title_raw: str, rows: list):
 
             if p_name and len(spec_cells) >= 3:
                 pk_s = clean_product_for_match(p_name)
-                ho_norm_s = re.sub(r"\s+", "", current_ho)
+                ho_norm_s = re.sub(r"\s+", "", current_ho).upper()
+                ho_grp_s = _norm_rt_pack_group(ho_norm_s)
                 mfg_tok = extract_duration_spec_token(spec_cells[0])
                 ops_tok = extract_duration_spec_token(spec_cells[1])
                 exp_ops_tok = extract_duration_spec_token(spec_cells[2])
                 if pk_s and (mfg_tok or ops_tok or exp_ops_tok):
-                    for sp_key in [(ho_norm_s, pk_s), pk_s]:
+                    for sp_key in dict.fromkeys([(ho_norm_s, pk_s), (ho_grp_s, pk_s), pk_s]):
                         sp_entry = slot_spec_map.setdefault(sp_key, {"mfg": "", "ops": "", "exp_ops": ""})
                         if mfg_tok:
                             sp_entry["mfg"] = mfg_tok

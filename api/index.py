@@ -7312,9 +7312,46 @@ def api_health():
     return {"ok": True, "kst_now": now_kst().strftime("%Y-%m-%d %H:%M:%S")}
 
 
+from fastapi.responses import JSONResponse
+
+
+def _sanitize_json_payload(obj: Any) -> Any:
+    if obj is None or isinstance(obj, (str, int, bool)):
+        return obj
+    if isinstance(obj, float):
+        if obj != obj or obj in (float("inf"), float("-inf")):
+            return 0.0
+        return obj
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            str_k = "|".join(str(x) for x in k) if isinstance(k, tuple) else str(k)
+            out[str_k] = _sanitize_json_payload(v)
+        return out
+    if isinstance(obj, (list, tuple, set)):
+        return [_sanitize_json_payload(x) for x in obj]
+    return str(obj)
+
+
 @app.get("/api/bundle")
 def api_get_bundle(force: int = 0, _u: dict = Depends(require_auth_user)):
-    return build_full_dashboard_bundle(force_refresh=(force == 1))
+    try:
+        raw_bundle = build_full_dashboard_bundle(force_refresh=(force == 1))
+        return JSONResponse(content=_sanitize_json_payload(raw_bundle))
+    except Exception as e:
+        import traceback
+        tb_tail = " / ".join(traceback.format_exc().splitlines()[-3:])
+        return JSONResponse(
+            status_code=200,
+            content={
+                "ok": False,
+                "loaded_at": now_kst().strftime("%Y. %m. %d %H:%M:%S (KST)"),
+                "loaded_date": now_kst().strftime("%Y-%m-%d"),
+                "errors": [f"백엔드 처리 오류({type(e).__name__}): {e} ({tb_tail})"]
+            }
+        )
 
 
 @app.get("/api/lot-trace")

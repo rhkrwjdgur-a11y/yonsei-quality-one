@@ -512,6 +512,80 @@ def to_float(val: Any, default: float = 0.0) -> float:
         return default
 
 
+ENG_MONTH_MAP = {
+    "jan": 1, "january": 1,
+    "feb": 2, "february": 2,
+    "mar": 3, "march": 3,
+    "apr": 4, "april": 4,
+    "may": 5,
+    "jun": 6, "june": 6,
+    "jul": 7, "july": 7,
+    "aug": 8, "august": 8,
+    "sep": 9, "sept": 9, "september": 9,
+    "oct": 10, "october": 10,
+    "nov": 11, "november": 11,
+    "dec": 12, "december": 12
+}
+
+_ENG_MON_REGEX = r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+
+
+def extract_eng_month_dates(text: Any) -> List[Tuple[date, int, int]]:
+    """
+    수출품 영문 소비기한 표기 추출:
+    - 월.일.연 : NOV.23.2027 / NOV 23, 2027 / NOV-23-27
+    - 일.월.연 : 23.NOV.2027 / 23 NOV 2027 / 23-NOV-27
+    - 연.월.일 : 2027.NOV.23 / 2027-NOV-23
+    """
+    s = str(text or "")
+    if not s or not re.search(r"[A-Za-z]{3}", s):
+        return []
+
+    found: List[Tuple[date, int, int]] = []
+
+    def _to_yr(y_str: str) -> int:
+        y = int(y_str)
+        return (2000 + y) if y < 100 else y
+
+    # 1) MON.DD.YYYY 또는 MON.DD.YY (예: NOV.23.2027)
+    pat_mdy = rf"(?<![A-Za-z])({_ENG_MON_REGEX})[\.\-/\s,]+(\d{{1,2}})[\.\-/\s,]+(20\d{{2}}|\d{{2}})(?!\d)"
+    for m in re.finditer(pat_mdy, s, re.IGNORECASE):
+        mm = ENG_MONTH_MAP.get(m.group(1).lower(), 0)
+        dd = int(m.group(2))
+        yr = _to_yr(m.group(3))
+        if mm and 2020 <= yr <= 2040:
+            try:
+                found.append((date(yr, mm, dd), m.start(), m.end()))
+            except ValueError:
+                pass
+
+    # 2) DD.MON.YYYY 또는 DD.MON.YY (예: 23.NOV.2027)
+    pat_dmy = rf"(?<!\d)(\d{{1,2}})[\.\-/\s,]+({_ENG_MON_REGEX})[\.\-/\s,]+(20\d{{2}}|\d{{2}})(?!\d)"
+    for m in re.finditer(pat_dmy, s, re.IGNORECASE):
+        dd = int(m.group(1))
+        mm = ENG_MONTH_MAP.get(m.group(2).lower(), 0)
+        yr = _to_yr(m.group(3))
+        if mm and 2020 <= yr <= 2040:
+            try:
+                found.append((date(yr, mm, dd), m.start(), m.end()))
+            except ValueError:
+                pass
+
+    # 3) YYYY.MON.DD (예: 2027.NOV.23)
+    pat_ymd = rf"(?<!\d)(20\d{{2}})[\.\-/\s,]+({_ENG_MON_REGEX})[\.\-/\s,]+(\d{{1,2}})(?!\d)"
+    for m in re.finditer(pat_ymd, s, re.IGNORECASE):
+        yr = int(m.group(1))
+        mm = ENG_MONTH_MAP.get(m.group(2).lower(), 0)
+        dd = int(m.group(3))
+        if mm and 2020 <= yr <= 2040:
+            try:
+                found.append((date(yr, mm, dd), m.start(), m.end()))
+            except ValueError:
+                pass
+
+    return found
+
+
 def parse_date_obj(val: Any) -> Optional[date]:
     if val is None:
         return None
@@ -529,6 +603,9 @@ def parse_date_obj(val: Any) -> Optional[date]:
                 return dt.date()
         except Exception:
             pass
+    eng_hits = extract_eng_month_dates(s)
+    if eng_hits:
+        return eng_hits[0][0]
     m = re.search(r"(20\d{2})\D+(\d{1,2})\D+(\d{1,2})", s)
     if m:
         try:
@@ -1030,6 +1107,18 @@ def parse_exp_query_info(exp_input: str) -> dict:
     s = str(exp_input or "").strip()
     if not s:
         return {"empty": True}
+
+    eng_hits = extract_eng_month_dates(s)
+    if eng_hits:
+        d_e = eng_hits[0][0]
+        return {
+            "empty": False,
+            "iso_full": d_e.strftime("%Y-%m-%d"),
+            "mm_dd_dash": d_e.strftime("%m-%d"),
+            "mm_dd_dot": d_e.strftime("%m.%d"),
+            "m_d_dot": f"{d_e.month}.{d_e.day}",
+            "raw": s
+        }
 
     m_full = re.search(r"(20\d{2})\D+(\d{1,2})\D+(\d{1,2})", s)
     if m_full:
@@ -1628,31 +1717,46 @@ def calc_rt_limit_date_from_spec(prod_d: date, spec_str: str) -> Optional[date]:
 
 def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int = 14) -> List[date]:
     """
-    표기 소비기한 문자열에서 복수 날짜(예: '11.30, 12.02', '2027. 06. 17 F1')를 모두 추출하고,
-    구글 시트 숫자 서식으로 뒷자리 0이 잘린 '11.3'(-> 11.30), '12.1'(-> 12.10), '12.2'(-> 12.20)를 정밀 복원
+    표기 소비기한 문자열에서 복수 날짜 및 수출용 영문 날짜(예: 'NOV.23.2027', '2027. 03. 15F7', '11.30, 12.02')를
+    모두 추출하고, 구글 시트 숫자 서식으로 뒷자리 0이 잘린 '11.3'(-> 11.30) 등을 정밀 복원한다.
     """
     s = str(exp_raw or "").strip()
     if not s or s in ("-", "00.00", "0.0", "미기입", "미기입(대기)"):
         return []
 
     out: List[date] = []
-    # 1) 연도가 포함된 날짜 (YYYY.MM.DD 또는 YY.MM.DD)
-    used_spans = []
-    for m4 in re.finditer(r"(20\d{2})[\.\-/\s]+(\d{1,2})[\.\-/\s]+(\d{1,2})(?!\d)", s):
+    used_spans: List[Tuple[int, int]] = []
+
+    # 0) 수출품 영문 월 표기 우선 추출 (예: NOV.23.2027 -> 2027-11-23, 뒤쪽 '23.20' 오인식 원천 차단)
+    for d_eng, st_e, ed_e in extract_eng_month_dates(s):
+        if d_eng not in out:
+            out.append(d_eng)
+        used_spans.append((st_e, ed_e))
+
+    s_chars = list(s)
+    for st, ed in used_spans:
+        for i in range(st, ed):
+            s_chars[i] = " "
+    s_work = "".join(s_chars)
+
+    # 1) 4자리 연도 포함 날짜 (YYYY.MM.DD)
+    used_spans_4 = []
+    for m4 in re.finditer(r"(20\d{2})[\.\-/\s]+(\d{1,2})[\.\-/\s]+(\d{1,2})(?!\d)", s_work):
         try:
             d_obj = date(int(m4.group(1)), int(m4.group(2)), int(m4.group(3)))
             if d_obj not in out:
                 out.append(d_obj)
-            used_spans.append((m4.start(), m4.end()))
+            used_spans_4.append((m4.start(), m4.end()))
         except ValueError:
             pass
 
-    s_rem = list(s)
-    for st, ed in used_spans:
+    s_rem = list(s_work)
+    for st, ed in used_spans_4:
         for i in range(st, ed):
             s_rem[i] = " "
     s2 = "".join(s_rem)
 
+    # 2) 2자리 연도 포함 날짜 (YY.MM.DD)
     used_spans2 = []
     for m2 in re.finditer(r"(?<!\d)(\d{2})[\.\-/]\s*(\d{1,2})[\.\-/]\s*(\d{1,2})(?!\d)", s2):
         yr2, mm2, dd2 = int(m2.group(1)), int(m2.group(2)), int(m2.group(3))
@@ -1671,7 +1775,7 @@ def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int 
             s_rem2[i] = " "
     s3 = "".join(s_rem2)
 
-    # 2) 월.일 단축 표기 (예: '12.05', '11.30, 12.02', 시트 자동숫자 '11.3' -> 11.30 복원)
+    # 3) 월.일 단축 표기 (예: '12.05', '11.30, 12.02', 시트 자동숫자 '11.3' -> 11.30 복원)
     for ms in re.finditer(r"(?<!\d)(\d{1,2})[\./](\d{1,2})(?![\.\d])", s3):
         mm = int(ms.group(1))
         d_str = ms.group(2)

@@ -2262,6 +2262,7 @@
               <button type="button" class="btn-lot-hero rt" onclick="openLotViewWithScope('RT')">📦 상온 LOT 역추적 ›</button>
             </div>
           </div>
+        </div>
       </div>
     </section>
 
@@ -2328,6 +2329,55 @@
     </div>
     <div class="modal-body" id="modalBody"></div>
     <div class="modal-foot" id="modalFoot"></div>
+  </div>
+</div>
+
+<!-- [모달] 자가품질검사 체크 & 제품명(1차·2차) 등록 팝업 -->
+<div class="sqc-modal-backdrop" id="modalSelfQuality" onclick="if(event.target===this) closeSqcModal()">
+  <div class="sqc-modal-card">
+    <div class="sqc-modal-hdr">
+      <div style="font-size:14.5px; font-weight:900;" id="sqcModalTitle">자가품질검사 실시 제품 등록</div>
+      <button type="button" onclick="closeSqcModal()" style="background:none; border:none; color:#FFFFFF; font-size:18px; font-weight:900; cursor:pointer;">✕</button>
+    </div>
+    <div class="sqc-modal-body">
+      <div id="sqcModalMetaBadge" style="padding:8px 11px; border-radius:8px; background:#F1F5F9; font-size:12.5px; font-weight:800; color:#1E293B;"></div>
+
+      <div>
+        <label style="display:block; font-size:12px; font-weight:800; color:#334155; margin-bottom:5px;">
+          ☑ 1차 검사 제품명 <span style="color:#DC2626;">*</span>
+          <span id="sqcLineHintTxt" style="font-weight:700; color:#2563EB; margin-left:4px;"></span>
+        </label>
+        <input type="text" id="inpSqcProd1" list="dlSqcProdSuggestions" class="form-ctrl" style="width:100%; font-weight:700;"
+          placeholder="목록에서 선택하거나 제품명을 직접 입력해 주세요"
+          onkeydown="if(event.key==='Enter') saveSqcModalRecord()" />
+      </div>
+
+      <div id="sqcSecondProdBtnRow">
+        <button type="button" class="btn btn-sm" style="font-weight:800; color:#003378; border-color:#93C5FD; background:#EFF6FF;"
+          onclick="toggleSqcSecondInput(true)">+ 2차 제품 추가 등록 (일정 조정·추가 검사 시)</button>
+      </div>
+
+      <div id="sqcSecondProdWrap" style="display:none;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+          <label style="font-size:12px; font-weight:800; color:#1E40AF;">☑ 2차 검사 제품명 (선택)</label>
+          <button type="button" onclick="toggleSqcSecondInput(false)" style="background:none; border:none; color:#64748B; font-size:11.5px; font-weight:800; cursor:pointer;">2차 입력 닫기 ✕</button>
+        </div>
+        <input type="text" id="inpSqcProd2" list="dlSqcProdSuggestions" class="form-ctrl" style="width:100%; font-weight:700;"
+          placeholder="2차로 진행한 제품명 입력"
+          onkeydown="if(event.key==='Enter') saveSqcModalRecord()" />
+      </div>
+
+      <datalist id="dlSqcProdSuggestions"></datalist>
+    </div>
+    <div class="sqc-modal-ftr">
+      <button type="button" class="btn btn-sm" id="btnSqcUncheckDelete"
+        style="display:none; background:#FEF2F2; color:#DC2626; border-color:#FCA5A5; font-weight:800;"
+        onclick="uncheckAndDeleteSqcRecord()">체크 해제 (기록 삭제)</button>
+      <div style="display:flex; align-items:center; gap:7px; margin-left:auto;">
+        <button type="button" class="btn btn-sm" onclick="closeSqcModal()">취소</button>
+        <button type="button" class="btn btn-primary btn-sm" id="btnSqcSaveSubmit" onclick="saveSqcModalRecord()">✓ 체크 및 제품명 저장</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2846,9 +2896,7 @@ function renderHome() {
     setHtml('q2LawList', '<div style="color:var(--err-fg); font-size:12px; padding:8px;">법규 표시 오류: ' + esc(err2.message) + '</div>');
   }
 
-  // --- [Q3] 왼쪽 심사일정 탭(BUNDLE.audit.schedules) 데이터 그대로 출력 ---
-  try {
-    // --- [Q3] 방문심사(준비20->심사50->현장75->서류90->종료100) + 협력업체(방문예정/방문완료) 2단 정렬 ---
+  // --- [Q3] 방문심사(준비20->심사50->현장75->서류90->종료100) + 협력업체(방문예정/방문완료) 2단 정렬 ---
   try {
     const auWrap = BUNDLE.audit || {};
     const au = auWrap.summary || {};
@@ -2908,7 +2956,7 @@ function renderHome() {
       const nextSt = isSupDone ? '방문예정' : '방문완료';
       const bCls = isSupDone ? 'badge-ok' : 'badge-warn';
       const dtShort = String(s['심사일자'] || '').length >= 10 ? String(s['심사일자']).slice(5) : String(s['심사일자'] || '-');
-      const uidVal = String(s.uid || s.id || '');
+      const uidVal = String(s['고유ID'] || s.uid || s.id || '');
       const ddayPill = (!isSupDone && s.d_day_label && s.d_day_label !== '-')
         ? '<span class="badge badge-info" style="font-size:10px; padding:1px 5px; margin-right:3px;">' + esc(s.d_day_label) + '</span>'
         : '';
@@ -7282,14 +7330,131 @@ window.addEventListener('DOMContentLoaded', async function() {
 });
 
 /* ============================================================================
- * [Q-Safety 통합 확장 모듈]
- * 1) 심사·협력업체 2단 정렬(미완료 임박순 상단 / 완료 최신순 하단) & 원클릭 상태 전환 & 모달 상태 이원화
- * 2) 메인 Q4 1초 LOT 역추적 즉시 실행 (영문 소비기한 NOV.23.2027 호환)
- * 3) 미생물 검사일보 내 [자가품질검사 진행현황] (20종 × 3월~익년2월 체크박스 & 냉장/상온 1·2차 제품 등록)
- * 4) 브라우저 탭 비활성(document.hidden) 시 백그라운드 자동갱신 일시정지 (Vercel CPU 절약 안전장치)
+ * [Q-Safety 통합 확장 모듈 — 기존 HTML 구조 100% 호환 패치 포함]
  * ============================================================================ */
+let MICRO_SUB_MODE = 'daily'; // 'daily' | 'sqc'
 
-// --- [1] 심사·출장 상태 정규화, 2단 정렬, 원클릭 전환 및 일정 등록 모달 연동 ---
+// (A) 상단/하단 통합 검색에서 숫자 날짜뿐 아니라 영문 수출 소비기한(NOV.23.2027 등)도 소비기한(exp)으로 자동 인식
+runGlobalLotSearch = async function() {
+  const q = (document.getElementById('inpGlobalSearch').value || '').trim();
+  if (!q) return;
+  const isNumDate = /^\d{1,4}[\.\-\/]\d{1,2}([\.\-\/]\d{1,2})?$/.test(q);
+  const isEngDate = /^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*[\.\-\/\s,]+\d{1,2}[\.\-\/\s,]+\d{2,4}$/i.test(q)
+                 || /^\d{1,2}[\.\-\/\s,]+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*[\.\-\/\s,]+\d{2,4}$/i.test(q);
+  const isDateLike = isNumDate || isEngDate;
+  const expParam = isDateLike ? q : '';
+  const kwParam = isDateLike ? '' : q;
+
+  try {
+    showToast('냉장·상온 통합 이력을 검색 중입니다...', 1800);
+    const url = '/api/lot-trace?scope=ALL&product=ALL&exp=' + encodeURIComponent(expParam) + '&kw=' + encodeURIComponent(kwParam);
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data && data.ok) {
+      LOT_SCOPE = data.recommended_scope || 'DAIRY';
+      LAST_LOT_RESULT = { scope: LOT_SCOPE, product: 'ALL', exp: expParam, kw: kwParam, data: data };
+      switchView('lot');
+    }
+  } catch (e) {
+    showToast('검색 실패: ' + e.message, 3000);
+  }
+};
+
+// (B) renderMicroView()가 #view-micro.innerHTML을 덮어쓸 때도 상단 [일일 일보 | 자가품질검사] 서브탭이 절대 지워지지 않도록 래핑
+(function patchRenderMicroViewForSubtabs() {
+  const _origRenderMicro = window.renderMicroView;
+  if (typeof _origRenderMicro !== 'function') return;
+
+  window.renderMicroView = function() {
+    const sec = document.getElementById('view-micro');
+    if (!sec) return _origRenderMicro();
+
+    let barEl = document.getElementById('microSubtabBar');
+    let sqcEl = document.getElementById('microSubPaneSqc');
+    if (barEl) barEl.remove();
+    if (sqcEl) sqcEl.remove();
+
+    // 기존 미생물 일보 렌더링 실행
+    _origRenderMicro();
+
+    // 기존 일보 내용들을 #microSubPaneDaily 컨테이너로 안전하게 감싸기
+    const dailyWrap = document.createElement('div');
+    dailyWrap.id = 'microSubPaneDaily';
+    while (sec.firstChild) {
+      dailyWrap.appendChild(sec.firstChild);
+    }
+
+    if (!barEl) {
+      const tmp = document.createElement('div');
+      tmp.innerHTML =
+        '<div class="micro-subtab-bar" id="microSubtabBar">' +
+          '<div class="micro-subtab-group">' +
+            '<button type="button" class="micro-subtab-btn active" id="btnMicroTabDaily" onclick="switchMicroSubTab(\'daily\')">🧪 일일 미생물 출고 판정 일보</button>' +
+            '<button type="button" class="micro-subtab-btn" id="btnMicroTabSqc" onclick="switchMicroSubTab(\'sqc\')">📋 월별 자가품질검사 진행현황 (20종)</button>' +
+          '</div>' +
+          '<div style="font-size:12px; font-weight:700; color:#64748B;">※ 자가품질검사 내역은 미생물 일보 시트 내 숨김 DB(<code>_이력DB_자가품질검사</code>)에 연도별로 자동 보관됩니다.</div>' +
+        '</div>';
+      barEl = tmp.firstElementChild;
+    }
+    if (!sqcEl) {
+      const tmp2 = document.createElement('div');
+      tmp2.innerHTML =
+        '<div id="microSubPaneSqc" style="display:none;">' +
+          '<div class="sqc-toolbar">' +
+            '<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">' +
+              '<strong style="font-size:15px; font-weight:900; color:#003378;">📋 자가품질검사 연도·월별 진행사항</strong>' +
+              '<select id="selSqcFiscalYear" class="form-ctrl" style="width:115px; font-weight:800;" onchange="changeSqcYear(this.value)"><option value="2026년">2026년</option><option value="2027년">2027년</option></select>' +
+              '<button type="button" class="btn btn-sm" onclick="loadSelfQualityData(true)">🔄 새로고침</button>' +
+            '</div>' +
+            '<div class="sqc-stat-pills" id="sqcSummaryPills"></div>' +
+          '</div>' +
+          '<div class="sqc-table-wrap" id="sqcMatrixTableBox"><div style="padding:28px; text-align:center; color:#64748B; font-weight:700;">자가품질검사 데이터를 불러오는 중입니다...</div></div>' +
+        '</div>';
+      sqcEl = tmp2.firstElementChild;
+    }
+
+    sec.appendChild(barEl);
+    sec.appendChild(sqcEl);
+    sec.appendChild(dailyWrap);
+
+    switchMicroSubTab(MICRO_SUB_MODE);
+    if (SQC_STATE.loaded) {
+      renderSelfQualityMatrixTable();
+    }
+  };
+})();
+
+// (C) openAuditModal 호출 시 구분(방문심사 vs 협력업체 방문)에 맞춰 상태 드롭다운(현장75->서류90 / 방문예정·방문완료) 즉시 동기화
+(function patchOpenAuditModalStatus() {
+  const _origOpenAuditModal = window.openAuditModal;
+  if (typeof _origOpenAuditModal !== 'function') return;
+
+  window.openAuditModal = function(editIdx) {
+    _origOpenAuditModal(editIdx);
+    const typeSel = document.getElementById('selAudType');
+    const stSel = document.getElementById('selAudStatus');
+    if (!typeSel || !stSel) return;
+
+    const scheds = (BUNDLE && BUNDLE.audit && BUNDLE.audit.schedules) || [];
+    const item = (editIdx !== undefined && scheds[editIdx]) ? scheds[editIdx] : null;
+    const initStatus = item ? item['진행현황'] : '';
+
+    const applyOpts = function(keepVal) {
+      const isSup = (typeSel.value === '협력업체 방문');
+      const opts = isSup
+        ? [['방문예정', '방문예정'], ['방문완료', '방문완료']]
+        : [['심사준비중', '심사준비중 (20%)'], ['심사중', '심사중 (50%)'], ['현장심사중', '현장심사중 (75%)'], ['서류심사중', '서류심사중 (90%)'], ['심사종료', '심사종료 (100%)']];
+      stSel.innerHTML = opts.map(function(p) { return '<option value="' + p[0] + '">' + p[1] + '</option>'; }).join('');
+      const norm = normalizeScheduleStatusClient(typeSel.value, keepVal);
+      if (opts.some(function(p) { return p[0] === norm; })) stSel.value = norm;
+    };
+
+    applyOpts(initStatus);
+    typeSel.onchange = function() { applyOpts(stSel.value); };
+  };
+})();
+
+// --- [1] 심사·출장 상태 정규화, 2단 정렬, 원클릭 전환 ---
 function normalizeScheduleStatusClient(gubun, rawStatus) {
   const g = String(gubun || '').trim();
   const s = String(rawStatus || '').trim();
@@ -7309,7 +7474,7 @@ function calcClientDdayLabel(isoDateStr) {
   const target = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0);
   if (isNaN(target.getTime())) return '-';
 
-  const nowKstStr = (BUNDLE && BUNDLE.today_iso) ? String(BUNDLE.today_iso) : new Date().toISOString().slice(0, 10);
+  const nowKstStr = (BUNDLE && (BUNDLE.loaded_date || BUNDLE.today_iso)) ? String(BUNDLE.loaded_date || BUNDLE.today_iso) : new Date().toISOString().slice(0, 10);
   const np = nowKstStr.split('-');
   const today = new Date(Number(np[0]), Number(np[1]) - 1, Number(np[2]), 12, 0, 0);
   const diff = Math.round((target.getTime() - today.getTime()) / 86400000);
@@ -7330,14 +7495,10 @@ function sortSchedulesTwoTierClient(rawList) {
     if (!copy.d_day_label) {
       copy.d_day_label = isDone ? '완료' : calcClientDdayLabel(copy['심사일자']);
     }
-    if (isDone) {
-      completed.push(copy);
-    } else {
-      pending.push(copy);
-    }
+    if (isDone) completed.push(copy);
+    else pending.push(copy);
   });
 
-  // 미완료(심사준비중~서류심사중 / 방문예정): 임박한 날짜 오름차순 (맨 위 배치)
   pending.sort(function(a, b) {
     const da = String(a['심사일자'] || '9999-99-99');
     const db = String(b['심사일자'] || '9999-99-99');
@@ -7345,7 +7506,6 @@ function sortSchedulesTwoTierClient(rawList) {
     return String(a['심사명'] || '').localeCompare(String(b['심사명'] || ''));
   });
 
-  // 완료(심사종료 / 방문완료): 가장 최근 날짜 내림차순 (하단 배치)
   completed.sort(function(a, b) {
     const da = String(a['심사일자'] || '0000-00-00');
     const db = String(b['심사일자'] || '0000-00-00');
@@ -7367,59 +7527,6 @@ async function quickToggleSupplierVisitStatus(uid, currentStatus) {
   }
 }
 
-// 일정 등록·수정 화면에서 [구분]을 '방문심사' <-> '협력업체 방문' 변경 시 진행상태 드롭다운 옵션 자동 전환
-(function bindAuditTypeStatusSync() {
-  const VISIT_OPTS = [
-    ['심사준비중', '심사준비중 (20%)'],
-    ['심사중', '심사중 (50%)'],
-    ['현장심사중', '현장심사중 (75%)'],
-    ['서류심사중', '서류심사중 (90%)'],
-    ['심사종료', '심사종료 (100%)']
-  ];
-  const SUP_OPTS = [
-    ['방문예정', '방문예정'],
-    ['방문완료', '방문완료']
-  ];
-
-  function syncStatusSelectForType(typeSel) {
-    if (!typeSel) return;
-    const container = typeSel.closest('form, .modal-card, .panel-card, #view-audit') || document;
-    const selects = container.querySelectorAll('select');
-    let statusSel = null;
-    selects.forEach(function(s) {
-      if (s === typeSel) return;
-      const txt = Array.from(s.options).map(function(o) { return o.value + ' ' + o.text; }).join(' ');
-      if (txt.indexOf('심사준비중') !== -1 || txt.indexOf('방문예정') !== -1 || txt.indexOf('심사종료') !== -1) {
-        statusSel = s;
-      }
-    });
-    if (!statusSel) return;
-
-    const prevVal = statusSel.value;
-    const isSup = (String(typeSel.value).trim() === '협력업체 방문');
-    const targetOpts = isSup ? SUP_OPTS : VISIT_OPTS;
-
-    statusSel.innerHTML = targetOpts.map(function(pair) {
-      return '<option value="' + pair[0] + '">' + pair[1] + '</option>';
-    }).join('');
-
-    const normPrev = normalizeScheduleStatusClient(typeSel.value, prevVal);
-    if (targetOpts.some(function(p) { return p[0] === normPrev; })) {
-      statusSel.value = normPrev;
-    }
-  }
-
-  document.addEventListener('change', function(ev) {
-    const t = ev.target;
-    if (!t || t.tagName !== 'SELECT') return;
-    const optTxt = Array.from(t.options).map(function(o) { return o.value; }).join('|');
-    if (optTxt.indexOf('협력업체 방문') !== -1 && optTxt.indexOf('방문심사') !== -1) {
-      syncStatusSelectForType(t);
-    }
-  });
-})();
-
-
 // --- [2] 메인 Q4 1초 LOT 역추적 즉시 실행 ---
 async function runHomeQuickLotTrace() {
   const inp = document.getElementById('inpHomeQuickTrace');
@@ -7431,14 +7538,11 @@ async function runHomeQuickLotTrace() {
   const globalInp = document.getElementById('inpGlobalSearch');
   if (globalInp) {
     globalInp.value = q;
+    const clr = document.getElementById('btnClearGlobal');
+    if (clr) clr.style.display = 'block';
   }
-  if (typeof runGlobalLotSearch === 'function') {
-    await runGlobalLotSearch();
-  } else if (typeof openLotViewWithScope === 'function') {
-    openLotViewWithScope('ALL');
-  }
+  await runGlobalLotSearch();
 }
-
 
 // --- [3] 미생물 검사일보 내 [자가품질검사 진행현황] 모듈 ---
 let SQC_STATE = {
@@ -7453,25 +7557,17 @@ let SQC_STATE = {
 };
 
 function switchMicroSubTab(mode) {
-  const isSqc = (mode === 'sqc');
+  MICRO_SUB_MODE = (mode === 'sqc') ? 'sqc' : 'daily';
+  const isSqc = (MICRO_SUB_MODE === 'sqc');
   const btnDaily = document.getElementById('btnMicroTabDaily');
   const btnSqc = document.getElementById('btnMicroTabSqc');
-  const secMicro = document.getElementById('view-micro');
+  const paneDaily = document.getElementById('microSubPaneDaily');
+  const paneSqc = document.getElementById('microSubPaneSqc');
 
   if (btnDaily) btnDaily.classList.toggle('active', !isSqc);
   if (btnSqc) btnSqc.classList.toggle('active', isSqc);
-
-  // 감싸는 div 없이도 #view-micro 안의 기존 요소들을 자동으로 숨김/표시 처리
-  if (secMicro) {
-    Array.from(secMicro.children).forEach(function(el) {
-      if (el.id === 'microSubtabBar') return; // 상단 서브탭 버튼바는 항상 표시
-      if (el.id === 'microSubPaneSqc') {
-        el.style.display = isSqc ? '' : 'none';
-      } else {
-        el.style.display = isSqc ? 'none' : '';
-      }
-    });
-  }
+  if (paneDaily) paneDaily.style.display = isSqc ? 'none' : '';
+  if (paneSqc) paneSqc.style.display = isSqc ? '' : 'none';
 
   if (isSqc && !SQC_STATE.loaded) {
     loadSelfQualityData(false);
@@ -7490,19 +7586,9 @@ function collectClientProductPool(lineType) {
 
   if (typeof BUNDLE === 'object' && BUNDLE && BUNDLE.process) {
     const proc = BUNDLE.process;
-    const scanKeys = (lineType === 'DAIRY')
-      ? ['dairy_rows', 'dairy_today_rows', 'dairy_yest_rows', 'milk_rows', 'ferm_rows', 'dairy_items']
-      : ['rt_rows', 'rt_today_rows', 'rt_yest_rows', 'soy_rows', 'rt_items'];
-
-    scanKeys.forEach(function(k) {
-      const arr = proc[k];
-      if (Array.isArray(arr)) {
-        arr.forEach(function(r) {
-          if (!r || typeof r !== 'object') return;
-          const nm = String(r['제품명'] || r['생산제품명'] || r['품목명'] || r.product_name || r.name || '').trim();
-          if (nm && nm !== '-') pool.add(nm);
-        });
-      }
+    const directList = (lineType === 'DAIRY') ? (proc.dairy_products || []) : (proc.rt_products || []);
+    directList.forEach(function(nm) {
+      if (nm && nm !== '-') pool.add(String(nm).trim());
     });
   }
   return Array.from(pool).sort(function(a, b) { return a.localeCompare(b, 'ko'); });
@@ -7683,15 +7769,10 @@ function openSqcCellModal(itemNo, monthLbl) {
   if (inp1) inp1.value = existing ? (existing.prod_1 || '') : '';
   if (inp2) inp2.value = existing ? (existing.prod_2 || '') : '';
 
-  if (existing && existing.prod_2) {
-    toggleSqcSecondInput(true);
-  } else {
-    toggleSqcSecondInput(false);
-  }
+  if (existing && existing.prod_2) toggleSqcSecondInput(true);
+  else toggleSqcSecondInput(false);
 
-  if (btnDel) {
-    btnDel.style.display = existing ? '' : 'none';
-  }
+  if (btnDel) btnDel.style.display = existing ? '' : 'none';
 
   if (modal) {
     modal.classList.add('open');
@@ -7741,6 +7822,7 @@ async function saveSqcModalRecord() {
     }
     applySqcPayloadAndRender(data);
     closeSqcModal();
+    showToast(month + ' 자가품질검사 실시 품목이 저장되었습니다.');
   } catch (err) {
     alert('자가품질검사 저장 오류: ' + err.message);
   } finally {
@@ -7772,21 +7854,20 @@ async function uncheckAndDeleteSqcRecord() {
     }
     applySqcPayloadAndRender(data);
     closeSqcModal();
+    showToast(month + ' 체크가 해제되었습니다.');
   } catch (err) {
     alert('체크 해제 오류: ' + err.message);
   }
 }
 
-
 // --- [4] 브라우저 창/탭 비활성(document.hidden) 시 백그라운드 자동갱신 일시정지 (Vercel CPU 절감) ---
 (function installVisibilityCpuGuard() {
   let lastActiveFetchTs = Date.now();
-  const MIN_RESUME_REFRESH_MS = 180000; // 3분 이상 비활성 후 복귀했을 때만 1회 캐시 조회
+  const MIN_RESUME_REFRESH_MS = 180000;
 
   const origFetch = window.fetch.bind(window);
   window.fetch = function(input, init) {
     const urlStr = (typeof input === 'string') ? input : ((input && input.url) || '');
-    // 화면이 백그라운드(최소화·다른 탭 보는 중)일 때 타이머에 의한 자동 /api/bundle 호출을 차단하여 서버 CPU 보호
     if (document.hidden && urlStr.indexOf('/api/bundle') !== -1 && urlStr.indexOf('force=1') === -1) {
       return Promise.resolve(new Response(JSON.stringify(window.BUNDLE || { ok: true, skipped_hidden: true }), {
         status: 200,
@@ -7802,11 +7883,7 @@ async function uncheckAndDeleteSqcRecord() {
   document.addEventListener('visibilitychange', function() {
     if (!document.hidden && (Date.now() - lastActiveFetchTs >= MIN_RESUME_REFRESH_MS)) {
       lastActiveFetchTs = Date.now();
-      if (typeof loadBundle === 'function') {
-        loadBundle(false);
-      } else if (typeof fetchBundle === 'function') {
-        fetchBundle(false);
-      }
+      if (typeof loadBundle === 'function') loadBundle(false);
     }
   });
 })();

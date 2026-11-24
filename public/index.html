@@ -2099,7 +2099,7 @@
         <span>🏭 공정 및 배양 실시간 관제</span><span class="nav-arr">›</span>
       </button>
       <button class="nav-btn" data-view="micro" onclick="switchView('micro')">
-        <span>🧪 미생물 검사일보</span><span class="nav-arr">›</span>
+        <span>🧪 미생물 · 자가품질</span><span class="nav-arr">›</span>
       </button>
       <button class="nav-btn" data-view="defect_sub" onclick="switchView('defect_sub')">
         <span>🛡️ 핵심불량 · 부적합 내역</span><span class="nav-arr">›</span>
@@ -2275,14 +2275,14 @@
     <section id="view-law" class="view-section"></section>
     <section id="view-process" class="view-section"></section>
     <section id="view-micro" class="view-section">
-      <!-- 미생물 검사일보 상단 서브탭 전환 바 -->
+      <!-- 미생물 · 자가품질 상단 서브탭 전환 바 -->
       <div class="micro-subtab-bar" id="microSubtabBar">
         <div class="micro-subtab-group">
           <button type="button" class="micro-subtab-btn active" id="btnMicroTabDaily" onclick="switchMicroSubTab('daily')">
             🧪 일일 미생물 출고 판정 일보
           </button>
           <button type="button" class="micro-subtab-btn" id="btnMicroTabSqc" onclick="switchMicroSubTab('sqc')">
-            📋 월별 자가품질검사 진행현황 (20종)
+            📋 월별 자가품질검사 진행현황 (21종)
           </button>
         </div>
         <div style="font-size:12px; font-weight:700; color:#64748B;">
@@ -2303,7 +2303,7 @@
             <button type="button" class="btn btn-sm" onclick="loadSelfQualityData(true)">🔄 새로고침</button>
           </div>
           <div class="sqc-stat-pills" id="sqcSummaryPills">
-            <span class="sqc-pill">대상 유형 20종</span>
+            <span class="sqc-pill">대상 유형 21종</span>
             <span class="sqc-pill dairy">❄️ 축산물(냉장) : 병·카톤·발효유 연동</span>
             <span class="sqc-pill rt">📦 축산물(멸균)·식품 : 상온 연동</span>
           </div>
@@ -2311,7 +2311,8 @@
         <div class="sqc-table-wrap" id="sqcMatrixTableBox">
           <div style="padding:28px; text-align:center; color:#64748B; font-weight:700;">자가품질검사 데이터를 불러오는 중입니다...</div>
         </div>
-      </div></section>
+      </div>
+    </section>
     <section id="view-lot" class="view-section"></section>
     <section id="view-claim" class="view-section"></section>
     <section id="view-cost" class="view-section"></section>
@@ -7640,10 +7641,10 @@ function applySqcPayloadAndRender(data) {
   if (pillsEl) {
     const sm = SQC_STATE.summary;
     pillsEl.innerHTML =
-      '<span class="sqc-pill">연간 누적 실시 : <b>' + (sm.checked_cells_cnt || 0) + '건</b> (' + (sm.checked_categories_cnt || 0) + '/' + (sm.total_categories || 20) + '유형)</span>' +
+      '<span class="sqc-pill">연간 누적 실시 : <b>' + (sm.checked_cells_cnt || 0) + '건</b> (' + (sm.checked_categories_cnt || 0) + '/' + (sm.total_categories || 21) + '유형)</span>' +
       '<span class="sqc-pill" style="background:#FEFCE8; color:#854D0E; border-color:#FDE047;">당월(' + esc(sm.cur_month_label || '-') + ') 등록 : <b>' + (sm.cur_month_done_cnt || 0) + '건</b></span>' +
       '<span class="sqc-pill dairy">❄️ 축산물(냉장 5종) : 병·카톤·발효유</span>' +
-      '<span class="sqc-pill rt">📦 축산물(멸균 4종)·식품(11종) : 상온</span>';
+      '<span class="sqc-pill rt">📦 축산물(멸균 4종)·식품(12종) : 상온</span>';
   }
 
   renderSelfQualityMatrixTable();

@@ -52,14 +52,155 @@ DAIRY_CATEGORIES = ["냉장우유 카톤팩", "냉장우유 병", "발효유/음
 RT_CATEGORIES = ["상온 멸균팩", "상온 프리즈마"]
 
 AUDIT_TYPE_LIST = ["방문심사", "협력업체 방문"]
-AUDIT_STATUS_LIST = ["심사준비중", "심사중", "서류심사중", "현장심사중", "심사종료"]
 AUDIT_STATUS_CONFIG = {
-    "심사준비중": {"pct": 20, "color": "#3B82F6"},
-    "심사중": {"pct": 50, "color": "#0284C7"},
-    "서류심사중": {"pct": 75, "color": "#1D4ED8"},
-    "현장심사중": {"pct": 85, "color": "#003378"},
-    "심사종료": {"pct": 100, "color": "#0F3A7D"}
+    "심사준비중": {"pct": 20,  "color": "#64748B", "label": "준비중 20%"},
+    "심사중":     {"pct": 50,  "color": "#2563EB", "label": "심사중 50%"},
+    "현장심사중": {"pct": 75,  "color": "#0D9488", "label": "현장 75%"},
+    "서류심사중": {"pct": 90,  "color": "#7C3AED", "label": "서류 90%"},
+    "심사종료":   {"pct": 100, "color": "#003378", "label": "종료 100%"},
+    "방문예정":   {"pct": 20,  "color": "#D97706", "label": "방문예정"},
+    "방문완료":   {"pct": 100, "color": "#059669", "label": "방문완료"},
 }
+AUDIT_STATUS_LIST = [
+    "심사준비중", "심사중", "현장심사중", "서류심사중", "심사종료",
+    "방문예정", "방문완료"
+]
+
+
+def normalize_schedule_status_by_type(gubun: str, raw_status: str) -> str:
+    g_str = str(gubun or "").strip()
+    st_str = str(raw_status or "").strip()
+    if g_str == "협력업체 방문":
+        if st_str in ("방문완료", "심사종료", "완료", "점검완료"):
+            return "방문완료"
+        return "방문예정"
+    if st_str == "방문완료":
+        return "심사종료"
+    if st_str == "방문예정" or st_str not in AUDIT_STATUS_CONFIG:
+        return "심사준비중"
+    return st_str
+
+
+def _format_dday_tag(target_d: Optional[date], today_d: date) -> Tuple[int, str]:
+    if target_d is None:
+        return (9999, "-")
+    diff = (target_d - today_d).days
+    if diff == 0:
+        return (0, "D-Day")
+    if diff > 0:
+        return (diff, f"D-{diff}")
+    return (diff, f"D+{abs(diff)}")
+
+
+def sort_audit_schedules_two_tier(schedules: List[dict], today_d: date) -> List[dict]:
+    """
+    1순위(상단): 미완료 일정(심사준비중~서류심사중, 방문예정) -> 날짜 오름차순(임박한 일정이 맨 위)
+    2순위(하단): 완료 일정(심사종료, 방문완료) -> 날짜 내림차순(최근 완료 건이 위)
+    """
+    done_set = {"심사종료", "방문완료"}
+    pending_list: List[Tuple[date, str, dict]] = []
+    completed_list: List[Tuple[date, str, dict]] = []
+
+    for item in (schedules or []):
+        if not isinstance(item, dict):
+            continue
+        gubun = str(item.get("구분") or "방문심사").strip()
+        norm_st = normalize_schedule_status_by_type(gubun, item.get("진행현황") or "")
+        item["진행현황"] = norm_st
+
+        d_obj = parse_date_obj(item.get("심사일자"))
+        diff_n, d_lbl = _format_dday_tag(d_obj, today_d)
+        item["d_day_num"] = diff_n
+        item["d_day_label"] = "완료" if norm_st in done_set else d_lbl
+
+        sort_d = d_obj if d_obj is not None else (date(2099, 12, 31) if norm_st not in done_set else date(1970, 1, 1))
+        title_s = str(item.get("심사명") or "")
+        if norm_st in done_set:
+            completed_list.append((sort_d, title_s, item))
+        else:
+            pending_list.append((sort_d, title_s, item))
+
+    pending_list.sort(key=lambda x: (x[0], x[1]))
+    completed_list.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    ordered = [x[2] for x in pending_list] + [x[2] for x in completed_list]
+    schedules[:] = ordered
+    return ordered
+
+
+def get_active_audit_summary(schedules: List[dict], today_ref: Any = None, *args, **kwargs) -> dict:
+    if isinstance(today_ref, date) and not isinstance(today_ref, datetime):
+        today_d = today_ref
+    else:
+        today_d = parse_date_obj(today_ref) or (datetime.utcnow() + timedelta(hours=9)).date()
+
+    ordered = sort_audit_schedules_two_tier(schedules, today_d)
+
+    visit_items = [s for s in ordered if str(s.get("구분") or "").strip() != "협력업체 방문"]
+    sup_items = [s for s in ordered if str(s.get("구분") or "").strip() == "협력업체 방문"]
+
+    pending_visits = [s for s in visit_items if s.get("진행현황") != "심사종료"]
+    done_visits = [s for s in visit_items if s.get("진행현황") == "심사종료"]
+
+    pending_sups = [s for s in sup_items if s.get("진행현황") != "방문완료"]
+
+    # 차기 협력업체 방문 배너 생성 (가장 가까운 출장 일정 기준)
+    upcoming_sup_banner = ""
+    if pending_sups:
+        first_sup = pending_sups[0]
+        s_dt = str(first_sup.get("심사일자") or "")
+        s_mmdd = s_dt[5:] if len(s_dt) >= 10 else (s_dt or "-")
+        s_dday = str(first_sup.get("d_day_label") or "-")
+        s_name = str(first_sup.get("심사명") or "-")
+        extra_txt = f" 외 {len(pending_sups) - 1}건" if len(pending_sups) > 1 else ""
+        upcoming_sup_banner = f"[{s_dday}] {s_mmdd} {s_name}{extra_txt}"
+
+    # 당사 방문심사 게이지 기준 선정: 예정/진행중 최우선(임박순) -> 없으면 가장 최신 종료 건(100%)
+    chosen_visit = None
+    is_recent_done = False
+    if pending_visits:
+        chosen_visit = pending_visits[0]
+    elif done_visits:
+        chosen_visit = done_visits[0]
+        is_recent_done = True
+
+    if chosen_visit:
+        st = str(chosen_visit.get("진행현황") or "심사준비중")
+        cfg = AUDIT_STATUS_CONFIG.get(st, AUDIT_STATUS_CONFIG["심사준비중"])
+        v_dt = str(chosen_visit.get("심사일자") or "")
+        v_mmdd = v_dt[5:] if len(v_dt) >= 10 else (v_dt or "-")
+        v_name = str(chosen_visit.get("심사명") or "-")
+        v_uid = str(chosen_visit.get("uid") or chosen_visit.get("id") or "")
+        v_dday = str(chosen_visit.get("d_day_label") or "")
+
+        if is_recent_done:
+            visit_title = f"[최근 방문심사 ({v_mmdd})] {v_name}"
+        else:
+            dd_part = f" · {v_dday}" if v_dday and v_dday != "-" else ""
+            visit_title = f"[방문심사 ({v_mmdd}{dd_part})] {v_name}"
+
+        return {
+            "active_uid": v_uid,
+            "visit_title": visit_title,
+            "status": st,
+            "pct": cfg["pct"],
+            "color": cfg["color"],
+            "is_recent_done": is_recent_done,
+            "upcoming_sup_banner": upcoming_sup_banner,
+            "upcoming_sup_cnt": len(pending_sups),
+            "upcoming_banner": upcoming_sup_banner or visit_title,
+        }
+
+    return {
+        "active_uid": "",
+        "visit_title": "등록된 당사 방문심사 일정이 없습니다.",
+        "status": "심사준비중",
+        "pct": 0,
+        "color": "#94A3B8",
+        "is_recent_done": False,
+        "upcoming_sup_banner": upcoming_sup_banner,
+        "upcoming_sup_cnt": len(pending_sups),
+        "upcoming_banner": upcoming_sup_banner or "등록된 심사 일정 없음",
+    }
 
 MICRO_STATUS_LIST = ["자동연동", "출고적합", "검사중", "재검·출고보류"]
 MICRO_LIVE_TABS = ["일반 일보", "일요일 일보", "휴일 일보(날짜변경)", "일보작성", "일요일_일보작성", "연휴_일보작성"]
@@ -572,6 +713,71 @@ def extract_eng_month_dates(text: Any) -> List[Tuple[date, int, int]]:
                 pass
 
     # 3) YYYY.MON.DD (예: 2027.NOV.23)
+    pat_ymd = rf"(?<!\d)(20\d{{2}})[\.\-/\s,]+({_ENG_MON_REGEX})[\.\-/\s,]+(\d{{1,2}})(?!\d)"
+    for m in re.finditer(pat_ymd, s, re.IGNORECASE):
+        yr = int(m.group(1))
+        mm = ENG_MONTH_MAP.get(m.group(2).lower(), 0)
+        dd = int(m.group(3))
+        if mm and 2020 <= yr <= 2040:
+            try:
+                found.append((date(yr, mm, dd), m.start(), m.end()))
+            except ValueError:
+                pass
+
+    return found
+
+
+ENG_MONTH_MAP = {
+    "jan": 1, "january": 1,
+    "feb": 2, "february": 2,
+    "mar": 3, "march": 3,
+    "apr": 4, "april": 4,
+    "may": 5,
+    "jun": 6, "june": 6,
+    "jul": 7, "july": 7,
+    "aug": 8, "august": 8,
+    "sep": 9, "sept": 9, "september": 9,
+    "oct": 10, "october": 10,
+    "nov": 11, "november": 11,
+    "dec": 12, "december": 12
+}
+
+_ENG_MON_REGEX = r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+
+
+def extract_eng_month_dates(text: Any) -> List[Tuple[date, int, int]]:
+    s = str(text or "")
+    if not s or not re.search(r"[A-Za-z]{3}", s):
+        return []
+
+    found: List[Tuple[date, int, int]] = []
+
+    def _to_yr(y_str: str) -> int:
+        y = int(y_str)
+        return (2000 + y) if y < 100 else y
+
+    pat_mdy = rf"(?<![A-Za-z])({_ENG_MON_REGEX})[\.\-/\s,]+(\d{{1,2}})[\.\-/\s,]+(20\d{{2}}|\d{{2}})(?!\d)"
+    for m in re.finditer(pat_mdy, s, re.IGNORECASE):
+        mm = ENG_MONTH_MAP.get(m.group(1).lower(), 0)
+        dd = int(m.group(2))
+        yr = _to_yr(m.group(3))
+        if mm and 2020 <= yr <= 2040:
+            try:
+                found.append((date(yr, mm, dd), m.start(), m.end()))
+            except ValueError:
+                pass
+
+    pat_dmy = rf"(?<!\d)(\d{{1,2}})[\.\-/\s,]+({_ENG_MON_REGEX})[\.\-/\s,]+(20\d{{2}}|\d{{2}})(?!\d)"
+    for m in re.finditer(pat_dmy, s, re.IGNORECASE):
+        dd = int(m.group(1))
+        mm = ENG_MONTH_MAP.get(m.group(2).lower(), 0)
+        yr = _to_yr(m.group(3))
+        if mm and 2020 <= yr <= 2040:
+            try:
+                found.append((date(yr, mm, dd), m.start(), m.end()))
+            except ValueError:
+                pass
+
     pat_ymd = rf"(?<!\d)(20\d{{2}})[\.\-/\s,]+({_ENG_MON_REGEX})[\.\-/\s,]+(\d{{1,2}})(?!\d)"
     for m in re.finditer(pat_ymd, s, re.IGNORECASE):
         yr = int(m.group(1))
@@ -1716,10 +1922,6 @@ def calc_rt_limit_date_from_spec(prod_d: date, spec_str: str) -> Optional[date]:
 
 
 def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int = 14) -> List[date]:
-    """
-    표기 소비기한 문자열에서 복수 날짜 및 수출용 영문 날짜(예: 'NOV.23.2027', '2027. 03. 15F7', '11.30, 12.02')를
-    모두 추출하고, 구글 시트 숫자 서식으로 뒷자리 0이 잘린 '11.3'(-> 11.30) 등을 정밀 복원한다.
-    """
     s = str(exp_raw or "").strip()
     if not s or s in ("-", "00.00", "0.0", "미기입", "미기입(대기)"):
         return []
@@ -1727,7 +1929,6 @@ def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int 
     out: List[date] = []
     used_spans: List[Tuple[int, int]] = []
 
-    # 0) 수출품 영문 월 표기 우선 추출 (예: NOV.23.2027 -> 2027-11-23, 뒤쪽 '23.20' 오인식 원천 차단)
     for d_eng, st_e, ed_e in extract_eng_month_dates(s):
         if d_eng not in out:
             out.append(d_eng)
@@ -1739,7 +1940,6 @@ def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int 
             s_chars[i] = " "
     s_work = "".join(s_chars)
 
-    # 1) 4자리 연도 포함 날짜 (YYYY.MM.DD)
     used_spans_4 = []
     for m4 in re.finditer(r"(20\d{2})[\.\-/\s]+(\d{1,2})[\.\-/\s]+(\d{1,2})(?!\d)", s_work):
         try:
@@ -1756,7 +1956,6 @@ def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int 
             s_rem[i] = " "
     s2 = "".join(s_rem)
 
-    # 2) 2자리 연도 포함 날짜 (YY.MM.DD)
     used_spans2 = []
     for m2 in re.finditer(r"(?<!\d)(\d{2})[\.\-/]\s*(\d{1,2})[\.\-/]\s*(\d{1,2})(?!\d)", s2):
         yr2, mm2, dd2 = int(m2.group(1)), int(m2.group(2)), int(m2.group(3))
@@ -1775,7 +1974,6 @@ def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int 
             s_rem2[i] = " "
     s3 = "".join(s_rem2)
 
-    # 3) 월.일 단축 표기 (예: '12.05', '11.30, 12.02', 시트 자동숫자 '11.3' -> 11.30 복원)
     for ms in re.finditer(r"(?<!\d)(\d{1,2})[\./](\d{1,2})(?![\.\d])", s3):
         mm = int(ms.group(1))
         d_str = ms.group(2)
@@ -8897,4 +9095,371 @@ def api_save_weekly_safety_news(body: SafetyNewsSavePayload, _u: dict = Depends(
         _BUNDLE_CACHE["data"]["safety_news"] = new_snews
 
     return {"ok": True, "message": msg, "safety_news": new_snews}
+
+# ============================================================================
+# [Q-Safety 확장 모듈] 자가품질검사 숨김 DB(_이력DB_자가품질검사) & 연도별 관리 API
+# ============================================================================
+from fastapi import Request as _FastAPIRequest
+from fastapi.responses import JSONResponse as _FastAPIJSONResponse
+
+SELF_QUALITY_TAB_NAME = "_이력DB_자가품질검사"
+SELF_QUALITY_MONTHS = ["3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월", "1월", "2월"]
+SELF_QUALITY_HEADERS = [
+    "기준연도", "구분번호", "대분류", "중분류", "소분류",
+    "라인구분", "해당월", "체크여부", "1차_제품명", "2차_제품명", "수정일시"
+]
+
+SELF_QUALITY_CATEGORIES = [
+    {"no": 1,  "major": "축산물", "mid": "우유류",          "sub": "우유(살균)",                    "line_type": "DAIRY", "line_label": "냉장(카톤·병·발효유)"},
+    {"no": 2,  "major": "축산물", "mid": "우유류",          "sub": "우유(멸균)",                    "line_type": "RT",    "line_label": "상온(축산물·멸균)"},
+    {"no": 3,  "major": "축산물", "mid": "가공유류",        "sub": "가공유(살균)",                  "line_type": "DAIRY", "line_label": "냉장(카톤·병·발효유)"},
+    {"no": 4,  "major": "축산물", "mid": "가공유류",        "sub": "가공유(멸균)",                  "line_type": "RT",    "line_label": "상온(축산물·멸균)"},
+    {"no": 5,  "major": "축산물", "mid": "가공유류",        "sub": "유당분해우유(멸균)",            "line_type": "RT",    "line_label": "상온(축산물·멸균)"},
+    {"no": 6,  "major": "축산물", "mid": "가공유류",        "sub": "강화우유(멸균)",                "line_type": "RT",    "line_label": "상온(축산물·멸균)"},
+    {"no": 7,  "major": "축산물", "mid": "유크림류",        "sub": "유크림(살균)",                  "line_type": "DAIRY", "line_label": "냉장(카톤·병·발효유)"},
+    {"no": 8,  "major": "축산물", "mid": "발효유류",        "sub": "발효유",                        "line_type": "DAIRY", "line_label": "냉장(카톤·병·발효유)"},
+    {"no": 9,  "major": "축산물", "mid": "발효유류",        "sub": "농후발효유",                    "line_type": "DAIRY", "line_label": "냉장(카톤·병·발효유)"},
+    {"no": 10, "major": "식품",   "mid": "발효음료류",      "sub": "유산균음료(살균제품)",          "line_type": "RT",    "line_label": "상온(식품)"},
+    {"no": 11, "major": "식품",   "mid": "두유류",          "sub": "가공두유(멸균)",                "line_type": "RT",    "line_label": "상온(식품)"},
+    {"no": 12, "major": "식품",   "mid": "두유류",          "sub": "원액두유(살균)",                "line_type": "RT",    "line_label": "상온(식품)"},
+    {"no": 13, "major": "식품",   "mid": "두유류",          "sub": "원액두유(멸균)",                "line_type": "RT",    "line_label": "상온(식품)"},
+    {"no": 14, "major": "식품",   "mid": "음료류",          "sub": "커피(멸균)",                    "line_type": "RT",    "line_label": "상온(식품)"},
+    {"no": 15, "major": "식품",   "mid": "기타음료류",      "sub": "혼합음료(살균제품)",            "line_type": "RT",    "line_label": "상온(식품)"},
+    {"no": 16, "major": "식품",   "mid": "과일.채소류음료",  "sub": "과.채음료(가열제품)",           "line_type": "RT",    "line_label": "상온(식품)"},
+    {"no": 17, "major": "식품",   "mid": "과일∙채소류음료",  "sub": "과채주스(가열제품,(파튤린))",   "line_type": "RT",    "line_label": "상온(식품)"},
+    {"no": 18, "major": "식품",   "mid": "영양조제식품",    "sub": "당뇨환자용 영양조제식품(멸균)", "line_type": "RT",    "line_label": "상온(식품)"},
+    {"no": 19, "major": "식품",   "mid": "영양조제식품",    "sub": "당뇨환자용 영양조제식품(멸균)", "line_type": "RT",    "line_label": "상온(식품)"},
+    {"no": 20, "major": "식품",   "mid": "영양조제식품",    "sub": "당뇨환자용 영양조제식품(멸균)", "line_type": "RT",    "line_label": "상온(식품)"},
+]
+
+_SQC_CAT_BY_NO = {c["no"]: c for c in SELF_QUALITY_CATEGORIES}
+_SQC_MEM_CACHE: Dict[str, Any] = {"ts": 0.0, "rows": None}
+_SQC_CACHE_TTL_SEC = 180.0
+
+# 기존 AUDIT_STATUS_LIST / AUDIT_STATUS_CONFIG 객체가 상단에 먼저 선언된 경우에도 안전하게 동기화
+if "AUDIT_STATUS_CONFIG" in globals() and isinstance(globals()["AUDIT_STATUS_CONFIG"], dict):
+    globals()["AUDIT_STATUS_CONFIG"].update({
+        "심사준비중": {"pct": 20,  "color": "#64748B", "label": "준비중 20%"},
+        "심사중":     {"pct": 50,  "color": "#2563EB", "label": "심사중 50%"},
+        "현장심사중": {"pct": 75,  "color": "#0D9488", "label": "현장 75%"},
+        "서류심사중": {"pct": 90,  "color": "#7C3AED", "label": "서류 90%"},
+        "심사종료":   {"pct": 100, "color": "#003378", "label": "종료 100%"},
+        "방문예정":   {"pct": 20,  "color": "#D97706", "label": "방문예정"},
+        "방문완료":   {"pct": 100, "color": "#059669", "label": "방문완료"},
+    })
+if "AUDIT_STATUS_LIST" in globals() and isinstance(globals()["AUDIT_STATUS_LIST"], list):
+    for _st_item in ["심사준비중", "심사중", "현장심사중", "서류심사중", "심사종료", "방문예정", "방문완료"]:
+        if _st_item not in globals()["AUDIT_STATUS_LIST"]:
+            globals()["AUDIT_STATUS_LIST"].append(_st_item)
+
+
+def _get_default_sqc_fiscal_year() -> str:
+    kst_now = datetime.utcnow() + timedelta(hours=9)
+    fy = kst_now.year if kst_now.month >= 3 else (kst_now.year - 1)
+    return f"{fy}년"
+
+
+def _normalize_sqc_year(yr_raw: Any) -> str:
+    s = str(yr_raw or "").strip()
+    m = re.search(r"(20\d{2})", s)
+    if m:
+        return f"{m.group(1)}년"
+    return _get_default_sqc_fiscal_year()
+
+
+def _resolve_gspread_client_for_sqc():
+    for fn_name in ("get_gspread_client", "get_gc", "_get_gspread_client"):
+        fn = globals().get(fn_name)
+        if callable(fn):
+            return fn()
+    raw_cred = os.environ.get("GOOGLE_CREDENTIALS_JSON") or os.environ.get("GCP_SERVICE_ACCOUNT_JSON") or ""
+    if not raw_cred:
+        raise RuntimeError("GOOGLE_CREDENTIALS_JSON 환경변수가 설정되어 있지 않습니다.")
+    import gspread as _gs
+    return _gs.service_account_from_dict(json.loads(raw_cred))
+
+
+def _resolve_micro_sheet_for_sqc(gc):
+    cand_urls: List[str] = []
+    raw_urls_env = os.environ.get("SHEET_URLS_JSON") or ""
+    if raw_urls_env:
+        try:
+            env_map = json.loads(raw_urls_env)
+            if isinstance(env_map, dict):
+                for k, v in env_map.items():
+                    k_low = str(k).lower()
+                    if ("micro" in k_low or "미생물" in k_low) and v:
+                        cand_urls.append(str(v).strip())
+        except Exception:
+            pass
+
+    for dict_name in ("SHEET_URLS", "DEFAULT_SHEET_URLS", "SHEET_CONFIG", "SHEET_IDS"):
+        d_obj = globals().get(dict_name)
+        if isinstance(d_obj, dict):
+            for k, v in d_obj.items():
+                k_low = str(k).lower()
+                if ("micro" in k_low or "미생물" in k_low) and v:
+                    cand_urls.append(str(v).strip())
+
+    for var_name, var_val in list(globals().items()):
+        if isinstance(var_val, str) and ("MICRO" in var_name.upper()) and len(var_val) >= 20:
+            cand_urls.append(var_val.strip())
+
+    for u in cand_urls:
+        m_id = re.search(r"/spreadsheets/d/([a-zA-Z0-9\-_]+)", u)
+        sheet_key = m_id.group(1) if m_id else (u if re.match(r"^[a-zA-Z0-9\-_]{25,}$", u) else "")
+        if sheet_key:
+            return gc.open_by_key(sheet_key)
+
+    return gc.open("미생물 일보")
+
+
+def _ensure_hidden_sqc_worksheet(sh):
+    import gspread as _gs
+    try:
+        ws = sh.worksheet(SELF_QUALITY_TAB_NAME)
+        is_hidden = bool(getattr(ws, "_properties", {}).get("hidden", False))
+        if not is_hidden:
+            sh.batch_update({
+                "requests": [{
+                    "updateSheetProperties": {
+                        "properties": {"sheetId": ws.id, "hidden": True},
+                        "fields": "hidden"
+                    }
+                }]
+            })
+        return ws
+    except _gs.exceptions.WorksheetNotFound:
+        sh.batch_update({
+            "requests": [{
+                "addSheet": {
+                    "properties": {
+                        "title": SELF_QUALITY_TAB_NAME,
+                        "hidden": True,
+                        "gridProperties": {"rowCount": 1200, "columnCount": 12}
+                    }
+                }
+            }]
+        })
+        ws = sh.worksheet(SELF_QUALITY_TAB_NAME)
+        ws.update("A1:K1", [SELF_QUALITY_HEADERS])
+        return ws
+
+
+def _load_all_sqc_db_rows(force: bool = False) -> List[List[str]]:
+    now_ts = time.time()
+    if (not force) and (_SQC_MEM_CACHE["rows"] is not None) and (now_ts - _SQC_MEM_CACHE["ts"] < _SQC_CACHE_TTL_SEC):
+        return _SQC_MEM_CACHE["rows"]
+
+    gc = _resolve_gspread_client_for_sqc()
+    sh = _resolve_micro_sheet_for_sqc(gc)
+    ws = _ensure_hidden_sqc_worksheet(sh)
+
+    retry_fn = globals().get("api_call_with_retry")
+    vals = retry_fn(lambda: ws.get_all_values()) if callable(retry_fn) else ws.get_all_values()
+    if not vals:
+        ws.update("A1:K1", [SELF_QUALITY_HEADERS])
+        vals = [SELF_QUALITY_HEADERS]
+
+    _SQC_MEM_CACHE["rows"] = vals
+    _SQC_MEM_CACHE["ts"] = now_ts
+    return vals
+
+
+def _extract_product_suggestions_from_bundle_cache() -> Dict[str, List[str]]:
+    dairy_set = set()
+    rt_set = set()
+    b_cache = globals().get("_BUNDLE_CACHE")
+    b_data = b_cache.get("data") if isinstance(b_cache, dict) else None
+    if isinstance(b_data, dict):
+        proc = b_data.get("process") or {}
+        for k_rt in ("rt_rows", "rt_today_rows", "rt_yest_rows", "rt_items"):
+            for r in (proc.get(k_rt) or []):
+                if isinstance(r, dict):
+                    p = str(r.get("제품명") or r.get("생산제품명") or r.get("품목명") or "").strip()
+                    if p and p != "-":
+                        rt_set.add(p)
+        for k_dy in ("dairy_rows", "milk_rows", "ferm_rows", "dairy_today_rows", "dairy_items"):
+            for r in (proc.get(k_dy) or []):
+                if isinstance(r, dict):
+                    p = str(r.get("제품명") or r.get("생산제품명") or r.get("품목명") or "").strip()
+                    if p and p != "-":
+                        dairy_set.add(p)
+    return {
+        "dairy": sorted(dairy_set),
+        "rt": sorted(rt_set),
+    }
+
+
+def _build_sqc_response_payload(target_year: str, raw_vals: List[List[str]]) -> dict:
+    hdr = raw_vals[0] if raw_vals else SELF_QUALITY_HEADERS
+    idx_map = {str(h).strip(): i for i, h in enumerate(hdr)}
+
+    def _cell(row: List[str], col_name: str) -> str:
+        idx = idx_map.get(col_name, -1)
+        return str(row[idx]).strip() if (0 <= idx < len(row)) else ""
+
+    years_found = {_get_default_sqc_fiscal_year(), "2026년", "2027년"}
+    cell_map: Dict[str, dict] = {}
+
+    for row in raw_vals[1:]:
+        if not any(str(x).strip() for x in row):
+            continue
+        r_yr = _normalize_sqc_year(_cell(row, "기준연도"))
+        years_found.add(r_yr)
+        if r_yr != target_year:
+            continue
+
+        try:
+            no_int = int(re.sub(r"\D+", "", _cell(row, "구분번호")) or "0")
+        except ValueError:
+            no_int = 0
+        m_lbl = _cell(row, "해당월")
+        chk_v = _cell(row, "체크여부").upper()
+        if no_int < 1 or no_int > 20 or m_lbl not in SELF_QUALITY_MONTHS:
+            continue
+        if chk_v not in ("Y", "TRUE", "1", "CHECKED", "적합", "완료"):
+            continue
+
+        p1 = _cell(row, "1차_제품명")
+        p2 = _cell(row, "2차_제품명")
+        upd = _cell(row, "수정일시")
+        cell_map[f"{no_int}_{m_lbl}"] = {
+            "checked": True,
+            "prod_1": p1,
+            "prod_2": p2,
+            "updated_at": upd,
+        }
+
+    checked_cells_cnt = len(cell_map)
+    checked_cats_cnt = len({int(k.split("_")[0]) for k in cell_map.keys()})
+    kst_now = datetime.utcnow() + timedelta(hours=9)
+    cur_m_lbl = f"{kst_now.month}월"
+    cur_month_cnt = sum(1 for k in cell_map.keys() if k.endswith(f"_{cur_m_lbl}"))
+
+    return {
+        "ok": True,
+        "year": target_year,
+        "available_years": sorted(years_found),
+        "months": SELF_QUALITY_MONTHS,
+        "categories": SELF_QUALITY_CATEGORIES,
+        "records": cell_map,
+        "summary": {
+            "total_categories": len(SELF_QUALITY_CATEGORIES),
+            "checked_categories_cnt": checked_cats_cnt,
+            "checked_cells_cnt": checked_cells_cnt,
+            "cur_month_label": cur_m_lbl,
+            "cur_month_done_cnt": cur_month_cnt,
+        },
+        "product_suggestions": _extract_product_suggestions_from_bundle_cache(),
+    }
+
+
+@app.get("/api/self-quality")
+def api_get_self_quality(year: str = "", force: int = 0):
+    try:
+        target_yr = _normalize_sqc_year(year) if year else _get_default_sqc_fiscal_year()
+        vals = _load_all_sqc_db_rows(force=bool(force))
+        return _FastAPIJSONResponse(_build_sqc_response_payload(target_yr, vals))
+    except Exception as e:
+        return _FastAPIJSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/self-quality")
+async def api_save_self_quality(request: _FastAPIRequest):
+    try:
+        body = await request.json()
+        target_yr = _normalize_sqc_year(body.get("year"))
+        item_no = int(body.get("item_no") or 0)
+        month_lbl = str(body.get("month") or "").strip()
+        is_checked = bool(body.get("checked", True))
+        prod_1 = str(body.get("prod_1") or "").strip()
+        prod_2 = str(body.get("prod_2") or "").strip()
+
+        if item_no not in _SQC_CAT_BY_NO:
+            return _FastAPIJSONResponse({"ok": False, "error": "유효하지 않은 구분 번호입니다 (1~20)."}, status_code=400)
+        if month_lbl not in SELF_QUALITY_MONTHS:
+            return _FastAPIJSONResponse({"ok": False, "error": "유효하지 않은 월 표기입니다 (3월~2월)."}, status_code=400)
+        if is_checked and not prod_1:
+            return _FastAPIJSONResponse({"ok": False, "error": "체크 등록 시 최소 1차 제품명을 입력해 주세요."}, status_code=400)
+
+        cat = _SQC_CAT_BY_NO[item_no]
+        gc = _resolve_gspread_client_for_sqc()
+        sh = _resolve_micro_sheet_for_sqc(gc)
+        ws = _ensure_hidden_sqc_worksheet(sh)
+
+        retry_fn = globals().get("api_call_with_retry")
+        existing = retry_fn(lambda: ws.get_all_values()) if callable(retry_fn) else ws.get_all_values()
+
+        kept_rows: List[List[str]] = []
+        if existing and len(existing) >= 2:
+            hdr = existing[0]
+            idx_map = {str(h).strip(): i for i, h in enumerate(hdr)}
+
+            def _g(r_arr: List[str], c_name: str) -> str:
+                idx = idx_map.get(c_name, -1)
+                return str(r_arr[idx]).strip() if (0 <= idx < len(r_arr)) else ""
+
+            for r_arr in existing[1:]:
+                if not any(str(x).strip() for x in r_arr):
+                    continue
+                r_yr = _normalize_sqc_year(_g(r_arr, "기준연도"))
+                try:
+                    r_no = int(re.sub(r"\D+", "", _g(r_arr, "구분번호")) or "0")
+                except ValueError:
+                    r_no = 0
+                r_m = _g(r_arr, "해당월")
+
+                if r_yr == target_yr and r_no == item_no and r_m == month_lbl:
+                    continue
+                kept_rows.append([
+                    r_yr,
+                    str(r_no),
+                    _g(r_arr, "대분류"),
+                    _g(r_arr, "중분류"),
+                    _g(r_arr, "소분류"),
+                    _g(r_arr, "라인구분"),
+                    r_m,
+                    _g(r_arr, "체크여부") or "Y",
+                    _g(r_arr, "1차_제품명"),
+                    _g(r_arr, "2차_제품명"),
+                    _g(r_arr, "수정일시"),
+                ])
+
+        now_str = (datetime.utcnow() + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M:%S")
+        if is_checked:
+            kept_rows.append([
+                target_yr,
+                str(item_no),
+                cat["major"],
+                cat["mid"],
+                cat["sub"],
+                cat["line_type"],
+                month_lbl,
+                "Y",
+                prod_1,
+                prod_2,
+                now_str,
+            ])
+
+        kept_rows.sort(key=lambda r: (
+            r[0],
+            int(r[1]) if str(r[1]).isdigit() else 99,
+            SELF_QUALITY_MONTHS.index(r[6]) if r[6] in SELF_QUALITY_MONTHS else 99
+        ))
+
+        final_matrix = [SELF_QUALITY_HEADERS] + kept_rows
+        if callable(retry_fn):
+            retry_fn(lambda: ws.clear())
+            retry_fn(lambda: ws.update(f"A1:K{len(final_matrix)}", final_matrix))
+        else:
+            ws.clear()
+            ws.update(f"A1:K{len(final_matrix)}", final_matrix)
+
+        _SQC_MEM_CACHE["rows"] = final_matrix
+        _SQC_MEM_CACHE["ts"] = time.time()
+
+        return _FastAPIJSONResponse(_build_sqc_response_payload(target_yr, final_matrix))
+    except Exception as e:
+        return _FastAPIJSONResponse({"ok": False, "error": str(e)}, status_code=500)
 # ============================ [api/index.py - PART 4 / 4 끝] ============================

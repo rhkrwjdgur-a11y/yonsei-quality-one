@@ -9037,6 +9037,7 @@ SELF_QUALITY_CATEGORIES = [
     {"no": 18, "major": "식품",   "mid": "영양조제식품",    "sub": "당뇨환자용 영양조제식품(멸균)", "line_type": "RT",    "line_label": "상온(식품)"},
     {"no": 19, "major": "식품",   "mid": "영양조제식품",    "sub": "당뇨환자용 영양조제식품(멸균)", "line_type": "RT",    "line_label": "상온(식품)"},
     {"no": 20, "major": "식품",   "mid": "영양조제식품",    "sub": "당뇨환자용 영양조제식품(멸균)", "line_type": "RT",    "line_label": "상온(식품)"},
+    {"no": 21, "major": "식품",   "mid": "다류",            "sub": "액상차(멸균)",                  "line_type": "RT",    "line_label": "상온(식품)"},
 ]
 
 _SQC_CAT_BY_NO = {c["no"]: c for c in SELF_QUALITY_CATEGORIES}
@@ -9164,7 +9165,7 @@ def _build_sqc_response_payload(target_year: str, raw_vals: List[List[str]]) -> 
             no_int = 0
         m_lbl = _cell(row, "해당월")
         chk_v = _cell(row, "체크여부").upper()
-        if no_int < 1 or no_int > 20 or m_lbl not in SELF_QUALITY_MONTHS:
+        if no_int not in _SQC_CAT_BY_NO or m_lbl not in SELF_QUALITY_MONTHS:
             continue
         if chk_v not in ("Y", "TRUE", "1", "CHECKED", "적합", "완료"):
             continue

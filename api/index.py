@@ -169,7 +169,7 @@ def get_active_audit_summary(schedules: List[dict], today_ref: Any = None, *args
         v_dt = str(chosen_visit.get("심사일자") or "")
         v_mmdd = v_dt[5:] if len(v_dt) >= 10 else (v_dt or "-")
         v_name = str(chosen_visit.get("심사명") or "-")
-        v_uid = str(chosen_visit.get("uid") or chosen_visit.get("id") or "")
+        v_uid = str(chosen_visit.get("고유ID") or chosen_visit.get("uid") or chosen_visit.get("id") or "")
         v_dday = str(chosen_visit.get("d_day_label") or "")
 
         if is_recent_done:
@@ -5062,8 +5062,7 @@ def parse_schedule_tab_rows(rows: list) -> list:
             d_obj = parse_date_obj(dt_raw)
             dt_norm = d_obj.strftime("%Y-%m-%d") if d_obj else dt_raw
             tp_norm = normalize_audit_type(g(col_tp) or "방문심사")
-            st_raw = g(col_st) or "심사준비중"
-            st_norm = st_raw if st_raw in AUDIT_STATUS_LIST else "심사준비중"
+            st_norm = normalize_schedule_status_by_type(tp_norm, g(col_st))
             uid_v = g(col_uid) or hashlib.md5(f"{tp_norm}|{dt_norm}|{nm_v}|{r_idx}".encode("utf-8")).hexdigest()[:8]
 
             out.append({
@@ -5117,9 +5116,7 @@ def parse_schedule_tab_rows(rows: list) -> list:
                     continue
                 d_obj = parse_date_obj(dt_raw)
                 dt_norm = d_obj.strftime("%Y-%m-%d") if d_obj else dt_raw
-                st_v = str(dr[c_st]).strip() if (0 <= c_st < len(dr)) else "심사준비중"
-                if st_v not in AUDIT_STATUS_LIST:
-                    st_v = "심사준비중"
+                st_v = normalize_schedule_status_by_type(atype, str(dr[c_st]).strip() if (0 <= c_st < len(dr)) else "")
                 mm_v = str(dr[c_mm]).strip() if (0 <= c_mm < len(dr)) else ""
                 uid_v = hashlib.md5(f"{atype}|{dt_norm}|{nm_v}|{dr_i}".encode("utf-8")).hexdigest()[:8]
                 out_dual.append({
@@ -6316,100 +6313,6 @@ def fetch_raw_material_db_sheet(sheet_urls_map: dict):
 # [api/index.py - PART 4 / 4]
 # 통합 번들 엔진 · 냉장/상온 분리 LOT 역추적(미생물 누적+배양예정 매칭) · 양방향 저장 API
 # ==============================================================================
-def get_active_audit_summary(sched_list: list, today_str: str) -> dict:
-    today_d = parse_date_obj(today_str) or now_kst().date()
-    if not sched_list:
-        return {
-            "has_data": False,
-            "upcoming_banner": "등록된 방문심사 · 협력업체 방문 일정이 없습니다",
-            "upcoming_type": "",
-            "has_visit_gauge": False,
-            "visit_title": "등록된 방문심사 일정이 없습니다",
-            "status": "심사준비중",
-            "pct": 0,
-            "color": "#9CA3AF",
-            "active_uid": ""
-        }
-
-    enriched_all = []
-    for r in sched_list:
-        d_obj = parse_date_obj(r.get("심사일자", ""))
-        diff_d = (d_obj - today_d).days if d_obj else None
-        enriched_all.append((d_obj, diff_d, r))
-
-    future_or_today_all = sorted(
-        [x for x in enriched_all if x[0] is not None and x[1] >= 0 and x[2].get("진행현황") != "심사종료"],
-        key=lambda x: x[1]
-    )
-    if not future_or_today_all:
-        future_or_today_all = sorted([x for x in enriched_all if x[0] is not None and x[1] >= 0], key=lambda x: x[1])
-
-    if future_or_today_all:
-        _, diff_v, nr = future_or_today_all[0]
-        d_tag = "금일(D-Day)" if diff_v == 0 else f"D-{diff_v}"
-        dt_s = nr["심사일자"][5:] if len(nr["심사일자"]) >= 10 else nr["심사일자"]
-        gubun_s = nr.get("구분", "방문심사")
-        nm_s = nr["심사명"]
-        up_banner = f"[{gubun_s} · {d_tag}] {nm_s} ({dt_s})"
-        up_type = gubun_s
-    else:
-        nr = sorted(sched_list, key=lambda x: x.get("심사일자", ""), reverse=True)[0]
-        dt_s = nr["심사일자"][5:] if len(nr["심사일자"]) >= 10 else nr["심사일자"]
-        gubun_s = nr.get("구분", "방문심사")
-        nm_s = nr["심사명"]
-        up_banner = f"[최근 일정 · {gubun_s}] {nm_s} ({dt_s})"
-        up_type = gubun_s
-
-    visit_only = [x for x in enriched_all if normalize_audit_type(x[2].get("구분", "방문심사")) == "방문심사"]
-    if not visit_only:
-        return {
-            "has_data": True,
-            "upcoming_banner": up_banner,
-            "upcoming_type": up_type,
-            "has_visit_gauge": False,
-            "visit_title": "현재 등록된 '방문심사' 일정이 없습니다",
-            "status": "심사준비중",
-            "pct": 0,
-            "color": "#9CA3AF",
-            "active_uid": ""
-        }
-
-    v_today = [x for x in visit_only if x[0] == today_d]
-    v_inprog = [x for x in visit_only if x[2].get("진행현황") in ["심사중", "서류심사중", "현장심사중"]]
-    v_future = sorted([x for x in visit_only if x[0] and x[0] > today_d], key=lambda x: x[0])
-
-    if v_today:
-        vr = v_today[0][2]
-        v_dt = vr["심사일자"][5:]
-        v_prefix = f"금일 방문심사 ({v_dt})"
-    elif v_inprog:
-        vr = v_inprog[0][2]
-        v_dt = vr["심사일자"][5:]
-        v_prefix = f"진행중 방문심사 ({v_dt})"
-    elif v_future:
-        _, dl, vr = v_future[0]
-        v_dt = vr["심사일자"][5:]
-        v_prefix = f"차기 방문심사 D-{dl} ({v_dt})"
-    else:
-        vr = sorted([x[2] for x in visit_only], key=lambda x: x.get("심사일자", ""), reverse=True)[0]
-        v_dt = vr["심사일자"][5:]
-        v_prefix = f"최근 방문심사 ({v_dt})"
-
-    st_nm = vr["진행현황"] if vr["진행현황"] in AUDIT_STATUS_CONFIG else "심사준비중"
-    cfg = AUDIT_STATUS_CONFIG[st_nm]
-    v_nm = vr["심사명"]
-    return {
-        "has_data": True,
-        "upcoming_banner": up_banner,
-        "upcoming_type": up_type,
-        "has_visit_gauge": True,
-        "visit_title": f"[{v_prefix}] {v_nm}",
-        "status": st_nm,
-        "pct": cfg["pct"],
-        "color": cfg["color"],
-        "active_uid": vr["고유ID"]
-    }
-
 
 def build_label_analytics(lbl_rows: list, pinned_ids: List[str]) -> dict:
     reviewing_rows = [r for r in lbl_rows if r.get("분류") == "식품안전팀 검토중"]
@@ -8067,18 +7970,21 @@ def api_save_audit_schedule(body: AuditSchedulePayload, _u: dict = Depends(requi
         if cached_scheds:
             cur_list = [dict(x) for x in cached_scheds]
 
-    today_str = now_kst().strftime("%Y-%m-%d")
+    today_d = now_kst().date()
+    today_str = today_d.strftime("%Y-%m-%d")
     now_s = now_kst().strftime("%Y-%m-%d %H:%M:%S")
 
     if body.action == "add":
         if not (body.audit_name or "").strip():
             raise HTTPException(status_code=400, detail="심사명 또는 방문 업체명을 입력해 주세요.")
+        tp_norm = normalize_audit_type(body.audit_type)
+        st_norm = normalize_schedule_status_by_type(tp_norm, body.status or "")
         cur_list.append({
             "고유ID": body.uid.strip() if (body.uid and body.uid.strip()) else str(uuid.uuid4())[:8],
-            "구분": normalize_audit_type(body.audit_type),
+            "구분": tp_norm,
             "심사일자": (body.audit_date or today_str).strip(),
             "심사명": body.audit_name.strip(),
-            "진행현황": body.status if body.status in AUDIT_STATUS_LIST else "심사준비중",
+            "진행현황": st_norm,
             "점수": (body.score or "").strip(),
             "비고": (body.memo or "").strip(),
             "수정일시": now_s
@@ -8092,28 +7998,29 @@ def api_save_audit_schedule(body: AuditSchedulePayload, _u: dict = Depends(requi
                     item["심사일자"] = body.audit_date.strip()
                 if body.audit_name:
                     item["심사명"] = body.audit_name.strip()
-                if body.status in AUDIT_STATUS_LIST:
-                    item["진행현황"] = body.status
+                if body.status:
+                    item["진행현황"] = normalize_schedule_status_by_type(item.get("구분", "방문심사"), body.status)
                 item["점수"] = (body.score or "").strip()
                 item["비고"] = (body.memo or "").strip()
                 item["수정일시"] = now_s
     elif body.action == "quick_status":
-        target_uid = body.uid
+        target_uid = (body.uid or "").strip()
         if not target_uid and cur_list:
             target_uid = get_active_audit_summary(cur_list, today_str).get("active_uid", "")
         for item in cur_list:
-            if item["고유ID"] == target_uid and normalize_audit_type(item.get("구분")) == "방문심사" and body.status in AUDIT_STATUS_LIST:
-                item["진행현황"] = body.status
+            if item["고유ID"] == target_uid and body.status in AUDIT_STATUS_LIST:
+                item["진행현황"] = normalize_schedule_status_by_type(item.get("구분", "방문심사"), body.status)
                 item["수정일시"] = now_s
     elif body.action == "delete":
         cur_list = [x for x in cur_list if x["고유ID"] != body.uid]
 
-    cur_list.sort(key=lambda x: x.get("심사일자", ""), reverse=True)
+    # 미완료 임박순 상단 + 완료 최신순 하단 2단 정렬 및 요약 갱신
+    new_summary = get_active_audit_summary(cur_list, today_str)
+
     payload = [AUDIT_COLS] + [[str(r.get(c, "")) for c in AUDIT_COLS] for r in cur_list]
     api_call_with_retry(ws_sched.clear)
     safe_ws_update(ws_sched, payload)
 
-    new_summary = get_active_audit_summary(cur_list, today_str)
     if "sak" in _LAST_GOOD_SHEETS:
         prev_s, prev_a, _, _ = _LAST_GOOD_SHEETS["sak"]
         _LAST_GOOD_SHEETS["sak"] = (prev_s, prev_a, cur_list, None)
@@ -9098,9 +9005,9 @@ def api_save_weekly_safety_news(body: SafetyNewsSavePayload, _u: dict = Depends(
 
 # ============================================================================
 # [Q-Safety 확장 모듈] 자가품질검사 숨김 DB(_이력DB_자가품질검사) & 연도별 관리 API
+# - open_sheet_isolated(OAuth & 서비스계정 공통 호환) 및 require_auth_user 직결
 # ============================================================================
 from fastapi import Request as _FastAPIRequest
-from fastapi.responses import JSONResponse as _FastAPIJSONResponse
 
 SELF_QUALITY_TAB_NAME = "_이력DB_자가품질검사"
 SELF_QUALITY_MONTHS = ["3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월", "1월", "2월"]
@@ -9134,28 +9041,13 @@ SELF_QUALITY_CATEGORIES = [
 
 _SQC_CAT_BY_NO = {c["no"]: c for c in SELF_QUALITY_CATEGORIES}
 _SQC_MEM_CACHE: Dict[str, Any] = {"ts": 0.0, "rows": None}
+_SQC_LOCK = threading.Lock()
 _SQC_CACHE_TTL_SEC = 180.0
-
-# 기존 AUDIT_STATUS_LIST / AUDIT_STATUS_CONFIG 객체가 상단에 먼저 선언된 경우에도 안전하게 동기화
-if "AUDIT_STATUS_CONFIG" in globals() and isinstance(globals()["AUDIT_STATUS_CONFIG"], dict):
-    globals()["AUDIT_STATUS_CONFIG"].update({
-        "심사준비중": {"pct": 20,  "color": "#64748B", "label": "준비중 20%"},
-        "심사중":     {"pct": 50,  "color": "#2563EB", "label": "심사중 50%"},
-        "현장심사중": {"pct": 75,  "color": "#0D9488", "label": "현장 75%"},
-        "서류심사중": {"pct": 90,  "color": "#7C3AED", "label": "서류 90%"},
-        "심사종료":   {"pct": 100, "color": "#003378", "label": "종료 100%"},
-        "방문예정":   {"pct": 20,  "color": "#D97706", "label": "방문예정"},
-        "방문완료":   {"pct": 100, "color": "#059669", "label": "방문완료"},
-    })
-if "AUDIT_STATUS_LIST" in globals() and isinstance(globals()["AUDIT_STATUS_LIST"], list):
-    for _st_item in ["심사준비중", "심사중", "현장심사중", "서류심사중", "심사종료", "방문예정", "방문완료"]:
-        if _st_item not in globals()["AUDIT_STATUS_LIST"]:
-            globals()["AUDIT_STATUS_LIST"].append(_st_item)
 
 
 def _get_default_sqc_fiscal_year() -> str:
-    kst_now = datetime.utcnow() + timedelta(hours=9)
-    fy = kst_now.year if kst_now.month >= 3 else (kst_now.year - 1)
+    cur = now_kst()
+    fy = cur.year if cur.month >= 3 else (cur.year - 1)
     return f"{fy}년"
 
 
@@ -9167,60 +9059,20 @@ def _normalize_sqc_year(yr_raw: Any) -> str:
     return _get_default_sqc_fiscal_year()
 
 
-def _resolve_gspread_client_for_sqc():
-    for fn_name in ("get_gspread_client", "get_gc", "_get_gspread_client"):
-        fn = globals().get(fn_name)
-        if callable(fn):
-            return fn()
-    raw_cred = os.environ.get("GOOGLE_CREDENTIALS_JSON") or os.environ.get("GCP_SERVICE_ACCOUNT_JSON") or ""
-    if not raw_cred:
-        raise RuntimeError("GOOGLE_CREDENTIALS_JSON 환경변수가 설정되어 있지 않습니다.")
-    import gspread as _gs
-    return _gs.service_account_from_dict(json.loads(raw_cred))
-
-
-def _resolve_micro_sheet_for_sqc(gc):
-    cand_urls: List[str] = []
-    raw_urls_env = os.environ.get("SHEET_URLS_JSON") or ""
-    if raw_urls_env:
-        try:
-            env_map = json.loads(raw_urls_env)
-            if isinstance(env_map, dict):
-                for k, v in env_map.items():
-                    k_low = str(k).lower()
-                    if ("micro" in k_low or "미생물" in k_low) and v:
-                        cand_urls.append(str(v).strip())
-        except Exception:
-            pass
-
-    for dict_name in ("SHEET_URLS", "DEFAULT_SHEET_URLS", "SHEET_CONFIG", "SHEET_IDS"):
-        d_obj = globals().get(dict_name)
-        if isinstance(d_obj, dict):
-            for k, v in d_obj.items():
-                k_low = str(k).lower()
-                if ("micro" in k_low or "미생물" in k_low) and v:
-                    cand_urls.append(str(v).strip())
-
-    for var_name, var_val in list(globals().items()):
-        if isinstance(var_val, str) and ("MICRO" in var_name.upper()) and len(var_val) >= 20:
-            cand_urls.append(var_val.strip())
-
-    for u in cand_urls:
-        m_id = re.search(r"/spreadsheets/d/([a-zA-Z0-9\-_]+)", u)
-        sheet_key = m_id.group(1) if m_id else (u if re.match(r"^[a-zA-Z0-9\-_]{25,}$", u) else "")
-        if sheet_key:
-            return gc.open_by_key(sheet_key)
-
-    return gc.open("미생물 일보")
+def _open_micro_sheet_for_sqc():
+    sheet_urls_map = get_sheet_urls_map()
+    sh, err = open_sheet_isolated(sheet_urls_map, "process_micro")
+    if sh is None:
+        raise RuntimeError(f"'미생물 일보' 시트를 열 수 없습니다: {err}")
+    return sh
 
 
 def _ensure_hidden_sqc_worksheet(sh):
-    import gspread as _gs
     try:
-        ws = sh.worksheet(SELF_QUALITY_TAB_NAME)
+        ws = api_call_with_retry(sh.worksheet, SELF_QUALITY_TAB_NAME)
         is_hidden = bool(getattr(ws, "_properties", {}).get("hidden", False))
         if not is_hidden:
-            sh.batch_update({
+            api_call_with_retry(sh.batch_update, {
                 "requests": [{
                     "updateSheetProperties": {
                         "properties": {"sheetId": ws.id, "hidden": True},
@@ -9229,8 +9081,8 @@ def _ensure_hidden_sqc_worksheet(sh):
                 }]
             })
         return ws
-    except _gs.exceptions.WorksheetNotFound:
-        sh.batch_update({
+    except gspread.exceptions.WorksheetNotFound:
+        api_call_with_retry(sh.batch_update, {
             "requests": [{
                 "addSheet": {
                     "properties": {
@@ -9241,8 +9093,8 @@ def _ensure_hidden_sqc_worksheet(sh):
                 }
             }]
         })
-        ws = sh.worksheet(SELF_QUALITY_TAB_NAME)
-        ws.update("A1:K1", [SELF_QUALITY_HEADERS])
+        ws = api_call_with_retry(sh.worksheet, SELF_QUALITY_TAB_NAME)
+        safe_ws_update(ws, [SELF_QUALITY_HEADERS])
         return ws
 
 
@@ -9251,40 +9103,36 @@ def _load_all_sqc_db_rows(force: bool = False) -> List[List[str]]:
     if (not force) and (_SQC_MEM_CACHE["rows"] is not None) and (now_ts - _SQC_MEM_CACHE["ts"] < _SQC_CACHE_TTL_SEC):
         return _SQC_MEM_CACHE["rows"]
 
-    gc = _resolve_gspread_client_for_sqc()
-    sh = _resolve_micro_sheet_for_sqc(gc)
-    ws = _ensure_hidden_sqc_worksheet(sh)
+    with _SQC_LOCK:
+        if (not force) and (_SQC_MEM_CACHE["rows"] is not None) and (time.time() - _SQC_MEM_CACHE["ts"] < _SQC_CACHE_TTL_SEC):
+            return _SQC_MEM_CACHE["rows"]
 
-    retry_fn = globals().get("api_call_with_retry")
-    vals = retry_fn(lambda: ws.get_all_values()) if callable(retry_fn) else ws.get_all_values()
-    if not vals:
-        ws.update("A1:K1", [SELF_QUALITY_HEADERS])
-        vals = [SELF_QUALITY_HEADERS]
+        sh = _open_micro_sheet_for_sqc()
+        ws = _ensure_hidden_sqc_worksheet(sh)
+        vals = get_values_formatted(ws)
+        if not vals:
+            safe_ws_update(ws, [SELF_QUALITY_HEADERS])
+            vals = [SELF_QUALITY_HEADERS]
 
-    _SQC_MEM_CACHE["rows"] = vals
-    _SQC_MEM_CACHE["ts"] = now_ts
-    return vals
+        _SQC_MEM_CACHE["rows"] = vals
+        _SQC_MEM_CACHE["ts"] = time.time()
+        return vals
 
 
 def _extract_product_suggestions_from_bundle_cache() -> Dict[str, List[str]]:
     dairy_set = set()
     rt_set = set()
-    b_cache = globals().get("_BUNDLE_CACHE")
-    b_data = b_cache.get("data") if isinstance(b_cache, dict) else None
+    b_data = _BUNDLE_CACHE.get("data") if isinstance(_BUNDLE_CACHE, dict) else None
     if isinstance(b_data, dict):
         proc = b_data.get("process") or {}
-        for k_rt in ("rt_rows", "rt_today_rows", "rt_yest_rows", "rt_items"):
-            for r in (proc.get(k_rt) or []):
-                if isinstance(r, dict):
-                    p = str(r.get("제품명") or r.get("생산제품명") or r.get("품목명") or "").strip()
-                    if p and p != "-":
-                        rt_set.add(p)
-        for k_dy in ("dairy_rows", "milk_rows", "ferm_rows", "dairy_today_rows", "dairy_items"):
-            for r in (proc.get(k_dy) or []):
-                if isinstance(r, dict):
-                    p = str(r.get("제품명") or r.get("생산제품명") or r.get("품목명") or "").strip()
-                    if p and p != "-":
-                        dairy_set.add(p)
+        for p in (proc.get("dairy_products") or []):
+            ps = str(p or "").strip()
+            if ps and ps != "-":
+                dairy_set.add(ps)
+        for p in (proc.get("rt_products") or []):
+            ps = str(p or "").strip()
+            if ps and ps != "-":
+                rt_set.add(ps)
     return {
         "dairy": sorted(dairy_set),
         "rt": sorted(rt_set),
@@ -9333,8 +9181,7 @@ def _build_sqc_response_payload(target_year: str, raw_vals: List[List[str]]) -> 
 
     checked_cells_cnt = len(cell_map)
     checked_cats_cnt = len({int(k.split("_")[0]) for k in cell_map.keys()})
-    kst_now = datetime.utcnow() + timedelta(hours=9)
-    cur_m_lbl = f"{kst_now.month}월"
+    cur_m_lbl = f"{now_kst().month}월"
     cur_month_cnt = sum(1 for k in cell_map.keys() if k.endswith(f"_{cur_m_lbl}"))
 
     return {
@@ -9356,17 +9203,17 @@ def _build_sqc_response_payload(target_year: str, raw_vals: List[List[str]]) -> 
 
 
 @app.get("/api/self-quality")
-def api_get_self_quality(year: str = "", force: int = 0):
+def api_get_self_quality(year: str = "", force: int = 0, _u: dict = Depends(require_auth_user)):
     try:
         target_yr = _normalize_sqc_year(year) if year else _get_default_sqc_fiscal_year()
         vals = _load_all_sqc_db_rows(force=bool(force))
-        return _FastAPIJSONResponse(_build_sqc_response_payload(target_yr, vals))
+        return JSONResponse(_build_sqc_response_payload(target_yr, vals))
     except Exception as e:
-        return _FastAPIJSONResponse({"ok": False, "error": str(e)}, status_code=500)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
 
 @app.post("/api/self-quality")
-async def api_save_self_quality(request: _FastAPIRequest):
+async def api_save_self_quality(request: _FastAPIRequest, _u: dict = Depends(require_auth_user)):
     try:
         body = await request.json()
         target_yr = _normalize_sqc_year(body.get("year"))
@@ -9377,89 +9224,83 @@ async def api_save_self_quality(request: _FastAPIRequest):
         prod_2 = str(body.get("prod_2") or "").strip()
 
         if item_no not in _SQC_CAT_BY_NO:
-            return _FastAPIJSONResponse({"ok": False, "error": "유효하지 않은 구분 번호입니다 (1~20)."}, status_code=400)
+            return JSONResponse({"ok": False, "error": "유효하지 않은 구분 번호입니다 (1~20)."}, status_code=400)
         if month_lbl not in SELF_QUALITY_MONTHS:
-            return _FastAPIJSONResponse({"ok": False, "error": "유효하지 않은 월 표기입니다 (3월~2월)."}, status_code=400)
+            return JSONResponse({"ok": False, "error": "유효하지 않은 월 표기입니다 (3월~2월)."}, status_code=400)
         if is_checked and not prod_1:
-            return _FastAPIJSONResponse({"ok": False, "error": "체크 등록 시 최소 1차 제품명을 입력해 주세요."}, status_code=400)
+            return JSONResponse({"ok": False, "error": "체크 등록 시 최소 1차 제품명을 입력해 주세요."}, status_code=400)
 
         cat = _SQC_CAT_BY_NO[item_no]
-        gc = _resolve_gspread_client_for_sqc()
-        sh = _resolve_micro_sheet_for_sqc(gc)
-        ws = _ensure_hidden_sqc_worksheet(sh)
+        with _SQC_LOCK:
+            sh = _open_micro_sheet_for_sqc()
+            ws = _ensure_hidden_sqc_worksheet(sh)
+            existing = get_values_formatted(ws)
 
-        retry_fn = globals().get("api_call_with_retry")
-        existing = retry_fn(lambda: ws.get_all_values()) if callable(retry_fn) else ws.get_all_values()
+            kept_rows: List[List[str]] = []
+            if existing and len(existing) >= 2:
+                hdr = existing[0]
+                idx_map = {str(h).strip(): i for i, h in enumerate(hdr)}
 
-        kept_rows: List[List[str]] = []
-        if existing and len(existing) >= 2:
-            hdr = existing[0]
-            idx_map = {str(h).strip(): i for i, h in enumerate(hdr)}
+                def _g(r_arr: List[str], c_name: str) -> str:
+                    idx = idx_map.get(col_nm := c_name, -1)
+                    return str(r_arr[idx]).strip() if (0 <= idx < len(r_arr)) else ""
 
-            def _g(r_arr: List[str], c_name: str) -> str:
-                idx = idx_map.get(c_name, -1)
-                return str(r_arr[idx]).strip() if (0 <= idx < len(r_arr)) else ""
+                for r_arr in existing[1:]:
+                    if not any(str(x).strip() for x in r_arr):
+                        continue
+                    r_yr = _normalize_sqc_year(_g(r_arr, "기준연도"))
+                    try:
+                        r_no = int(re.sub(r"\D+", "", _g(r_arr, "구분번호")) or "0")
+                    except ValueError:
+                        r_no = 0
+                    r_m = _g(r_arr, "해당월")
 
-            for r_arr in existing[1:]:
-                if not any(str(x).strip() for x in r_arr):
-                    continue
-                r_yr = _normalize_sqc_year(_g(r_arr, "기준연도"))
-                try:
-                    r_no = int(re.sub(r"\D+", "", _g(r_arr, "구분번호")) or "0")
-                except ValueError:
-                    r_no = 0
-                r_m = _g(r_arr, "해당월")
+                    if r_yr == target_yr and r_no == item_no and r_m == month_lbl:
+                        continue
+                    kept_rows.append([
+                        r_yr,
+                        str(r_no),
+                        _g(r_arr, "대분류"),
+                        _g(r_arr, "중분류"),
+                        _g(r_arr, "소분류"),
+                        _g(r_arr, "라인구분"),
+                        r_m,
+                        _g(r_arr, "체크여부") or "Y",
+                        _g(r_arr, "1차_제품명"),
+                        _g(r_arr, "2차_제품명"),
+                        _g(r_arr, "수정일시"),
+                    ])
 
-                if r_yr == target_yr and r_no == item_no and r_m == month_lbl:
-                    continue
+            now_str = now_kst().strftime("%Y-%m-%d %H:%M:%S")
+            if is_checked:
                 kept_rows.append([
-                    r_yr,
-                    str(r_no),
-                    _g(r_arr, "대분류"),
-                    _g(r_arr, "중분류"),
-                    _g(r_arr, "소분류"),
-                    _g(r_arr, "라인구분"),
-                    r_m,
-                    _g(r_arr, "체크여부") or "Y",
-                    _g(r_arr, "1차_제품명"),
-                    _g(r_arr, "2차_제품명"),
-                    _g(r_arr, "수정일시"),
+                    target_yr,
+                    str(item_no),
+                    cat["major"],
+                    cat["mid"],
+                    cat["sub"],
+                    cat["line_type"],
+                    month_lbl,
+                    "Y",
+                    prod_1,
+                    prod_2,
+                    now_str,
                 ])
 
-        now_str = (datetime.utcnow() + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M:%S")
-        if is_checked:
-            kept_rows.append([
-                target_yr,
-                str(item_no),
-                cat["major"],
-                cat["mid"],
-                cat["sub"],
-                cat["line_type"],
-                month_lbl,
-                "Y",
-                prod_1,
-                prod_2,
-                now_str,
-            ])
+            kept_rows.sort(key=lambda r: (
+                r[0],
+                int(r[1]) if str(r[1]).isdigit() else 99,
+                SELF_QUALITY_MONTHS.index(r[6]) if r[6] in SELF_QUALITY_MONTHS else 99
+            ))
 
-        kept_rows.sort(key=lambda r: (
-            r[0],
-            int(r[1]) if str(r[1]).isdigit() else 99,
-            SELF_QUALITY_MONTHS.index(r[6]) if r[6] in SELF_QUALITY_MONTHS else 99
-        ))
+            final_matrix = [SELF_QUALITY_HEADERS] + kept_rows
+            api_call_with_retry(ws.clear)
+            safe_ws_update(ws, final_matrix)
 
-        final_matrix = [SELF_QUALITY_HEADERS] + kept_rows
-        if callable(retry_fn):
-            retry_fn(lambda: ws.clear())
-            retry_fn(lambda: ws.update(f"A1:K{len(final_matrix)}", final_matrix))
-        else:
-            ws.clear()
-            ws.update(f"A1:K{len(final_matrix)}", final_matrix)
+            _SQC_MEM_CACHE["rows"] = final_matrix
+            _SQC_MEM_CACHE["ts"] = time.time()
 
-        _SQC_MEM_CACHE["rows"] = final_matrix
-        _SQC_MEM_CACHE["ts"] = time.time()
-
-        return _FastAPIJSONResponse(_build_sqc_response_payload(target_yr, final_matrix))
+        return JSONResponse(_build_sqc_response_payload(target_yr, final_matrix))
     except Exception as e:
-        return _FastAPIJSONResponse({"ok": False, "error": str(e)}, status_code=500)
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 # ============================ [api/index.py - PART 4 / 4 끝] ============================

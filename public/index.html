@@ -1701,6 +1701,356 @@
         border-radius: 10px;
       }
     }
+/* ==================== [확장] 심사·출장 배너 / 메인 LOT 역추적 독 / 자가품질검사 매트릭스 ==================== */
+    .q3-sup-upcoming-strip {
+      margin-bottom: 6px;
+      padding: 5px 9px;
+      border-radius: 7px;
+      background: #FFFBEB;
+      border: 1px solid #FCD34D;
+      color: #92400E;
+      font-size: var(--fs-xs, 11.5px);
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .q3-sup-upcoming-strip:hover { background: #FEF3C7; }
+
+    .badge-click-toggle {
+      cursor: pointer;
+      transition: transform 0.12s ease, filter 0.12s ease;
+      user-select: none;
+    }
+    .badge-click-toggle:hover {
+      transform: scale(1.05);
+      filter: brightness(0.94);
+    }
+
+    /* 메인 Q4 1초 LOT 역추적 독 */
+    .q4-trace-dock {
+      margin-top: auto;
+      background: linear-gradient(135deg, #EFF6FF 0%, #F8FAFC 100%);
+      border: 1.5px solid #93C5FD;
+      border-radius: 10px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      flex-shrink: 0;
+    }
+    .q4-quick-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .q4-quick-inp {
+      flex: 1;
+      min-width: 0;
+      height: 30px;
+      padding: 0 10px;
+      border: 1px solid #93C5FD;
+      border-radius: 7px;
+      background: #FFFFFF;
+      font-size: 12px;
+      font-weight: 700;
+      color: #0F172A;
+      outline: none;
+    }
+    .q4-quick-inp:focus {
+      border-color: #003378;
+      box-shadow: 0 0 0 2px rgba(0, 51, 120, 0.14);
+    }
+    .q4-lot-btns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+    }
+    .btn-lot-hero {
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: none;
+      font-size: 12.5px;
+      font-weight: 900;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      color: #FFFFFF;
+      transition: transform 0.12s, filter 0.12s;
+    }
+    .btn-lot-hero.dairy {
+      background: linear-gradient(135deg, #003378 0%, #0052B4 100%);
+    }
+    .btn-lot-hero.rt {
+      background: linear-gradient(135deg, #0F766E 0%, #0D9488 100%);
+    }
+    .btn-lot-hero:hover { transform: translateY(-1px); filter: brightness(1.06); }
+
+    /* 미생물 검사일보 내 서브탭 바 */
+    .micro-subtab-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      background: #FFFFFF;
+      border: 1px solid #CBD5E1;
+      border-radius: 11px;
+      flex-wrap: wrap;
+    }
+    .micro-subtab-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #F1F5F9;
+      padding: 4px;
+      border-radius: 9px;
+    }
+    .micro-subtab-btn {
+      padding: 7px 15px;
+      border-radius: 7px;
+      border: none;
+      background: transparent;
+      color: #475569;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .micro-subtab-btn.active {
+      background: #003378;
+      color: #FFFFFF;
+      box-shadow: 0 2px 6px rgba(0, 51, 120, 0.22);
+    }
+
+    /* 자가품질검사 20종 × 12개월 매트릭스 테이블 */
+    .sqc-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      padding: 10px 14px;
+      background: #FFFFFF;
+      border: 1px solid #CBD5E1;
+      border-radius: 11px;
+      flex-wrap: wrap;
+    }
+    .sqc-stat-pills {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .sqc-pill {
+      padding: 4px 10px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 800;
+      background: #EFF6FF;
+      color: #1E40AF;
+      border: 1px solid #BFDBFE;
+    }
+    .sqc-pill.dairy { background: #EEF2FF; color: #3730A3; border-color: #C7D2FE; }
+    .sqc-pill.rt { background: #ECFDF5; color: #065F46; border-color: #A7F3D0; }
+
+    .sqc-table-wrap {
+      background: #FFFFFF;
+      border: 1px solid #CBD5E1;
+      border-radius: 11px;
+      overflow: auto;
+      max-height: calc(100vh - 215px);
+    }
+    table.sqc-matrix-tbl {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      table-layout: fixed;
+      min-width: 1260px;
+    }
+    table.sqc-matrix-tbl thead th {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      background: #0F294A;
+      color: #FFFFFF;
+      font-weight: 800;
+      padding: 8px 5px;
+      border: 1px solid #1E3A5F;
+      text-align: center;
+      white-space: nowrap;
+    }
+    table.sqc-matrix-tbl thead tr.sqc-yr-hdr th {
+      background: #003378;
+      font-size: 13px;
+      padding: 6px;
+    }
+    table.sqc-matrix-tbl thead th.cur-m-col {
+      background: #1D4ED8;
+      box-shadow: inset 0 -3px 0 #FACC15;
+    }
+    table.sqc-matrix-tbl td {
+      border: 1px solid #E2E8F0;
+      padding: 5px 6px;
+      vertical-align: middle;
+      color: #0F172A;
+    }
+    table.sqc-matrix-tbl td.sqc-col-no {
+      width: 42px;
+      text-align: center;
+      font-weight: 900;
+      background: #F8FAFC;
+      color: #334155;
+    }
+    table.sqc-matrix-tbl td.sqc-col-maj {
+      width: 64px;
+      text-align: center;
+      font-weight: 900;
+      background: #F1F5F9;
+    }
+    table.sqc-matrix-tbl td.sqc-col-maj.maj-livestock {
+      background: #EFF6FF;
+      color: #003378;
+    }
+    table.sqc-matrix-tbl td.sqc-col-maj.maj-food {
+      background: #ECFDF5;
+      color: #065F46;
+    }
+    table.sqc-matrix-tbl td.sqc-col-mid {
+      width: 108px;
+      font-weight: 700;
+      background: #FAFAFA;
+      color: #334155;
+    }
+    table.sqc-matrix-tbl td.sqc-col-sub {
+      width: 185px;
+      font-weight: 800;
+      background: #FFFFFF;
+    }
+    .sqc-line-tag {
+      display: inline-block;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 800;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+    .sqc-line-tag.dairy { background: #DBEAFE; color: #1E40AF; }
+    .sqc-line-tag.rt { background: #D1FAE5; color: #065F46; }
+
+    table.sqc-matrix-tbl td.sqc-m-cell {
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.12s ease;
+      padding: 4px 4px;
+      min-height: 44px;
+    }
+    table.sqc-matrix-tbl td.sqc-m-cell:hover {
+      background: #EFF6FF;
+    }
+    table.sqc-matrix-tbl td.sqc-m-cell.checked {
+      background: #ECFDF5;
+    }
+    table.sqc-matrix-tbl td.sqc-m-cell.checked:hover {
+      background: #D1FAE5;
+    }
+    table.sqc-matrix-tbl td.sqc-m-cell.cur-m-bg:not(.checked) {
+      background: #FEFCE8;
+    }
+    .sqc-unchk-box {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border: 1.8px solid #CBD5E1;
+      border-radius: 5px;
+      background: #FFFFFF;
+      color: transparent;
+      font-size: 12px;
+    }
+    td.sqc-m-cell:hover .sqc-unchk-box {
+      border-color: #2563EB;
+    }
+    .sqc-done-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 2px;
+      text-align: left;
+    }
+    .sqc-prod-chip {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: #FFFFFF;
+      border: 1px solid #6EE7B7;
+      color: #065F46;
+      font-size: 10.5px;
+      font-weight: 800;
+      line-height: 1.25;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sqc-prod-chip.second {
+      border-color: #93C5FD;
+      color: #1E40AF;
+      background: #EFF6FF;
+    }
+
+    /* 자가품질검사 체크 등록 모달 */
+    .sqc-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 2200;
+      background: rgba(15, 23, 42, 0.52);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .sqc-modal-backdrop.open { display: flex; }
+    .sqc-modal-card {
+      width: 100%;
+      max-width: 480px;
+      background: #FFFFFF;
+      border-radius: 14px;
+      border: 1px solid #CBD5E1;
+      box-shadow: 0 20px 45px rgba(15, 23, 42, 0.28);
+      overflow: hidden;
+    }
+    .sqc-modal-hdr {
+      padding: 14px 18px;
+      background: #003378;
+      color: #FFFFFF;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sqc-modal-body {
+      padding: 16px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .sqc-modal-ftr {
+      padding: 12px 18px;
+      background: #F8FAFC;
+      border-top: 1px solid #E2E8F0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
   </style>
 </head>
 <body>
@@ -1899,14 +2249,19 @@
             </div>
           </div>
           <div class="q4-body" id="q4BodyBox"></div>
-          <div style="margin-top:7px; display:flex; flex-direction:column; gap:5px; flex-shrink:0;">
-            <div class="q4-lot-btns">
-              <button class="btn-lot-wide" onclick="openLotViewWithScope('DAIRY')">❄️ 냉장 역추적 ›</button>
-              <button class="btn-lot-wide" onclick="openLotViewWithScope('RT')">📦 상온 역추적 ›</button>
+          <div class="q4-trace-dock">
+            <div class="q4-quick-row">
+              <span style="font-size:11.5px; font-weight:900; color:#003378; white-space:nowrap;">⚡ 1초 역추적</span>
+              <input type="text" id="inpHomeQuickTrace" class="q4-quick-inp"
+                placeholder="제품명 또는 소비기한(예: 12.08, 2027.06.23, NOV.23.2027) 입력 후 Enter"
+                onkeydown="if(event.key==='Enter') runHomeQuickLotTrace()" />
+              <button type="button" class="btn btn-primary btn-sm" onclick="runHomeQuickLotTrace()">조회</button>
             </div>
-            <div class="q4-foot-caption">포장 제품명·소비기한으로 가동시간 · 살균/멸균 CCP · 미생물(주1~12) · 두유배양을 즉시 조회합니다.</div>
+            <div class="q4-lot-btns">
+              <button type="button" class="btn-lot-hero dairy" onclick="openLotViewWithScope('DAIRY')">❄️ 냉장 LOT 역추적 ›</button>
+              <button type="button" class="btn-lot-hero rt" onclick="openLotViewWithScope('RT')">📦 상온 LOT 역추적 ›</button>
+            </div>
           </div>
-        </div>
       </div>
     </section>
 
@@ -1918,7 +2273,44 @@
     <section id="view-supplier" class="view-section"></section>
     <section id="view-law" class="view-section"></section>
     <section id="view-process" class="view-section"></section>
-    <section id="view-micro" class="view-section"></section>
+    <section id="view-micro" class="view-section">
+      <!-- 미생물 검사일보 상단 서브탭 전환 바 -->
+      <div class="micro-subtab-bar" id="microSubtabBar">
+        <div class="micro-subtab-group">
+          <button type="button" class="micro-subtab-btn active" id="btnMicroTabDaily" onclick="switchMicroSubTab('daily')">
+            🧪 일일 미생물 출고 판정 일보
+          </button>
+          <button type="button" class="micro-subtab-btn" id="btnMicroTabSqc" onclick="switchMicroSubTab('sqc')">
+            📋 월별 자가품질검사 진행현황 (20종)
+          </button>
+        </div>
+        <div style="font-size:12px; font-weight:700; color:#64748B;">
+          ※ 자가품질검사 내역은 미생물 일보 시트 내 숨김 DB(<code>_이력DB_자가품질검사</code>)에 연도별로 자동 보관됩니다.
+        </div>
+      </div>
+
+      <!-- [서브탭 2] 월별 자가품질검사 진행현황 패널 -->
+      <div id="microSubPaneSqc" style="display:none;">
+        <div class="sqc-toolbar">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <strong style="font-size:15px; font-weight:900; color:#003378;">📋 자가품질검사 연도·월별 진행사항</strong>
+            <select id="selSqcFiscalYear" class="form-ctrl" style="width:115px; font-weight:800;" onchange="changeSqcYear(this.value)">
+              <option value="2026년">2026년</option>
+              <option value="2027년">2027년</option>
+              <option value="2028년">2028년</option>
+            </select>
+            <button type="button" class="btn btn-sm" onclick="loadSelfQualityData(true)">🔄 새로고침</button>
+          </div>
+          <div class="sqc-stat-pills" id="sqcSummaryPills">
+            <span class="sqc-pill">대상 유형 20종</span>
+            <span class="sqc-pill dairy">❄️ 축산물(냉장) : 병·카톤·발효유 연동</span>
+            <span class="sqc-pill rt">📦 축산물(멸균)·식품 : 상온 연동</span>
+          </div>
+        </div>
+        <div class="sqc-table-wrap" id="sqcMatrixTableBox">
+          <div style="padding:28px; text-align:center; color:#64748B; font-weight:700;">자가품질검사 데이터를 불러오는 중입니다...</div>
+        </div>
+      </div></section>
     <section id="view-lot" class="view-section"></section>
     <section id="view-claim" class="view-section"></section>
     <section id="view-cost" class="view-section"></section>
@@ -2456,19 +2848,29 @@ function renderHome() {
 
   // --- [Q3] 왼쪽 심사일정 탭(BUNDLE.audit.schedules) 데이터 그대로 출력 ---
   try {
+    // --- [Q3] 방문심사(준비20->심사50->현장75->서류90->종료100) + 협력업체(방문예정/방문완료) 2단 정렬 ---
+  try {
     const auWrap = BUNDLE.audit || {};
     const au = auWrap.summary || {};
     const steps = [
       ['심사준비중', '준비중 20%'],
       ['심사중', '심사중 50%'],
-      ['서류심사중', '서류 75%'],
-      ['현장심사중', '현장 85%'],
+      ['현장심사중', '현장 75%'],
+      ['서류심사중', '서류 90%'],
       ['심사종료', '종료 100%']
     ];
-    const isRecentDone = String(au.visit_title || '').indexOf('최근 방문심사') !== -1 && au.status === '심사종료';
-    const heroBadgeTxt = isRecentDone ? '최근 수검' : '차기 최우선';
+    const isRecentDone = Boolean(au.is_recent_done) || (String(au.visit_title || '').indexOf('최근 방문심사') !== -1 && au.status === '심사종료');
+    const heroBadgeTxt = isRecentDone ? '최근 수검' : '당사 수검';
+
+    const upcomingSupStripHtml = au.upcoming_sup_banner
+      ? '<div class="q3-sup-upcoming-strip" onclick="switchView(\'audit\', \'schedule\')" title="클릭 시 일정 등록·관리 화면으로 이동">' +
+          '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">🚐 <b>차기 협력업체 방문 :</b> ' + esc(au.upcoming_sup_banner) + '</span>' +
+          '<span style="font-size:11px; white-space:nowrap;">일정 관리 ›</span>' +
+        '</div>'
+      : '';
 
     setHtml('q3HeroBox',
+      upcomingSupStripHtml +
       '<div class="q3-banner-line">' +
         '<span class="q3-tag-navy">' + heroBadgeTxt + '</span>' +
         '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + esc(au.visit_title || '-') + '"><b>' + esc(au.visit_title || '-') + '</b></span>' +
@@ -2482,29 +2884,40 @@ function renderHome() {
       '</div>'
     );
 
-    const allScheds = (auWrap.schedules || []).slice().sort(function(a, b) {
-      return String(b['심사일자'] || '').localeCompare(String(a['심사일자'] || ''));
-    });
-    const visitList = allScheds.filter(function(s) { return s['구분'] !== '협력업체 방문'; });
-    const supVisitList = allScheds.filter(function(s) { return s['구분'] === '협력업체 방문'; });
+    const orderedScheds = sortSchedulesTwoTierClient(auWrap.schedules || []);
+    const visitList = orderedScheds.filter(function(s) { return s['구분'] !== '협력업체 방문'; });
+    const supSchedList = orderedScheds.filter(function(s) { return s['구분'] === '협력업체 방문'; });
 
     setHtml('q3VisitList', visitList.length ? visitList.map(function(s) {
-      const bCls = s['진행현황'] === '심사종료' ? 'badge-ok' : 'badge-info';
+      const stNorm = normalizeScheduleStatusClient(s['구분'], s['진행현황']);
+      const isDone = (stNorm === '심사종료');
+      const bCls = isDone ? 'badge-ok' : (stNorm === '심사준비중' ? 'badge-info' : 'badge-warn');
       const dtShort = String(s['심사일자'] || '').length >= 10 ? String(s['심사일자']).slice(5) : String(s['심사일자'] || '-');
+      const ddayPill = (!isDone && s.d_day_label && s.d_day_label !== '-')
+        ? '<span class="badge badge-warn" style="font-size:10px; padding:1px 5px; margin-right:3px;">' + esc(s.d_day_label) + '</span>'
+        : '';
       return '<div class="mini-item" onclick="switchView(\'audit\', \'schedule\')" style="display:flex; justify-content:space-between; align-items:center; gap:5px;">' +
-        '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><b>' + esc(dtShort) + '</b> ' + esc(s['심사명'] || '-') + '</span>' +
-        '<span class="badge ' + bCls + '">' + esc(s['진행현황'] || '-') + '</span>' +
+        '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + ddayPill + '<b>' + esc(dtShort) + '</b> ' + esc(s['심사명'] || '-') + '</span>' +
+        '<span class="badge ' + bCls + '">' + esc(stNorm) + '</span>' +
       '</div>';
     }).join('') : '<div style="font-size:11.5px; color:var(--text-muted); padding:6px;">등록된 방문심사 없음</div>');
 
-    setHtml('q3SupVisitList', supVisitList.length ? supVisitList.map(function(s) {
-      const bCls = s['진행현황'] === '심사종료' ? 'badge-ok' : 'badge-warn';
+    setHtml('q3SupVisitList', supSchedList.length ? supSchedList.map(function(s) {
+      const stSup = normalizeScheduleStatusClient('협력업체 방문', s['진행현황']);
+      const isSupDone = (stSup === '방문완료');
+      const nextSt = isSupDone ? '방문예정' : '방문완료';
+      const bCls = isSupDone ? 'badge-ok' : 'badge-warn';
       const dtShort = String(s['심사일자'] || '').length >= 10 ? String(s['심사일자']).slice(5) : String(s['심사일자'] || '-');
+      const uidVal = String(s.uid || s.id || '');
+      const ddayPill = (!isSupDone && s.d_day_label && s.d_day_label !== '-')
+        ? '<span class="badge badge-info" style="font-size:10px; padding:1px 5px; margin-right:3px;">' + esc(s.d_day_label) + '</span>'
+        : '';
       return '<div class="mini-item" onclick="switchView(\'audit\', \'schedule\')" style="display:flex; justify-content:space-between; align-items:center; gap:5px;">' +
-        '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><b>' + esc(dtShort) + '</b> ' + esc(s['심사명'] || '-') + '</span>' +
-        '<span class="badge ' + bCls + '">' + esc(s['진행현황'] || '-') + '</span>' +
+        '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + ddayPill + '<b>' + esc(dtShort) + '</b> ' + esc(s['심사명'] || '-') + '</span>' +
+        '<span class="badge ' + bCls + ' badge-click-toggle" title="클릭 시 [' + nextSt + '] 상태로 즉시 전환" ' +
+          'onclick="event.stopPropagation(); quickToggleSupplierVisitStatus(\'' + esc(uidVal) + '\', \'' + stSup + '\')">' + esc(stSup) + '</span>' +
       '</div>';
-    }).join('') : '<div style="font-size:11.5px; color:var(--text-muted); padding:6px;">등록된 협력업체 방문 없음</div>');
+    }).join('') : '<div style="font-size:11.5px; color:var(--text-muted); padding:6px;">등록된 협력업체 방문 일정 없음</div>');
   } catch (err3) {
     setHtml('q3VisitList', '<div style="color:var(--err-fg); font-size:12px; padding:8px;">일정 표시 오류: ' + esc(err3.message) + '</div>');
   }
@@ -6867,6 +7280,536 @@ window.addEventListener('DOMContentLoaded', async function() {
     }
   }, 180000);
 });
+
+/* ============================================================================
+ * [Q-Safety 통합 확장 모듈]
+ * 1) 심사·협력업체 2단 정렬(미완료 임박순 상단 / 완료 최신순 하단) & 원클릭 상태 전환 & 모달 상태 이원화
+ * 2) 메인 Q4 1초 LOT 역추적 즉시 실행 (영문 소비기한 NOV.23.2027 호환)
+ * 3) 미생물 검사일보 내 [자가품질검사 진행현황] (20종 × 3월~익년2월 체크박스 & 냉장/상온 1·2차 제품 등록)
+ * 4) 브라우저 탭 비활성(document.hidden) 시 백그라운드 자동갱신 일시정지 (Vercel CPU 절약 안전장치)
+ * ============================================================================ */
+
+// --- [1] 심사·출장 상태 정규화, 2단 정렬, 원클릭 전환 및 일정 등록 모달 연동 ---
+function normalizeScheduleStatusClient(gubun, rawStatus) {
+  const g = String(gubun || '').trim();
+  const s = String(rawStatus || '').trim();
+  if (g === '협력업체 방문') {
+    return (s === '방문완료' || s === '심사종료' || s === '완료' || s === '점검완료') ? '방문완료' : '방문예정';
+  }
+  if (s === '방문완료') return '심사종료';
+  if (s === '방문예정' || !s) return '심사준비중';
+  return s;
+}
+
+function calcClientDdayLabel(isoDateStr) {
+  const s = String(isoDateStr || '').trim();
+  if (s.length < 10) return '-';
+  const parts = s.slice(0, 10).split('-');
+  if (parts.length !== 3) return '-';
+  const target = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 12, 0, 0);
+  if (isNaN(target.getTime())) return '-';
+
+  const nowKstStr = (BUNDLE && BUNDLE.today_iso) ? String(BUNDLE.today_iso) : new Date().toISOString().slice(0, 10);
+  const np = nowKstStr.split('-');
+  const today = new Date(Number(np[0]), Number(np[1]) - 1, Number(np[2]), 12, 0, 0);
+  const diff = Math.round((target.getTime() - today.getTime()) / 86400000);
+  if (diff === 0) return 'D-Day';
+  return diff > 0 ? ('D-' + diff) : ('D+' + Math.abs(diff));
+}
+
+function sortSchedulesTwoTierClient(rawList) {
+  const pending = [];
+  const completed = [];
+  (rawList || []).forEach(function(item) {
+    if (!item) return;
+    const copy = Object.assign({}, item);
+    const gubun = String(copy['구분'] || '방문심사').trim();
+    const stNorm = normalizeScheduleStatusClient(gubun, copy['진행현황']);
+    copy['진행현황'] = stNorm;
+    const isDone = (stNorm === '심사종료' || stNorm === '방문완료');
+    if (!copy.d_day_label) {
+      copy.d_day_label = isDone ? '완료' : calcClientDdayLabel(copy['심사일자']);
+    }
+    if (isDone) {
+      completed.push(copy);
+    } else {
+      pending.push(copy);
+    }
+  });
+
+  // 미완료(심사준비중~서류심사중 / 방문예정): 임박한 날짜 오름차순 (맨 위 배치)
+  pending.sort(function(a, b) {
+    const da = String(a['심사일자'] || '9999-99-99');
+    const db = String(b['심사일자'] || '9999-99-99');
+    if (da !== db) return da.localeCompare(db);
+    return String(a['심사명'] || '').localeCompare(String(b['심사명'] || ''));
+  });
+
+  // 완료(심사종료 / 방문완료): 가장 최근 날짜 내림차순 (하단 배치)
+  completed.sort(function(a, b) {
+    const da = String(a['심사일자'] || '0000-00-00');
+    const db = String(b['심사일자'] || '0000-00-00');
+    if (da !== db) return db.localeCompare(da);
+    return String(a['심사명'] || '').localeCompare(String(b['심사명'] || ''));
+  });
+
+  return pending.concat(completed);
+}
+
+async function quickToggleSupplierVisitStatus(uid, currentStatus) {
+  if (!uid) {
+    switchView('audit', 'schedule');
+    return;
+  }
+  const nextStatus = (currentStatus === '방문완료') ? '방문예정' : '방문완료';
+  if (typeof quickChangeAuditStatus === 'function') {
+    await quickChangeAuditStatus(uid, nextStatus);
+  }
+}
+
+// 일정 등록·수정 화면에서 [구분]을 '방문심사' <-> '협력업체 방문' 변경 시 진행상태 드롭다운 옵션 자동 전환
+(function bindAuditTypeStatusSync() {
+  const VISIT_OPTS = [
+    ['심사준비중', '심사준비중 (20%)'],
+    ['심사중', '심사중 (50%)'],
+    ['현장심사중', '현장심사중 (75%)'],
+    ['서류심사중', '서류심사중 (90%)'],
+    ['심사종료', '심사종료 (100%)']
+  ];
+  const SUP_OPTS = [
+    ['방문예정', '방문예정'],
+    ['방문완료', '방문완료']
+  ];
+
+  function syncStatusSelectForType(typeSel) {
+    if (!typeSel) return;
+    const container = typeSel.closest('form, .modal-card, .panel-card, #view-audit') || document;
+    const selects = container.querySelectorAll('select');
+    let statusSel = null;
+    selects.forEach(function(s) {
+      if (s === typeSel) return;
+      const txt = Array.from(s.options).map(function(o) { return o.value + ' ' + o.text; }).join(' ');
+      if (txt.indexOf('심사준비중') !== -1 || txt.indexOf('방문예정') !== -1 || txt.indexOf('심사종료') !== -1) {
+        statusSel = s;
+      }
+    });
+    if (!statusSel) return;
+
+    const prevVal = statusSel.value;
+    const isSup = (String(typeSel.value).trim() === '협력업체 방문');
+    const targetOpts = isSup ? SUP_OPTS : VISIT_OPTS;
+
+    statusSel.innerHTML = targetOpts.map(function(pair) {
+      return '<option value="' + pair[0] + '">' + pair[1] + '</option>';
+    }).join('');
+
+    const normPrev = normalizeScheduleStatusClient(typeSel.value, prevVal);
+    if (targetOpts.some(function(p) { return p[0] === normPrev; })) {
+      statusSel.value = normPrev;
+    }
+  }
+
+  document.addEventListener('change', function(ev) {
+    const t = ev.target;
+    if (!t || t.tagName !== 'SELECT') return;
+    const optTxt = Array.from(t.options).map(function(o) { return o.value; }).join('|');
+    if (optTxt.indexOf('협력업체 방문') !== -1 && optTxt.indexOf('방문심사') !== -1) {
+      syncStatusSelectForType(t);
+    }
+  });
+})();
+
+
+// --- [2] 메인 Q4 1초 LOT 역추적 즉시 실행 ---
+async function runHomeQuickLotTrace() {
+  const inp = document.getElementById('inpHomeQuickTrace');
+  const q = inp ? String(inp.value || '').trim() : '';
+  if (!q) {
+    if (typeof openLotViewWithScope === 'function') openLotViewWithScope('DAIRY');
+    return;
+  }
+  const globalInp = document.getElementById('inpGlobalSearch');
+  if (globalInp) {
+    globalInp.value = q;
+  }
+  if (typeof runGlobalLotSearch === 'function') {
+    await runGlobalLotSearch();
+  } else if (typeof openLotViewWithScope === 'function') {
+    openLotViewWithScope('ALL');
+  }
+}
+
+
+// --- [3] 미생물 검사일보 내 [자가품질검사 진행현황] 모듈 ---
+let SQC_STATE = {
+  loaded: false,
+  year: '',
+  months: ['3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월', '1월', '2월'],
+  categories: [],
+  records: {},
+  summary: {},
+  product_suggestions: { dairy: [], rt: [] },
+  editing: { item_no: 0, month: '' }
+};
+
+function switchMicroSubTab(mode) {
+  const isSqc = (mode === 'sqc');
+  const btnDaily = document.getElementById('btnMicroTabDaily');
+  const btnSqc = document.getElementById('btnMicroTabSqc');
+  const secMicro = document.getElementById('view-micro');
+
+  if (btnDaily) btnDaily.classList.toggle('active', !isSqc);
+  if (btnSqc) btnSqc.classList.toggle('active', isSqc);
+
+  // 감싸는 div 없이도 #view-micro 안의 기존 요소들을 자동으로 숨김/표시 처리
+  if (secMicro) {
+    Array.from(secMicro.children).forEach(function(el) {
+      if (el.id === 'microSubtabBar') return; // 상단 서브탭 버튼바는 항상 표시
+      if (el.id === 'microSubPaneSqc') {
+        el.style.display = isSqc ? '' : 'none';
+      } else {
+        el.style.display = isSqc ? 'none' : '';
+      }
+    });
+  }
+
+  if (isSqc && !SQC_STATE.loaded) {
+    loadSelfQualityData(false);
+  }
+}
+
+async function changeSqcYear(yrVal) {
+  SQC_STATE.year = yrVal;
+  await loadSelfQualityData(false);
+}
+
+function collectClientProductPool(lineType) {
+  const pool = new Set();
+  const srvSug = (SQC_STATE.product_suggestions && SQC_STATE.product_suggestions[lineType === 'DAIRY' ? 'dairy' : 'rt']) || [];
+  srvSug.forEach(function(p) { if (p && p !== '-') pool.add(String(p).trim()); });
+
+  if (typeof BUNDLE === 'object' && BUNDLE && BUNDLE.process) {
+    const proc = BUNDLE.process;
+    const scanKeys = (lineType === 'DAIRY')
+      ? ['dairy_rows', 'dairy_today_rows', 'dairy_yest_rows', 'milk_rows', 'ferm_rows', 'dairy_items']
+      : ['rt_rows', 'rt_today_rows', 'rt_yest_rows', 'soy_rows', 'rt_items'];
+
+    scanKeys.forEach(function(k) {
+      const arr = proc[k];
+      if (Array.isArray(arr)) {
+        arr.forEach(function(r) {
+          if (!r || typeof r !== 'object') return;
+          const nm = String(r['제품명'] || r['생산제품명'] || r['품목명'] || r.product_name || r.name || '').trim();
+          if (nm && nm !== '-') pool.add(nm);
+        });
+      }
+    });
+  }
+  return Array.from(pool).sort(function(a, b) { return a.localeCompare(b, 'ko'); });
+}
+
+async function loadSelfQualityData(forceReload) {
+  const box = document.getElementById('sqcMatrixTableBox');
+  if (box && !SQC_STATE.loaded) {
+    box.innerHTML = '<div style="padding:28px; text-align:center; color:#64748B; font-weight:700;">자가품질검사 DB를 불러오는 중입니다...</div>';
+  }
+  try {
+    const yrParam = SQC_STATE.year ? ('year=' + encodeURIComponent(SQC_STATE.year) + '&') : '';
+    const res = await fetch('/api/self-quality?' + yrParam + 'force=' + (forceReload ? '1' : '0'));
+    const data = await res.json();
+    if (!data || !data.ok) {
+      throw new Error((data && data.error) || '자가품질검사 데이터를 불러오지 못했습니다.');
+    }
+    applySqcPayloadAndRender(data);
+  } catch (err) {
+    if (box) {
+      box.innerHTML = '<div style="padding:24px; text-align:center; color:#DC2626; font-weight:800;">⚠️ 조회 오류: ' + esc(err.message) + '</div>';
+    }
+  }
+}
+
+function applySqcPayloadAndRender(data) {
+  SQC_STATE.loaded = true;
+  SQC_STATE.year = data.year || '2026년';
+  SQC_STATE.months = data.months || SQC_STATE.months;
+  SQC_STATE.categories = data.categories || [];
+  SQC_STATE.records = data.records || {};
+  SQC_STATE.summary = data.summary || {};
+  SQC_STATE.product_suggestions = data.product_suggestions || { dairy: [], rt: [] };
+
+  const selYr = document.getElementById('selSqcFiscalYear');
+  if (selYr && Array.isArray(data.available_years)) {
+    const yrs = data.available_years.slice();
+    const nextYrNum = parseInt(SQC_STATE.year, 10) + 1;
+    if (!isNaN(nextYrNum) && yrs.indexOf(nextYrNum + '년') === -1) {
+      yrs.push(nextYrNum + '년');
+    }
+    yrs.sort();
+    selYr.innerHTML = yrs.map(function(y) {
+      return '<option value="' + esc(y) + '"' + (y === SQC_STATE.year ? ' selected' : '') + '>' + esc(y) + '</option>';
+    }).join('');
+  }
+
+  const pillsEl = document.getElementById('sqcSummaryPills');
+  if (pillsEl) {
+    const sm = SQC_STATE.summary;
+    pillsEl.innerHTML =
+      '<span class="sqc-pill">연간 누적 실시 : <b>' + (sm.checked_cells_cnt || 0) + '건</b> (' + (sm.checked_categories_cnt || 0) + '/' + (sm.total_categories || 20) + '유형)</span>' +
+      '<span class="sqc-pill" style="background:#FEFCE8; color:#854D0E; border-color:#FDE047;">당월(' + esc(sm.cur_month_label || '-') + ') 등록 : <b>' + (sm.cur_month_done_cnt || 0) + '건</b></span>' +
+      '<span class="sqc-pill dairy">❄️ 축산물(냉장 5종) : 병·카톤·발효유</span>' +
+      '<span class="sqc-pill rt">📦 축산물(멸균 4종)·식품(11종) : 상온</span>';
+  }
+
+  renderSelfQualityMatrixTable();
+}
+
+function renderSelfQualityMatrixTable() {
+  const box = document.getElementById('sqcMatrixTableBox');
+  if (!box) return;
+
+  const cats = SQC_STATE.categories || [];
+  const months = SQC_STATE.months || [];
+  const curMLbl = (SQC_STATE.summary && SQC_STATE.summary.cur_month_label) || '';
+
+  const livestockCnt = cats.filter(function(c) { return c.major === '축산물'; }).length;
+  const foodCnt = cats.filter(function(c) { return c.major === '식품'; }).length;
+  let livestockPrinted = false;
+  let foodPrinted = false;
+
+  let html = '<table class="sqc-matrix-tbl"><thead>';
+  html += '<tr class="sqc-yr-hdr">' +
+    '<th rowspan="2" style="width:42px;">구분</th>' +
+    '<th rowspan="2" style="width:64px;">대분류</th>' +
+    '<th rowspan="2" style="width:108px;">중분류</th>' +
+    '<th rowspan="2" style="width:195px;">소분류 (연동 라인)</th>' +
+    '<th colspan="' + months.length + '">' + esc(SQC_STATE.year) + ' 자가품질검사 진행현황 (체크 시 실시 제품명 등록 · 1차/2차 지원)</th>' +
+  '</tr><tr>';
+
+  months.forEach(function(m) {
+    const isCur = (m === curMLbl);
+    html += '<th class="' + (isCur ? 'cur-m-col' : '') + '">' + esc(m) + '</th>';
+  });
+  html += '</tr></thead><tbody>';
+
+  cats.forEach(function(cat) {
+    html += '<tr>';
+    html += '<td class="sqc-col-no">' + cat.no + '</td>';
+
+    if (cat.major === '축산물' && !livestockPrinted) {
+      livestockPrinted = true;
+      html += '<td class="sqc-col-maj maj-livestock" rowspan="' + livestockCnt + '">축산물</td>';
+    } else if (cat.major === '식품' && !foodPrinted) {
+      foodPrinted = true;
+      html += '<td class="sqc-col-maj maj-food" rowspan="' + foodCnt + '">식품</td>';
+    }
+
+    const lineBadge = cat.line_type === 'DAIRY'
+      ? '<span class="sqc-line-tag dairy">냉장</span>'
+      : '<span class="sqc-line-tag rt">상온</span>';
+
+    html += '<td class="sqc-col-mid">' + esc(cat.mid) + '</td>';
+    html += '<td class="sqc-col-sub">' + esc(cat.sub) + lineBadge + '</td>';
+
+    months.forEach(function(m) {
+      const key = cat.no + '_' + m;
+      const rec = SQC_STATE.records[key];
+      const isCur = (m === curMLbl);
+
+      if (rec && rec.checked) {
+        const p1 = rec.prod_1 || '-';
+        const p2 = rec.prod_2 || '';
+        const tip = '[' + cat.sub + ' · ' + m + ']\n1차: ' + p1 + (p2 ? ('\n2차: ' + p2) : '') + '\n(클릭 시 수정 또는 체크 해제)';
+        html += '<td class="sqc-m-cell checked" title="' + esc(tip) + '" onclick="openSqcCellModal(' + cat.no + ', \'' + esc(m) + '\')">' +
+          '<div class="sqc-done-wrap">' +
+            '<div class="sqc-prod-chip"><span>☑</span><span style="overflow:hidden; text-overflow:ellipsis;">' + esc(p1) + '</span></div>' +
+            (p2 ? '<div class="sqc-prod-chip second"><span>2차</span><span style="overflow:hidden; text-overflow:ellipsis;">' + esc(p2) + '</span></div>' : '') +
+          '</div>' +
+        '</td>';
+      } else {
+        html += '<td class="sqc-m-cell' + (isCur ? ' cur-m-bg' : '') + '" title="클릭하여 ' + esc(m) + ' 검사 실시 체크 및 제품명 등록" onclick="openSqcCellModal(' + cat.no + ', \'' + esc(m) + '\')">' +
+          '<span class="sqc-unchk-box">✓</span>' +
+        '</td>';
+      }
+    });
+
+    html += '</tr>';
+  });
+
+  html += '</tbody></table>';
+  box.innerHTML = html;
+}
+
+function toggleSqcSecondInput(show) {
+  const btnRow = document.getElementById('sqcSecondProdBtnRow');
+  const wrap = document.getElementById('sqcSecondProdWrap');
+  const inp2 = document.getElementById('inpSqcProd2');
+  if (btnRow) btnRow.style.display = show ? 'none' : '';
+  if (wrap) wrap.style.display = show ? '' : 'none';
+  if (!show && inp2) inp2.value = '';
+  if (show && inp2) setTimeout(function() { inp2.focus(); }, 40);
+}
+
+function openSqcCellModal(itemNo, monthLbl) {
+  const cat = (SQC_STATE.categories || []).find(function(c) { return c.no === itemNo; });
+  if (!cat) return;
+
+  SQC_STATE.editing = { item_no: itemNo, month: monthLbl };
+  const key = itemNo + '_' + monthLbl;
+  const existing = SQC_STATE.records[key] || null;
+
+  const modal = document.getElementById('modalSelfQuality');
+  const metaEl = document.getElementById('sqcModalMetaBadge');
+  const hintEl = document.getElementById('sqcLineHintTxt');
+  const inp1 = document.getElementById('inpSqcProd1');
+  const inp2 = document.getElementById('inpSqcProd2');
+  const btnDel = document.getElementById('btnSqcUncheckDelete');
+  const dl = document.getElementById('dlSqcProdSuggestions');
+
+  if (metaEl) {
+    metaEl.innerHTML = '[' + esc(SQC_STATE.year) + ' · <b>' + esc(monthLbl) + '</b>] &nbsp;#' + cat.no + ' ' +
+      esc(cat.major) + ' › ' + esc(cat.mid) + ' › <span style="color:#003378;">' + esc(cat.sub) + '</span>';
+  }
+  if (hintEl) {
+    hintEl.textContent = cat.line_type === 'DAIRY'
+      ? '(❄️ 냉장: 병·카톤·발효유 품목 자동 추천)'
+      : '(📦 상온: 멸균·두유·음료 품목 자동 추천)';
+  }
+
+  const sugPool = collectClientProductPool(cat.line_type);
+  if (dl) {
+    dl.innerHTML = sugPool.map(function(p) { return '<option value="' + esc(p) + '"></option>'; }).join('');
+  }
+
+  if (inp1) inp1.value = existing ? (existing.prod_1 || '') : '';
+  if (inp2) inp2.value = existing ? (existing.prod_2 || '') : '';
+
+  if (existing && existing.prod_2) {
+    toggleSqcSecondInput(true);
+  } else {
+    toggleSqcSecondInput(false);
+  }
+
+  if (btnDel) {
+    btnDel.style.display = existing ? '' : 'none';
+  }
+
+  if (modal) {
+    modal.classList.add('open');
+    if (inp1) setTimeout(function() { inp1.focus(); }, 60);
+  }
+}
+
+function closeSqcModal() {
+  const modal = document.getElementById('modalSelfQuality');
+  if (modal) modal.classList.remove('open');
+}
+
+async function saveSqcModalRecord() {
+  const { item_no, month } = SQC_STATE.editing;
+  if (!item_no || !month) return;
+
+  const inp1 = document.getElementById('inpSqcProd1');
+  const inp2 = document.getElementById('inpSqcProd2');
+  const prod1 = inp1 ? String(inp1.value || '').trim() : '';
+  const prod2 = inp2 ? String(inp2.value || '').trim() : '';
+
+  if (!prod1) {
+    alert('체크 등록을 위해 1차 검사 제품명을 입력해 주세요.');
+    if (inp1) inp1.focus();
+    return;
+  }
+
+  const btnSave = document.getElementById('btnSqcSaveSubmit');
+  if (btnSave) { btnSave.disabled = true; btnSave.textContent = '저장 중...'; }
+
+  try {
+    const res = await fetch('/api/self-quality', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        year: SQC_STATE.year,
+        item_no: item_no,
+        month: month,
+        checked: true,
+        prod_1: prod1,
+        prod_2: prod2
+      })
+    });
+    const data = await res.json();
+    if (!data || !data.ok) {
+      throw new Error((data && data.error) || '저장에 실패했습니다.');
+    }
+    applySqcPayloadAndRender(data);
+    closeSqcModal();
+  } catch (err) {
+    alert('자가품질검사 저장 오류: ' + err.message);
+  } finally {
+    if (btnSave) { btnSave.disabled = false; btnSave.textContent = '✓ 체크 및 제품명 저장'; }
+  }
+}
+
+async function uncheckAndDeleteSqcRecord() {
+  const { item_no, month } = SQC_STATE.editing;
+  if (!item_no || !month) return;
+  if (!confirm(month + ' 등록 내역을 체크 해제(삭제)하시겠습니까?')) return;
+
+  try {
+    const res = await fetch('/api/self-quality', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        year: SQC_STATE.year,
+        item_no: item_no,
+        month: month,
+        checked: false,
+        prod_1: '',
+        prod_2: ''
+      })
+    });
+    const data = await res.json();
+    if (!data || !data.ok) {
+      throw new Error((data && data.error) || '삭제에 실패했습니다.');
+    }
+    applySqcPayloadAndRender(data);
+    closeSqcModal();
+  } catch (err) {
+    alert('체크 해제 오류: ' + err.message);
+  }
+}
+
+
+// --- [4] 브라우저 창/탭 비활성(document.hidden) 시 백그라운드 자동갱신 일시정지 (Vercel CPU 절감) ---
+(function installVisibilityCpuGuard() {
+  let lastActiveFetchTs = Date.now();
+  const MIN_RESUME_REFRESH_MS = 180000; // 3분 이상 비활성 후 복귀했을 때만 1회 캐시 조회
+
+  const origFetch = window.fetch.bind(window);
+  window.fetch = function(input, init) {
+    const urlStr = (typeof input === 'string') ? input : ((input && input.url) || '');
+    // 화면이 백그라운드(최소화·다른 탭 보는 중)일 때 타이머에 의한 자동 /api/bundle 호출을 차단하여 서버 CPU 보호
+    if (document.hidden && urlStr.indexOf('/api/bundle') !== -1 && urlStr.indexOf('force=1') === -1) {
+      return Promise.resolve(new Response(JSON.stringify(window.BUNDLE || { ok: true, skipped_hidden: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }));
+    }
+    if (urlStr.indexOf('/api/bundle') !== -1) {
+      lastActiveFetchTs = Date.now();
+    }
+    return origFetch(input, init);
+  };
+
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && (Date.now() - lastActiveFetchTs >= MIN_RESUME_REFRESH_MS)) {
+      lastActiveFetchTs = Date.now();
+      if (typeof loadBundle === 'function') {
+        loadBundle(false);
+      } else if (typeof fetchBundle === 'function') {
+        fetchBundle(false);
+      }
+    }
+  });
+})();
 </script>
 </body>
 </html>

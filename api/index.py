@@ -222,6 +222,19 @@ CLAIM_HIST_COLS = [
     "진행상태", "최종판정", "대시보드노출", "수정일시"
 ]
 
+# '표시사항 현황' 시트 내 부자재 전환 추적 숨김 탭 및 기준일(2026-11-01)
+LABEL_TRANSITION_TAB = "_이력DB_부자재전환"
+LABEL_TRANSITION_CUTOFF = "2026-11-01"
+LABEL_TRANSITION_COLS = [
+    "추적ID", "원본문서번호", "구분", "진행단계", "표시사항제목",
+    "요청부서", "보관구분", "포장재유형", "심의완료일",
+    "매칭_부자재명", "매칭_포장품목명",
+    "부자재입고일", "부자재입고내역",
+    "전환포장일", "전환포장내역",
+    "메모", "수정일시"
+]
+_LABEL_TRANSITION_CACHE: Dict[str, Any] = {"records": []}
+
 SHEET_NAMES = {
     "cost": "원가절감 현황",
     "claim": "클레임 건수",
@@ -229,6 +242,7 @@ SHEET_NAMES = {
     "audit_db": "심사점수 및 일정 관리 DB",
     "label_status": "표시사항 현황",
     "raw_label_db": "원자재 표시사항 DB",
+    "raw_sub_db": "원부자재 DB",
     "process_soy": "[상온]두유 배양검사 일보",
     "process_rt": "[상온]상온제품 공정 관리 일보",
     "process_milk": "[우유] 유제품 포장 공정관리 일보",
@@ -239,6 +253,7 @@ SHEET_NAMES = {
 }
 
 SHEET_FALLBACK_TITLES = {
+    "raw_sub_db": ["원부자재 DB", "원부자재DB", "부자재 DB"],
     "process_micro": ["미생물 일보", "[품질] 미생물 검사일보", "미생물 검사일보", "미생물일보"],
     "law_info": ["법규정보", "법규 정보"],
     "sup_audit_kpi": ["협력업체, 심사 점수", "협력업체, 심사점수", "협력업체 심사점수"],
@@ -539,13 +554,27 @@ def create_thread_local_credentials():
         return None, f"GOOGLE_CREDENTIALS_JSON 인증 실패: {e}"
 
 
+_SHEET_ID_MEM_CACHE: Dict[str, str] = {}
+
+
 def open_sheet_isolated(sheet_urls_map: dict, key_or_title: str):
     creds, auth_err = create_thread_local_credentials()
     if creds is None:
         return None, auth_err
 
     client = gspread.authorize(creds)
+    try:
+        client.set_timeout(15)
+    except Exception:
+        pass
     errors = []
+
+    cached_id = _SHEET_ID_MEM_CACHE.get(key_or_title, "")
+    if cached_id:
+        try:
+            return api_call_with_retry(client.open_by_key, cached_id), None
+        except Exception:
+            _SHEET_ID_MEM_CACHE.pop(key_or_title, None)
 
     if key_or_title in sheet_urls_map:
         raw_val = str(sheet_urls_map[key_or_title]).strip()
@@ -553,10 +582,13 @@ def open_sheet_isolated(sheet_urls_map: dict, key_or_title: str):
             m_key = re.search(r"/spreadsheets/d/([a-zA-Z0-9\-_]+)", raw_val)
             try:
                 if m_key:
-                    return api_call_with_retry(client.open_by_key, m_key.group(1)), None
-                if raw_val.startswith("http"):
-                    return api_call_with_retry(client.open_by_url, raw_val), None
-                return api_call_with_retry(client.open_by_key, raw_val), None
+                    sh = api_call_with_retry(client.open_by_key, m_key.group(1))
+                elif raw_val.startswith("http"):
+                    sh = api_call_with_retry(client.open_by_url, raw_val)
+                else:
+                    sh = api_call_with_retry(client.open_by_key, raw_val)
+                _SHEET_ID_MEM_CACHE[key_or_title] = sh.id
+                return sh, None
             except Exception as e:
                 errors.append(f"URL/ID 열기 실패({key_or_title}): {e}")
 
@@ -570,7 +602,9 @@ def open_sheet_isolated(sheet_urls_map: dict, key_or_title: str):
 
     for candidate in candidates:
         try:
-            return api_call_with_retry(client.open, candidate), None
+            sh = api_call_with_retry(client.open, candidate)
+            _SHEET_ID_MEM_CACHE[key_or_title] = sh.id
+            return sh, None
         except Exception as e:
             errors.append(f"'{candidate}': {e}")
 
@@ -4355,7 +4389,7 @@ def fetch_process_rt_sheet(sheet_urls_map: dict):
         ws_titles = [w.title for w in ws_all]
         t_today, t_yest, ordered_rt_titles = select_date_tab_titles(ws_titles)
 
-        recent_date_tabs = ordered_rt_titles
+        recent_date_tabs = ordered_rt_titles[:5]
         t_hp = next((t for t in ws_titles if t.strip() == HIST_TABS["rt_prod"]), None)
         t_hc = next((t for t in ws_titles if t.strip() == HIST_TABS["rt_ccp"]), None)
         t_fsk = next((t for t in ws_titles if re.sub(r"\s+", "", t) == "제품명식품안전나라" or "식품안전나라" in t), None)
@@ -6274,6 +6308,24 @@ def save_label_special_tab_memo(sheet_urls_map: dict, memo_text: str):
     safe_ws_update(ws_sp, payload)
 
 
+def parse_label_transition_rows(rows: list) -> List[dict]:
+    if not rows or len(rows) < 2:
+        return []
+    hdr = [str(h).strip() for h in rows[0]]
+    out = []
+    for r in rows[1:]:
+        if not any(str(x).strip() for x in r):
+            continue
+        r_pad = [str(x).strip() for x in r] + [""] * max(0, len(hdr) - len(r))
+        rec = dict(zip(hdr, r_pad[:len(hdr)]))
+        tid = rec.get("추적ID", "").strip()
+        if not tid:
+            continue
+        norm_rec = {c: str(rec.get(c, "")).strip() for c in LABEL_TRANSITION_COLS}
+        out.append(norm_rec)
+    return out
+
+
 def fetch_label_status_sheet(sheet_urls_map: dict):
     sh, err = open_sheet_isolated(sheet_urls_map, "label_status")
     if sh is None:
@@ -6281,12 +6333,20 @@ def fetch_label_status_sheet(sheet_urls_map: dict):
     try:
         ws_all = api_call_with_retry(sh.worksheets)
         ws_titles = [w.title for w in ws_all]
-        t_main = next((t for t in ws_titles if t.strip() != LABEL_SPECIAL_TAB), ws_titles[0] if ws_titles else None)
+        sys_tabs = {LABEL_SPECIAL_TAB, LABEL_TRANSITION_TAB}
+        t_main = next((t for t in ws_titles if t.strip() not in sys_tabs and not t.strip().startswith("_이력DB_")), ws_titles[0] if ws_titles else None)
         t_sp = next((t for t in ws_titles if t.strip() == LABEL_SPECIAL_TAB), None)
+        t_tr = next((t for t in ws_titles if t.strip() == LABEL_TRANSITION_TAB), None)
 
-        batch_map = batch_fetch_tabs(sh, [t_main] + ([t_sp] if t_sp else []), "UNFORMATTED_VALUE")
+        fetch_tabs = [x for x in [t_main, t_sp, t_tr] if x]
+        batch_map = batch_fetch_tabs(sh, fetch_tabs, "UNFORMATTED_VALUE")
         rows = batch_map.get(t_main, []) if t_main else []
         sp_memo = parse_label_special_tab_rows(batch_map.get(t_sp, [])) if t_sp is not None else None
+
+        if t_tr is not None:
+            _LABEL_TRANSITION_CACHE["records"] = parse_label_transition_rows(batch_map.get(t_tr, []))
+        else:
+            _LABEL_TRANSITION_CACHE["records"] = []
 
         if len(rows) < 2:
             return [], sp_memo, "표시사항 현황 시트에 데이터가 없습니다."
@@ -6299,7 +6359,9 @@ def fetch_label_status_sheet(sheet_urls_map: dict):
             r_pad = [str(x).strip() for x in r] + [""] * max(0, len(headers) - len(r))
             item = dict(zip(headers, r_pad[:len(headers)]))
             dt_str, yr_str, mo_str, yr_num, mo_num = parse_factual_date(item)
+            mod_d = parse_date_obj(item.get("최종수정일", "")) or parse_date_obj(item.get("완료일", ""))
             item["등록일자"] = dt_str
+            item["최종수정일자"] = mod_d.strftime("%Y-%m-%d") if mod_d else (dt_str if dt_str.startswith("20") else "")
             item["등록연도"] = yr_str
             item["등록월"] = mo_str
             item["_yr_num"] = yr_num
@@ -6330,6 +6392,460 @@ def fetch_raw_material_db_sheet(sheet_urls_map: dict):
     except Exception as e:
         return submitted, total_master_count, str(e)
     return submitted, total_master_count, None
+
+
+def _parse_sub_mat_date_iso(yr_raw: str, md_raw: str) -> str:
+    ys = str(yr_raw or "").strip()
+    ms = str(md_raw or "").strip()
+    d_direct = parse_date_obj(ms)
+    if d_direct and 2020 <= d_direct.year <= 2035:
+        return d_direct.strftime("%Y-%m-%d")
+    m_yr = re.search(r"(20\d{2})", ys)
+    yr = int(m_yr.group(1)) if m_yr else now_kst().year
+    m_md = re.search(r"(\d{1,2})\s*월\s*(\d{1,2})\s*일?", ms) or re.search(r"^(\d{1,2})[\./\-](\d{1,2})$", ms)
+    if m_md:
+        try:
+            return date(yr, int(m_md.group(1)), int(m_md.group(2))).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+    return ""
+
+
+def fetch_sub_material_db_sheet(sheet_urls_map: dict):
+    """
+    '원부자재 DB' 구글 시트의 [부자재] 탭(A~O열)을 파싱하여:
+    1) 부자재 관리 탭의 최근 검수 내역 및 전체 월별 검수 DB를 실데이터로 직결
+    2) 2026-11-01 이후 입고분을 표시사항 전환 추적 엔진의 부자재 입고 감지 소스로 제공
+    """
+    today_iso = now_kst().strftime("%Y-%m-%d")
+    empty_sub = {
+        "has_sheet": False,
+        "today_date": today_iso,
+        "today_rows": [],
+        "hist_rows": [],
+        "nov_plus_rows": [],
+        "sub_products": [],
+        "type_list": [],
+        "months": [],
+        "total_cnt": 0,
+        "pass_cnt": 0,
+        "hold_cnt": 0,
+        "change_note_cnt": 0
+    }
+    sh, err = open_sheet_isolated(sheet_urls_map, "raw_sub_db")
+    if sh is None:
+        return empty_sub, None
+
+    try:
+        ws_all = api_call_with_retry(sh.worksheets)
+        ws_titles = [w.title for w in ws_all]
+        t_sub = next((t for t in ws_titles if "부자재" in t and not t.strip().startswith("_")), None)
+        if t_sub is None and len(ws_titles) >= 2:
+            t_sub = ws_titles[1]
+        if t_sub is None:
+            return empty_sub, None
+
+        rows = batch_fetch_tabs(sh, [t_sub], "FORMATTED_VALUE").get(t_sub, [])
+        if len(rows) < 2:
+            return empty_sub, None
+
+        # 헤더 행 탐색 (기본 0행 또는 1행)
+        hdr_idx = 0
+        for idx in range(min(4, len(rows))):
+            r_ns = "".join(re.sub(r"\s+", "", str(x)) for x in rows[idx])
+            if "제품명" in r_ns and ("타입" in r_ns or "업체" in r_ns or "수량" in r_ns):
+                hdr_idx = idx
+                break
+
+        carry_yr = f"{now_kst().year}년"
+        carry_md = ""
+        parsed_rows = []
+        sub_prod_set = set()
+        type_set = set()
+        month_set = set()
+        pass_cnt = 0
+        hold_cnt = 0
+        change_note_cnt = 0
+
+        for r_i, r in enumerate(rows[hdr_idx + 1:], start=1):
+            if not any(str(x).strip() for x in r):
+                continue
+            r_pad = [str(x).strip() for x in r] + [""] * max(0, 15 - len(r))
+            yr_cell, md_cell, no_cell, p_nm, vol_s, type_s, comp_s, lot_s, qty_s, smp_s, mark_s, spec_s, res_s, insp_s, note_s = r_pad[:15]
+
+            if re.search(r"20\d{2}", yr_cell):
+                carry_yr = yr_cell
+            if md_cell and ("월" in md_cell or re.match(r"^\d{1,2}[\./\-]\d{1,2}$", md_cell) or re.match(r"^20\d{2}", md_cell)):
+                carry_md = md_cell
+
+            if not p_nm or re.sub(r"\s+", "", p_nm) in ("제품명", "품목명"):
+                continue
+
+            dt_iso = _parse_sub_mat_date_iso(carry_yr, carry_md)
+            if not dt_iso:
+                continue
+
+            ym_str = dt_iso[:7]
+            month_set.add(ym_str)
+            if type_s and type_s != "-":
+                type_set.add(type_s)
+
+            disp_vol = f" ({vol_s})" if (vol_s and vol_s != "-") else ""
+            disp_full_name = f"{p_nm}{disp_vol}"
+            if p_nm != "-" and type_s != "빨대":
+                sub_prod_set.add(p_nm)
+                if vol_s and vol_s != "-":
+                    sub_prod_set.add(f"{p_nm} ({vol_s} · {type_s})" if type_s else disp_full_name)
+
+            judge_clean = res_s or "적합"
+            if "부적합" in judge_clean or "보류" in judge_clean:
+                hold_cnt += 1
+            else:
+                pass_cnt += 1
+
+            is_chg_sig = any(k in note_s for k in ["표기", "표시", "변경", "리뉴얼", "신규", "첫", "초도"])
+            if is_chg_sig:
+                change_note_cnt += 1
+
+            qty_lot_disp = qty_s if qty_s else "-"
+            if lot_s and lot_s != "-":
+                qty_lot_disp = f"{qty_lot_disp} ({lot_s})"
+
+            parsed_rows.append({
+                "row_seq": r_i,
+                "검수일자": dt_iso,
+                "연월": ym_str,
+                "순번": no_cell or "-",
+                "구분": type_s or "-",
+                "용량": vol_s or "-",
+                "제품명": p_nm,
+                "부자재명": disp_full_name,
+                "공급업체": comp_s or "-",
+                "생산일_LOT": lot_s or "-",
+                "입고수량": qty_s or "-",
+                "입고수량_LOT": qty_lot_disp,
+                "샘플수": smp_s or "-",
+                "표시사항": mark_s or "-",
+                "외관규격": spec_s or "-",
+                "검수자": insp_s or "-",
+                "판정": judge_clean,
+                "특이사항": note_s or "-",
+                "_is_change_signal": is_chg_sig
+            })
+
+        parsed_rows.sort(key=lambda x: (x["검수일자"], x["row_seq"]), reverse=True)
+        latest_dt = today_iso if any(r["검수일자"] == today_iso for r in parsed_rows) else (parsed_rows[0]["검수일자"] if parsed_rows else today_iso)
+        today_rows = [r for r in parsed_rows if r["검수일자"] == latest_dt]
+        nov_plus_rows = [r for r in parsed_rows if r["검수일자"] >= LABEL_TRANSITION_CUTOFF]
+
+        return {
+            "has_sheet": True,
+            "today_date": latest_dt,
+            "today_rows": today_rows,
+            "hist_rows": parsed_rows,
+            "nov_plus_rows": nov_plus_rows,
+            "sub_products": sorted(sub_prod_set),
+            "type_list": sorted(type_set),
+            "months": sorted(month_set, reverse=True),
+            "total_cnt": len(parsed_rows),
+            "pass_cnt": pass_cnt,
+            "hold_cnt": hold_cnt,
+            "change_note_cnt": change_note_cnt
+        }, None
+    except Exception as e:
+        return empty_sub, f"[원부자재 DB] {e}"
+
+
+def clean_transition_match_key(s: str) -> str:
+    """한·영 혼용 표기(과채DAY PURPLE <-> 과채데이 퍼플 등) 및 괄호 용량·포장재 표기를 정규화하여 비교"""
+    t = str(s or "").strip()
+    if not t or t == "-":
+        return ""
+    t = re.sub(r"day", "데이", t, flags=re.IGNORECASE)
+    t = re.sub(r"purple", "퍼플", t, flags=re.IGNORECASE)
+    t = re.sub(r"yellow", "옐로우", t, flags=re.IGNORECASE)
+    t = re.sub(r"green", "그린", t, flags=re.IGNORECASE)
+    t = re.sub(r"original", "오리지널", t, flags=re.IGNORECASE)
+    t = re.sub(r"protein", "프로틴", t, flags=re.IGNORECASE)
+    t = re.sub(r"\(\s*(?:카톤|병|병포장|테트라팩|콤비팩|멸균팩|공병|외박스|트레이|선물상자)?\s*\d+(?:\.\d+)?\s*(?:mL|ml|ML|㎖|L|g|kg|입)?(?:\s*·\s*[^)]+)?\s*\)", "", t)
+    t = re.sub(r"(?<!\d)(?:110|125|140|170|180|190|200|300|450|500|750|900|930|1000|1800|2300)\s*(?:mL|ml|ML|㎖|g)?(?!\d)", "", t)
+    t = re.sub(r"(?<!\d)\d+(?:\.\d+)?\s*(?:mL|ml|ML|㎖|L|g|kg)(?!\w)", "", t)
+    t = re.sub(r"\s+1[0127]\d{3}\b", "", t)
+    t = re.sub(r"[\s\(\)\[\]\{\}\-_·,/&\+!]+", "", t).lower()
+    return t
+
+
+def is_asan_inhouse_label_candidate(row: dict) -> bool:
+    """
+    아산공장 자체 제조 품목 판별 (이롬 자사제조분 포함 / 외주가공·냉동·건기식·스틱파우치·에콜린·레몬즙 자동 제외)
+    """
+    site = re.sub(r"\s+", "", str(row.get("생산처", "")))
+    storage = re.sub(r"\s+", "", str(row.get("보관방법", "")))
+    cat = re.sub(r"\s+", "", str(row.get("대분류(마케팅 카테고리)", "")))
+    pkg = re.sub(r"\s+", "", str(row.get("검토 포장재 유형", "")))
+    title = str(row.get("제목", ""))
+    pool = f"{title} {pkg} {cat}".lower()
+
+    if "외주" in site:
+        return False
+    if "냉동" in storage:
+        return False
+    if "생활건강" in cat or "건기식" in cat or "건강기능" in cat:
+        return False
+
+    outsource_kw = [
+        "스틱파우치", "에콜린", "레몬즙", "cca주스", "구미", "젤리",
+        "크림떡", "롤케익", "캡슐", "정제", "분말스틱", "파우치두유"
+    ]
+    if any(k in pool for k in outsource_kw):
+        return False
+    return True
+
+
+def _match_sub_inbound_for_item(tr_item: dict, nov_sub_rows: List[dict]) -> List[dict]:
+    """
+    2026-11-01 이후(및 심의완료일 이후) 입고된 원부자재 DB 내역에서 부자재 입고 후보 탐색
+    - 리뉴얼: 매칭_부자재명 일치 항목 탐색 (비고란 변경/신규 시그널 우선 정렬)
+    - 신규: 기존 유사 품목(예: 심플러스 1A) 오인 매칭 차단을 위해 정확히 일치하거나 '첫 입고/신규/표기' 비고가 있는 경우만 후보 제시
+    """
+    target_nm = str(tr_item.get("매칭_부자재명") or "").strip()
+    if not target_nm or target_nm == "-":
+        return []
+
+    base_nm_part = target_nm.split("(")[0].strip()
+    q_key = clean_transition_match_key(base_nm_part or target_nm)
+    if len(q_key) < 2:
+        return []
+
+    q_vol = extract_volume_ml_token(target_nm)
+    is_new_type = (tr_item.get("구분") == "신규")
+    rev_dt = str(tr_item.get("심의완료일") or LABEL_TRANSITION_CUTOFF).strip()
+    min_dt = max(LABEL_TRANSITION_CUTOFF, rev_dt) if rev_dt.startswith("20") else LABEL_TRANSITION_CUTOFF
+
+    hits = []
+    for sr in nov_sub_rows:
+        if sr["검수일자"] < min_dt:
+            continue
+        if sr.get("구분") == "빨대":
+            continue
+        s_key = clean_transition_match_key(sr.get("제품명", ""))
+        if not s_key:
+            continue
+
+        s_vol = extract_volume_ml_token(sr.get("용량", "")) or extract_volume_ml_token(sr.get("제품명", ""))
+        if q_vol and s_vol and q_vol != s_vol:
+            continue
+
+        exact_eq = (q_key == s_key) or (re.sub(r"^(?:연세우유|연세두유|연세|세브란스|이롬)", "", q_key) == re.sub(r"^(?:연세우유|연세두유|연세|세브란스|이롬)", "", s_key) and len(q_key) >= 4)
+
+        if is_new_type:
+            # 신규 품목은 이름이 100% 정확히 일치하거나, '첫 입고/신규' 비고가 달린 포함 항목만 허용 (기존 상시 품목 혼입 차단)
+            if not exact_eq and not (sr.get("_is_change_signal") and len(q_key) >= 4 and (q_key in s_key or s_key in q_key)):
+                continue
+        else:
+            if not exact_eq and not (len(q_key) >= 4 and (q_key in s_key or s_key in q_key)):
+                continue
+
+        hits.append({
+            "검수일자": sr["검수일자"],
+            "부자재명": sr["부자재명"],
+            "구분": sr["구분"],
+            "공급업체": sr["공급업체"],
+            "입고수량": sr["입고수량"],
+            "생산일_LOT": sr["생산일_LOT"],
+            "특이사항": sr["특이사항"],
+            "has_signal": bool(sr.get("_is_change_signal"))
+        })
+
+    hits.sort(key=lambda x: (1 if x["has_signal"] else 0, x["검수일자"]), reverse=True)
+    return hits[:6]
+
+
+def _match_pack_logs_for_item(tr_item: dict, rt_hist_p: List[dict], dairy_hist_p: List[dict]) -> List[dict]:
+    """
+    부자재 입고일(없으면 심의완료일, 최소 2026-11-01) 이후 상온·유제품 포장일보 가동 기록 감지
+    """
+    pack_nm = str(tr_item.get("매칭_포장품목명") or tr_item.get("매칭_부자재명") or "").strip()
+    if not pack_nm or pack_nm == "-":
+        return []
+
+    q_key = clean_transition_match_key(pack_nm)
+    if len(q_key) < 2:
+        return []
+
+    is_new_type = (tr_item.get("구분") == "신규")
+    in_dt = str(tr_item.get("부자재입고일") or tr_item.get("심의완료일") or LABEL_TRANSITION_CUTOFF).strip()
+    min_dt = max(LABEL_TRANSITION_CUTOFF, in_dt) if in_dt.startswith("20") else LABEL_TRANSITION_CUTOFF
+    storage_s = str(tr_item.get("보관구분") or "")
+
+    hits = []
+    # 1) 냉장 또는 전체일 때 유제품 포장일보 스캔
+    if "상온" not in storage_s and "실온" not in storage_s:
+        for dr in (dairy_hist_p or []):
+            p_dt = str(dr.get("생산일자") or "")
+            if p_dt < min_dt:
+                continue
+            r_nm = str(dr.get("제품명") or "")
+            r_key = clean_transition_match_key(r_nm)
+            if not r_key:
+                continue
+            exact_eq = (q_key == r_key)
+            if is_new_type and not exact_eq:
+                continue
+            if not exact_eq and not (len(q_key) >= 4 and (q_key in r_key or r_key in q_key)):
+                continue
+            hits.append({
+                "생산일자": p_dt,
+                "라인_호기": dr.get("라인구분", "유제품"),
+                "제품명": r_nm,
+                "소비기한": dr.get("표기소비기한_원문", "-"),
+                "특이사항": dr.get("접착_외관_요약", "-"),
+                "has_signal": False
+            })
+
+    # 2) 상온/실온 또는 전체일 때 상온 공정일보 스캔
+    if "냉장" not in storage_s:
+        for rr in (rt_hist_p or []):
+            p_dt = str(rr.get("생산일자") or "")
+            if p_dt < min_dt:
+                continue
+            r_nm = str(rr.get("제품명") or "")
+            r_key = clean_transition_match_key(r_nm)
+            if not r_key:
+                continue
+            rem_s = str(rr.get("멸균특이사항") or rr.get("특이사항") or "")
+            has_sig = any(k in rem_s for k in ["신규", "리뉴얼", "변경", "초도"])
+            exact_eq = (q_key == r_key)
+            if is_new_type and not exact_eq and not (has_sig and len(q_key) >= 4 and q_key in r_key):
+                continue
+            if not exact_eq and not (len(q_key) >= 4 and (q_key in r_key or r_key in q_key)):
+                continue
+            hits.append({
+                "생산일자": p_dt,
+                "라인_호기": f"상온 {rr.get('포장호기', '-')}",
+                "제품명": r_nm,
+                "소비기한": rr.get("표기소비기한_원문", "-"),
+                "특이사항": rem_s or "이상없음",
+                "has_signal": has_sig
+            })
+
+    hits.sort(key=lambda x: (1 if x["has_signal"] else 0, x["생산일자"]), reverse=True)
+    return hits[:6]
+
+
+def build_label_transition_pipeline(
+    lbl_rows: List[dict],
+    saved_tr_records: List[dict],
+    sub_mat_data: dict,
+    rt_hist_p: List[dict],
+    dairy_hist_p: List[dict]
+) -> dict:
+    """
+    2026-11-01 기준 표시사항 심의완료 -> 부자재 입고 -> 전환 포장 3단계 파이프라인 집계
+    """
+    nov_sub_rows = (sub_mat_data or {}).get("nov_plus_rows") or []
+
+    # 이미 등록/분류된 원본문서번호 집합 파악 (2종 분리 등록 문서 포함)
+    handled_doc_nos = set()
+    for tr in (saved_tr_records or []):
+        orig_doc = str(tr.get("원본문서번호") or tr.get("추적ID") or "").strip()
+        if orig_doc:
+            handled_doc_nos.add(orig_doc)
+
+    # 1) 2026-11-01 이후 검토완료(확인필) 건 중 미분류 후보 추출
+    unclassified_candidates = []
+    all_nov_completed = []
+
+    for r in (lbl_rows or []):
+        if r.get("분류") != "검토완료(확인필)":
+            continue
+        reg_dt = str(r.get("등록일자") or "")
+        mod_dt = str(r.get("최종수정일자") or reg_dt)
+        eff_dt = mod_dt if mod_dt.startswith("20") else reg_dt
+        if not reg_dt.startswith("20") or reg_dt < LABEL_TRANSITION_CUTOFF:
+            continue
+
+        ikey = make_label_item_key(r)
+        clean_t = strip_duplicate_dept_prefix(r.get("제목", ""), r.get("요청부서", ""))
+        is_inhouse = is_asan_inhouse_label_candidate(r)
+        storage_raw = str(r.get("보관방법", "")).strip()
+        storage_norm = "냉장" if "냉장" in storage_raw else "상온"
+
+        cand_obj = {
+            "doc_no": ikey,
+            "상태": r.get("상태", ""),
+            "제목": r.get("제목", ""),
+            "clean_title": clean_t,
+            "요청부서": r.get("요청부서", "-"),
+            "보관구분": storage_norm,
+            "생산처": r.get("생산처", "-"),
+            "포장재유형": r.get("검토 포장재 유형", "-"),
+            "등록일자": reg_dt,
+            "심의완료일": eff_dt if eff_dt >= reg_dt else reg_dt,
+            "is_inhouse_cand": is_inhouse,
+            "already_handled": (ikey in handled_doc_nos)
+        }
+        all_nov_completed.append(cand_obj)
+        if is_inhouse and (ikey not in handled_doc_nos):
+            unclassified_candidates.append(cand_obj)
+
+    unclassified_candidates.sort(key=lambda x: x["심의완료일"], reverse=True)
+    all_nov_completed.sort(key=lambda x: x["심의완료일"], reverse=True)
+
+    # 2) 등록된 전환 추적 항목 단계별 분류 및 자동 입고/생산 감지 부착
+    waiting_in_list = []
+    waiting_pack_list = []
+    completed_list = []
+    excluded_list = []
+
+    for tr in (saved_tr_records or []):
+        cp = dict(tr)
+        gubun = cp.get("구분", "리뉴얼")
+        stage = cp.get("진행단계", "입고대기")
+
+        if gubun == "제외" or stage == "제외":
+            excluded_list.append(cp)
+            continue
+
+        if stage == "입고대기":
+            det_in = _match_sub_inbound_for_item(cp, nov_sub_rows)
+            cp["detected_inbounds"] = det_in
+            cp["has_inbound_detect"] = len(det_in) > 0
+            waiting_in_list.append(cp)
+        elif stage == "포장대기":
+            det_pk = _match_pack_logs_for_item(cp, rt_hist_p, dairy_hist_p)
+            cp["detected_packs"] = det_pk
+            cp["has_pack_detect"] = len(det_pk) > 0
+            waiting_pack_list.append(cp)
+        else:
+            completed_list.append(cp)
+
+    waiting_in_list.sort(key=lambda x: (1 if x.get("has_inbound_detect") else 0, x.get("심의완료일", "")), reverse=True)
+    waiting_pack_list.sort(key=lambda x: (1 if x.get("has_pack_detect") else 0, x.get("부자재입고일", "")), reverse=True)
+    completed_list.sort(key=lambda x: x.get("전환포장일", ""), reverse=True)
+
+    inbound_detected_cnt = sum(1 for x in waiting_in_list if x.get("has_inbound_detect"))
+    pack_detected_cnt = sum(1 for x in waiting_pack_list if x.get("has_pack_detect"))
+
+    return {
+        "cutoff_date": LABEL_TRANSITION_CUTOFF,
+        "counts": {
+            "unclassified_cnt": len(unclassified_candidates),
+            "waiting_in_cnt": len(waiting_in_list),
+            "inbound_detected_cnt": inbound_detected_cnt,
+            "waiting_pack_cnt": len(waiting_pack_list),
+            "pack_detected_cnt": pack_detected_cnt,
+            "completed_cnt": len(completed_list),
+            "excluded_cnt": len(excluded_list)
+        },
+        "unclassified_candidates": unclassified_candidates,
+        "all_nov_completed": all_nov_completed,
+        "waiting_in_list": waiting_in_list,
+        "waiting_pack_list": waiting_pack_list,
+        "completed_list": completed_list,
+        "excluded_list": excluded_list
+    }
+# ============================ [api/index.py - PART 3 / 4 끝] ============================
 # ============================ [api/index.py - PART 3 / 4 끝] ============================
 # ==============================================================================
 # [api/index.py - PART 4 / 4]
@@ -6547,6 +7063,7 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
             f_audit = ex.submit(fetch_audit_and_manual_db, sheet_urls_map)
             f_lbl = ex.submit(fetch_label_status_sheet, sheet_urls_map)
             f_raw = ex.submit(fetch_raw_material_db_sheet, sheet_urls_map)
+            f_sub_mat = ex.submit(fetch_sub_material_db_sheet, sheet_urls_map)
             f_law = ex.submit(fetch_law_info_sheet, sheet_urls_map)
             f_sak = ex.submit(fetch_sup_and_audit_kpi_sheet, sheet_urls_map)
             f_cnh = ex.submit(fetch_claim_nc_history_sheet, sheet_urls_map)
@@ -6561,6 +7078,7 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
             legacy_sched, saved_manual_kpis, saved_lbl_memo_fb, saved_micro, saved_law_prefs, saved_lbl_pins, err_audit = resolve_with_last_good("audit", f_audit.result(), 6)
             lbl_rows, lbl_sp_memo, err_lbl = resolve_with_last_good("lbl", f_lbl.result(), 2)
             raw_sub, raw_m_cnt, err_raw = resolve_with_last_good("raw", f_raw.result(), 2)
+            sub_mat_data, err_sub_mat = resolve_with_last_good("sub_mat", f_sub_mat.result(), 1)
             raw_laws, dash_init_flag, dash_tab_map, law_sdb_map, err_law = resolve_with_last_good("law", f_law.result(), 4)
             sup_kpi_sheet, aud_kpi_sheet, sak_sched, err_sak = resolve_with_last_good("sak", f_sak.result(), 3)
             claim_nc_data, err_cnh = resolve_with_last_good("cnh", f_cnh.result(), 1)
@@ -7023,6 +7541,14 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
                 "micro_status": micro_final
             },
             "label_status": label_analytics,
+            "sub_material": sub_mat_data,
+            "label_transition": build_label_transition_pipeline(
+                lbl_rows=lbl_rows,
+                saved_tr_records=_LABEL_TRANSITION_CACHE.get("records", []),
+                sub_mat_data=sub_mat_data,
+                rt_hist_p=rt_hp,
+                dairy_hist_p=dy_hp
+            ),
             "raw_db": {
                 "master_cnt": raw_m_cnt if raw_m_cnt > 0 else sub_raw_cnt,
                 "sub_cnt": sub_raw_cnt,
@@ -7032,6 +7558,8 @@ def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
                 "rows": enriched_raw_rows
             }
         }
+        if err_sub_mat:
+            bundle["errors"].append(err_sub_mat)
 
         _BUNDLE_CACHE["ts"] = time.time() - (CACHE_TTL_SEC - 15.0 if errors else 0.0)
         _BUNDLE_CACHE["date_key"] = today_str
@@ -9326,4 +9854,243 @@ async def api_save_self_quality(request: _FastAPIRequest, _u: dict = Depends(req
         return JSONResponse(_build_sqc_response_payload(target_yr, final_matrix))
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+# ============================================================================
+# [Q-Safety 확장 모듈 2] 표시사항 -> 부자재 입고 -> 전환 포장 추적 숨김 DB 저장 API
+# - 저장 위치: '표시사항 현황' 시트 내 숨김 탭(_이력DB_부자재전환)
+# ============================================================================
+_LBL_TR_LOCK = threading.Lock()
+
+
+class LabelTransitionActionPayload(BaseModel):
+    action: str  # register | exclude | restore | confirm_inbound | confirm_pack | revert_stage | update | delete
+    track_id: Optional[str] = ""
+    doc_no: Optional[str] = ""
+    track_type: Optional[str] = "리뉴얼"  # 신규 | 리뉴얼 | 제외
+    stage: Optional[str] = ""
+    title: Optional[str] = ""
+    dept: Optional[str] = ""
+    storage: Optional[str] = ""
+    pkg_type: Optional[str] = ""
+    review_date: Optional[str] = ""
+    matched_sub_name: Optional[str] = ""
+    matched_pack_name: Optional[str] = ""
+    inbound_date: Optional[str] = ""
+    inbound_detail: Optional[str] = ""
+    pack_date: Optional[str] = ""
+    pack_detail: Optional[str] = ""
+    memo: Optional[str] = ""
+    split_items: Optional[List[Dict[str, str]]] = None
+
+
+def _ensure_hidden_label_transition_ws(sh):
+    try:
+        ws = api_call_with_retry(sh.worksheet, LABEL_TRANSITION_TAB)
+        is_hidden = bool(getattr(ws, "_properties", {}).get("hidden", False))
+        if not is_hidden:
+            api_call_with_retry(sh.batch_update, {
+                "requests": [{
+                    "updateSheetProperties": {
+                        "properties": {"sheetId": ws.id, "hidden": True},
+                        "fields": "hidden"
+                    }
+                }]
+            })
+        return ws
+    except gspread.exceptions.WorksheetNotFound:
+        api_call_with_retry(sh.batch_update, {
+            "requests": [{
+                "addSheet": {
+                    "properties": {
+                        "title": LABEL_TRANSITION_TAB,
+                        "hidden": True,
+                        "gridProperties": {"rowCount": 1000, "columnCount": len(LABEL_TRANSITION_COLS) + 2}
+                    }
+                }
+            }]
+        })
+        ws = api_call_with_retry(sh.worksheet, LABEL_TRANSITION_TAB)
+        safe_ws_update(ws, [LABEL_TRANSITION_COLS])
+        return ws
+
+
+@app.post("/api/label-transition")
+def api_manage_label_transition(body: LabelTransitionActionPayload, _u: dict = Depends(require_auth_user)):
+    sheet_urls_map = get_sheet_urls_map()
+    with _LBL_TR_LOCK:
+        sh, err = open_sheet_isolated(sheet_urls_map, "label_status")
+        if sh is None:
+            raise HTTPException(status_code=500, detail=f"'표시사항 현황' 시트를 열 수 없습니다: {err}")
+
+        ws = _ensure_hidden_label_transition_ws(sh)
+        cur_records = parse_label_transition_rows(get_values_formatted(ws))
+        now_s = now_kst().strftime("%Y-%m-%d %H:%M:%S")
+        today_s = now_kst().strftime("%Y-%m-%d")
+
+        act = (body.action or "").strip()
+        msg = "부자재 전환 추적 내역이 저장되었습니다."
+
+        if act == "register":
+            orig_doc = (body.doc_no or body.track_id or "").strip() or str(uuid.uuid4())[:8]
+            t_type = "신규" if body.track_type == "신규" else "리뉴얼"
+            base_rev_dt = (body.review_date or today_s).strip()
+
+            # 기존 제외 기록이 있었다면 제거 후 등록
+            cur_records = [r for r in cur_records if not (r.get("원본문서번호") == orig_doc and r.get("구분") == "제외")]
+
+            splits = body.split_items if (body.split_items and len(body.split_items) > 0) else [{
+                "sub_name": (body.matched_sub_name or "").strip(),
+                "pack_name": (body.matched_pack_name or "").strip(),
+                "label_suffix": ""
+            }]
+
+            existing_ids = {r["추적ID"] for r in cur_records}
+            for idx_s, sp_it in enumerate(splits, start=1):
+                if len(splits) == 1 and orig_doc not in existing_ids:
+                    tid = orig_doc
+                else:
+                    tid = f"{orig_doc}_{idx_s}"
+                    while tid in existing_ids:
+                        idx_s += 1
+                        tid = f"{orig_doc}_{idx_s}"
+                existing_ids.add(tid)
+
+                sfx = str(sp_it.get("label_suffix") or "").strip()
+                base_title = (body.title or "-").strip()
+                disp_title = f"{base_title} [{sfx}]" if sfx else base_title
+                sub_nm = str(sp_it.get("sub_name") or body.matched_sub_name or "").strip()
+                pack_nm = str(sp_it.get("pack_name") or body.matched_pack_name or sub_nm or "").strip()
+
+                cur_records.append({
+                    "추적ID": tid,
+                    "원본문서번호": orig_doc,
+                    "구분": t_type,
+                    "진행단계": "입고대기",
+                    "표시사항제목": disp_title,
+                    "요청부서": (body.dept or "-").strip(),
+                    "보관구분": (body.storage or "상온").strip(),
+                    "포장재유형": (body.pkg_type or "-").strip(),
+                    "심의완료일": base_rev_dt,
+                    "매칭_부자재명": sub_nm,
+                    "매칭_포장품목명": pack_nm,
+                    "부자재입고일": "",
+                    "부자재입고내역": "",
+                    "전환포장일": "",
+                    "전환포장내역": "",
+                    "메모": (body.memo or "").strip(),
+                    "수정일시": now_s
+                })
+            msg = f"[{t_type}] 부자재 입고대기 추적 대상으로 등록되었습니다."
+
+        elif act == "exclude":
+            orig_doc = (body.doc_no or body.track_id or "").strip()
+            if not orig_doc:
+                raise HTTPException(status_code=400, detail="문서번호가 없습니다.")
+            cur_records = [r for r in cur_records if r.get("원본문서번호") != orig_doc and r.get("추적ID") != orig_doc]
+            cur_records.append({
+                "추적ID": orig_doc,
+                "원본문서번호": orig_doc,
+                "구분": "제외",
+                "진행단계": "제외",
+                "표시사항제목": (body.title or "-").strip(),
+                "요청부서": (body.dept or "-").strip(),
+                "보관구분": (body.storage or "-").strip(),
+                "포장재유형": (body.pkg_type or "-").strip(),
+                "심의완료일": (body.review_date or today_s).strip(),
+                "매칭_부자재명": "",
+                "매칭_포장품목명": "",
+                "부자재입고일": "",
+                "부자재입고내역": "",
+                "전환포장일": "",
+                "전환포장내역": "",
+                "메모": (body.memo or "외주/비대상 제외").strip(),
+                "수정일시": now_s
+            })
+            msg = "추적 대상에서 제외 처리되었습니다."
+
+        elif act == "confirm_inbound":
+            tid = (body.track_id or "").strip()
+            for r in cur_records:
+                if r["추적ID"] == tid:
+                    r["진행단계"] = "포장대기"
+                    r["부자재입고일"] = (body.inbound_date or today_s).strip()
+                    r["부자재입고내역"] = (body.inbound_detail or "입고 검수 확인").strip()
+                    if body.matched_sub_name and body.matched_sub_name.strip():
+                        r["매칭_부자재명"] = body.matched_sub_name.strip()
+                    if body.matched_pack_name and body.matched_pack_name.strip():
+                        r["매칭_포장품목명"] = body.matched_pack_name.strip()
+                    if body.memo is not None and body.memo.strip():
+                        r["메모"] = body.memo.strip()
+                    r["수정일시"] = now_s
+            msg = "부자재 입고 확인 완료 → [입고완료 · 포장대기] 단계로 이동되었습니다."
+
+        elif act == "confirm_pack":
+            tid = (body.track_id or "").strip()
+            for r in cur_records:
+                if r["추적ID"] == tid:
+                    r["진행단계"] = "전환완료"
+                    r["전환포장일"] = (body.pack_date or today_s).strip()
+                    r["전환포장내역"] = (body.pack_detail or "신규·리뉴얼 포장 확인 완료").strip()
+                    if body.memo is not None and body.memo.strip():
+                        r["메모"] = body.memo.strip()
+                    r["수정일시"] = now_s
+            msg = "현장 전환 포장 최종 확인 완료 → 대기 카운트에서 종결 처리되었습니다."
+
+        elif act == "revert_stage":
+            tid = (body.track_id or "").strip()
+            target_st = (body.stage or "입고대기").strip()
+            for r in cur_records:
+                if r["추적ID"] == tid:
+                    r["진행단계"] = target_st
+                    if target_st == "입고대기":
+                        r["부자재입고일"] = ""
+                        r["부자재입고내역"] = ""
+                        r["전환포장일"] = ""
+                        r["전환포장내역"] = ""
+                    elif target_st == "포장대기":
+                        r["전환포장일"] = ""
+                        r["전환포장내역"] = ""
+                    r["수정일시"] = now_s
+            msg = f"[{target_st}] 단계로 되돌렸습니다."
+
+        elif act == "update":
+            tid = (body.track_id or "").strip()
+            for r in cur_records:
+                if r["추적ID"] == tid:
+                    if body.track_type in ("신규", "리뉴얼"):
+                        r["구분"] = body.track_type
+                    if body.matched_sub_name is not None:
+                        r["매칭_부자재명"] = body.matched_sub_name.strip()
+                    if body.matched_pack_name is not None:
+                        r["매칭_포장품목명"] = body.matched_pack_name.strip()
+                    if body.memo is not None:
+                        r["메모"] = body.memo.strip()
+                    r["수정일시"] = now_s
+            msg = "매핑 품목명 및 메모가 수정되었습니다."
+
+        elif act in ("delete", "restore"):
+            tid = (body.track_id or body.doc_no or "").strip()
+            cur_records = [r for r in cur_records if r["추적ID"] != tid and not (act == "restore" and r.get("원본문서번호") == tid)]
+            msg = "미분류 후보 상태로 복구(삭제)되었습니다."
+
+        payload = [LABEL_TRANSITION_COLS] + [[str(r.get(c, "")) for c in LABEL_TRANSITION_COLS] for r in cur_records]
+        api_call_with_retry(ws.clear)
+        safe_ws_update(ws, payload)
+
+        _LABEL_TRANSITION_CACHE["records"] = cur_records
+
+        # 번들 캐시 즉시 재계산 반영
+        new_tr_data = None
+        if _BUNDLE_CACHE["data"] is not None:
+            b_cur = _BUNDLE_CACHE["data"]
+            lbl_rows_cached = _LAST_GOOD_SHEETS.get("lbl", ([], None, None))[0]
+            new_tr_data = build_label_transition_pipeline(
+                lbl_rows=lbl_rows_cached,
+                saved_tr_records=cur_records,
+                sub_mat_data=b_cur.get("sub_material", {}),
+                rt_hist_p=b_cur.get("process", {}).get("rt_hist_p", []),
+                dairy_hist_p=b_cur.get("process", {}).get("dairy_hist_p", [])
+            )
+            b_cur["label_transition"] = new_tr_data
+
+    return {"ok": True, "message": msg, "label_transition": new_tr_data}
 # ============================ [api/index.py - PART 4 / 4 끝] ============================

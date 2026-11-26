@@ -8611,50 +8611,114 @@ async function restoreExcludedLabel(trackId) {
   }
 }
 
-// --- [5] 부자재 관리 (renderSubMatView 전면 확장: 전환 추적 보드 + 원부자재 DB 10·11월~ 실데이터 연동) ---
-function renderActiveTransitionTableHtml(list) {
+// --- [5] 부자재 관리 (3단계 타임라인 흐름 표 + 원부자재 DB 실데이터 연동) ---
+function calcDaysDiffBadge(fromIso, toIso, suffixTxt) {
+  if (!fromIso || !toIso || fromIso.length < 10 || toIso.length < 10) return '';
+  const d1 = new Date(fromIso.slice(0, 10) + 'T00:00:00');
+  const d2 = new Date(toIso.slice(0, 10) + 'T00:00:00');
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return '';
+  const diff = Math.max(0, Math.round((d2.getTime() - d1.getTime()) / 86400000));
+  return diff === 0 ? ('당일 ' + (suffixTxt || '')) : ('+' + diff + '일 ' + (suffixTxt || '')).trim();
+}
+
+function renderActiveTransitionTableHtml(list, tblId) {
+  const tableIdAttr = tblId ? (' id="' + esc(tblId) + '"') : '';
   if (!list || !list.length) {
-    return '<div class="tbl-wrap"><table class="data-tbl"><tbody><tr><td class="cell-gray" style="padding:22px;">해당 단계에 진행 중인 전환 추적 품목이 없습니다.</td></tr></tbody></table></div>';
+    return '<div class="tbl-wrap"><table class="data-tbl"' + tableIdAttr + '><tbody><tr><td class="cell-gray" style="padding:24px;">해당 단계에 조회된 부자재 전환 추적 품목이 없습니다.</td></tr></tbody></table></div>';
   }
 
-  return '<div class="tbl-wrap"><table class="data-tbl">' +
+  const todayIso = (BUNDLE && BUNDLE.loaded_date) || '2026-11-26';
+
+  return '<div class="tbl-wrap"><table class="data-tbl"' + tableIdAttr + '>' +
     '<thead><tr>' +
-      '<th>구분</th><th>현재 단계</th><th>보관</th><th>표시사항 심의 제목 (심의완료일)</th>' +
-      '<th>연결 품목명 (부자재 / 포장일보)</th><th>원부자재 DB · 포장일보 자동 감지 및 이력</th><th style="width:190px;">단계 확정 · 관리</th>' +
+      '<th style="width:92px;">구분 · 상태</th>' +
+      '<th style="min-width:190px;">추적 품목 정보 (연결 품목명)</th>' +
+      '<th style="min-width:145px; background:#EFF6FF; color:#1E3A8A;">① 표시사항 심의완료</th>' +
+      '<th style="min-width:210px; background:#FFFBEB; color:#92400E;">② 부자재 입고 검수</th>' +
+      '<th style="min-width:230px; background:#ECFDF5; color:#065F46;">③ 현장 전환포장 (첫생산)</th>' +
+      '<th style="width:155px;">단계 확정 · 관리</th>' +
     '</tr></thead><tbody>' +
     list.map(function(it) {
       const isNew = it['구분'] === '신규';
       const st = it['진행단계'] || '입고대기';
       const stBadgeCls = st === '입고대기' ? 'badge-warn' : (st === '포장대기' ? 'badge-info' : 'badge-ok');
+      const revDt = it['심의완료일'] || '-';
+      const inDt = it['부자재입고일'] || '';
+      const pkDt = it['전환포장일'] || '';
       const detIn = it.detected_inbounds || [];
       const detPk = it.detected_packs || [];
 
-      let detectHtml = '-';
+      // [① 표시사항 심의완료 칸]
+      const step1Html =
+        '<div style="font-weight:900; color:#1E3A8A; font-size:13px;">✓ ' + esc(revDt) + '</div>' +
+        '<div style="font-size:11.5px; color:#475569; margin-top:2px;">' +
+          esc(it['요청부서'] || '-') + ' · ' + esc(it['포장재유형'] || '-') +
+        '</div>';
+
+      // [② 부자재 입고 검수 칸]
+      let step2Html = '';
       if (st === '입고대기') {
+        const waitDays = calcDaysDiffBadge(revDt, todayIso, '경과');
+        step2Html =
+          '<div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">' +
+            '<span class="badge badge-warn">⏳ 입고 대기중</span>' +
+            (waitDays ? '<span style="font-size:11px; font-weight:800; color:#B45309;">(심의 후 ' + esc(waitDays) + ')</span>' : '') +
+          '</div>';
         if (detIn.length) {
           const topIn = detIn[0];
-          detectHtml = '<div class="tr-detect-box">' +
-            '🔔 <b>입고 감지 (' + esc(topIn.검수일자) + ') :</b> ' + esc(topIn.부자재명) + ' · ' + esc(topIn.입고수량) +
-            (topIn.특이사항 && topIn.특이사항 !== '-' ? ' <span style="color:#B91C1C;">[' + esc(topIn.특이사항) + ']</span>' : '') +
-          '</div>';
+          step2Html +=
+            '<div class="tr-detect-box" style="margin-top:5px;">' +
+              '🔔 <b>' + esc(topIn.검수일자) + ' 입고 감지</b><br>' +
+              esc(topIn.부자재명) + ' · ' + esc(topIn.입고수량) +
+              (topIn.특이사항 && topIn.특이사항 !== '-' ? ' <b>[' + esc(topIn.특이사항) + ']</b>' : '') +
+            '</div>';
         } else {
-          detectHtml = '<span style="font-size:12px; color:#64748B;">심의완료(' + esc(it['심의완료일']) + ') 이후 입고 대기중</span>';
-        }
-      } else if (st === '포장대기') {
-        const inInfo = '<div style="font-size:11.5px; color:#334155;">✓ 입고확정(' + esc(it['부자재입고일']) + ') : ' + esc(it['부자재입고내역']) + '</div>';
-        if (detPk.length) {
-          const topPk = detPk[0];
-          detectHtml = inInfo + '<div class="tr-detect-box pack">' +
-            '🏭 <b>생산 감지 (' + esc(topPk.생산일자) + ') :</b> ' + esc(topPk.라인_호기) + ' · 소비기한 ' + esc(topPk.소비기한) +
-            (topPk.특이사항 && topPk.특이사항 !== '이상없음' && topPk.특이사항 !== '-' ? ' [' + esc(topPk.특이사항) + ']' : '') +
-          '</div>';
-        } else {
-          detectHtml = inInfo + '<div style="font-size:11.5px; color:#047857; margin-top:2px;">현장 첫 전환포장 가동 대기중</div>';
+          step2Html += '<div style="font-size:11px; color:#64748B; margin-top:3px;">원부자재 DB 입고 등록 대기</div>';
         }
       } else {
-        detectHtml =
-          '<div style="font-size:11.5px; color:#334155;">• 입고 : ' + esc(it['부자재입고일'] || '-') + ' (' + esc(it['부자재입고내역'] || '-') + ')</div>' +
-          '<div style="font-size:11.5px; color:#047857; font-weight:800;">• 포장완료 : ' + esc(it['전환포장일'] || '-') + ' (' + esc(it['전환포장내역'] || '-') + ')</div>';
+        const inLead = calcDaysDiffBadge(revDt, inDt, '');
+        step2Html =
+          '<div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">' +
+            '<span style="font-weight:900; color:#B45309; font-size:13px;">✓ ' + esc(inDt || '-') + ' 입고완료</span>' +
+            (inLead ? '<span class="badge badge-neutral" style="font-size:10px; padding:1px 5px;">심의 ' + esc(inLead) + '</span>' : '') +
+          '</div>' +
+          '<div style="font-size:11.5px; color:#334155; margin-top:3px; line-height:1.4;">' +
+            esc(it['부자재입고내역'] || '-') +
+          '</div>';
+      }
+
+      // [③ 현장 전환포장 (첫생산) 칸]
+      let step3Html = '';
+      if (st === '입고대기') {
+        step3Html = '<span style="font-size:11.5px; color:#94A3B8; font-weight:700;">— 부자재 입고 후 진행</span>';
+      } else if (st === '포장대기') {
+        const packWaitDays = calcDaysDiffBadge(inDt || revDt, todayIso, '경과');
+        step3Html =
+          '<div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">' +
+            '<span class="badge badge-info" style="background:#DBEAFE; color:#1E40AF;">👀 전환포장 대기중</span>' +
+            (packWaitDays ? '<span style="font-size:11px; font-weight:800; color:#0369A1;">(입고 후 ' + esc(packWaitDays) + ')</span>' : '') +
+          '</div>';
+        if (detPk.length) {
+          const topPk = detPk[0];
+          step3Html +=
+            '<div class="tr-detect-box pack" style="margin-top:5px;">' +
+              '🏭 <b>' + esc(topPk.생산일자) + ' 생산 가동 감지!</b><br>' +
+              esc(topPk.라인_호기) + ' · 소비기한 <b>' + esc(topPk.소비기한) + '</b>' +
+              (topPk.특이사항 && topPk.특이사항 !== '이상없음' && topPk.특이사항 !== '특이사항 미기입' && topPk.특이사항 !== '-' ? '<br>특이사항: ' + esc(topPk.특이사항) : '') +
+            '</div>';
+        } else {
+          step3Html += '<div style="font-size:11px; color:#0F766E; font-weight:700; margin-top:3px;">구형팩 소진 · 신규팩 첫생산 투입 확인 필요</div>';
+        }
+      } else {
+        const pkLead = calcDaysDiffBadge(inDt || revDt, pkDt, '');
+        step3Html =
+          '<div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">' +
+            '<span style="font-weight:900; color:#047857; font-size:13px;">✅ ' + esc(pkDt || '-') + ' 전환완료</span>' +
+            (pkLead ? '<span class="badge badge-ok" style="font-size:10px; padding:1px 5px;">입고 ' + esc(pkLead) + '</span>' : '') +
+          '</div>' +
+          '<div style="font-size:11.5px; color:#065F46; font-weight:700; margin-top:3px; line-height:1.4;">' +
+            esc(it['전환포장내역'] || '-') +
+          '</div>';
       }
 
       const itemJsonAttr = encodeURIComponent(JSON.stringify(it));
@@ -8662,27 +8726,34 @@ function renderActiveTransitionTableHtml(list) {
       if (st === '입고대기') {
         actionBtns =
           '<button class="btn btn-primary btn-sm" onclick="openConfirmInboundModal(\'' + itemJsonAttr + '\')">📦 입고 확정 ›</button> ' +
-          '<button class="btn btn-sm" style="color:var(--err-fg);" onclick="deleteTransitionItem(\'' + esc(it['추적ID']) + '\')">삭제</button>';
+          '<button class="btn btn-sm" style="color:var(--err-fg);" onclick="deleteTransitionItem(\'' + esc(it['추적ID']) + '\')" title="삭제">✕</button>';
       } else if (st === '포장대기') {
         actionBtns =
-          '<button class="btn btn-primary btn-sm" style="background:#047857; border-color:#047857;" onclick="openConfirmPackModal(\'' + itemJsonAttr + '\')">✅ 전환포장 확인</button> ' +
+          '<button class="btn btn-primary btn-sm" style="background:#047857; border-color:#047857;" onclick="openConfirmPackModal(\'' + itemJsonAttr + '\')">✅ 포장 확인</button> ' +
           '<button class="btn btn-sm" onclick="revertTransitionStage(\'' + esc(it['추적ID']) + '\', \'입고대기\')" title="입고대기로 되돌리기">↺</button>';
       } else {
         actionBtns =
-          '<span class="badge badge-ok">종결 완료</span> ' +
+          '<span class="badge badge-ok">종결</span> ' +
           '<button class="btn btn-sm" onclick="revertTransitionStage(\'' + esc(it['추적ID']) + '\', \'포장대기\')" title="포장대기로 되돌리기">↺</button>';
       }
 
       return '<tr>' +
-        '<td><span class="badge ' + (isNew ? 'badge-purple' : 'badge-info') + '">' + esc(it['구분']) + '</span></td>' +
-        '<td><span class="badge ' + stBadgeCls + '">' + esc(st) + '</span></td>' +
-        '<td>' + esc(it['보관구분']) + '</td>' +
-        '<td class="td-left"><strong>' + esc(it['표시사항제목']) + '</strong><div style="font-size:11px; color:#64748B;">심의완료 : ' + esc(it['심의완료일']) + (it['메모'] ? (' · 메모: ' + esc(it['메모'])) : '') + '</div></td>' +
-        '<td class="td-left" style="font-size:12px;">' +
-          '<div><b>부자재 :</b> ' + esc(it['매칭_부자재명'] || '-') + '</div>' +
-          '<div style="color:#475569;"><b>포장일보 :</b> ' + esc(it['매칭_포장품목명'] || '-') + '</div>' +
+        '<td>' +
+          '<div style="display:flex; flex-direction:column; align-items:center; gap:4px;">' +
+            '<span class="badge ' + (isNew ? 'badge-purple' : 'badge-info') + '">' + esc(it['구분']) + '</span>' +
+            '<span class="badge ' + stBadgeCls + '">' + esc(st) + '</span>' +
+          '</div>' +
         '</td>' +
-        '<td class="td-left">' + detectHtml + '</td>' +
+        '<td class="td-left">' +
+          '<div style="font-weight:900; color:#0F172A; font-size:13px;">[' + esc(it['보관구분']) + '] ' + esc(it['표시사항제목']) + '</div>' +
+          '<div style="font-size:11.5px; color:#475569; margin-top:3px;">' +
+            '<b>부자재:</b> ' + esc(it['매칭_부자재명'] || '-') + ' / <b>일보:</b> ' + esc(it['매칭_포장품목명'] || '-') +
+          '</div>' +
+          (it['메모'] ? '<div style="font-size:11px; color:#92400E; font-weight:700; margin-top:2px;">★ ' + esc(it['메모']) + '</div>' : '') +
+        '</td>' +
+        '<td class="td-left" style="background:rgba(239,246,255,0.35);">' + step1Html + '</td>' +
+        '<td class="td-left" style="background:rgba(255,251,235,0.4);">' + step2Html + '</td>' +
+        '<td class="td-left" style="background:rgba(236,253,245,0.4);">' + step3Html + '</td>' +
         '<td style="white-space:nowrap;">' + actionBtns + '</td>' +
       '</tr>';
     }).join('') +
@@ -8931,11 +9002,18 @@ window.renderSubMatView = function() {
   }
 
   if (SUB_MAT_TAB === 'transition') {
+    const allFlowList = [].concat(
+      tr.waiting_pack_list || [],
+      tr.waiting_in_list || [],
+      tr.completed_list || []
+    );
     const targetList = TRANS_STAGE_FILTER === 'waiting_in'
       ? (tr.waiting_in_list || [])
       : (TRANS_STAGE_FILTER === 'waiting_pack'
         ? (tr.waiting_pack_list || [])
-        : (tr.completed_list || []));
+        : (TRANS_STAGE_FILTER === 'completed'
+          ? (tr.completed_list || [])
+          : allFlowList));
 
     box.innerHTML =
       '<div class="panel-card" style="padding:11px 15px; background:#F8FAFC;">' +
@@ -8944,15 +9022,17 @@ window.renderSubMatView = function() {
             '<button class="btn btn-sm ' + (TRANS_STAGE_FILTER === 'waiting_in' ? 'btn-primary' : '') + '" onclick="TRANS_STAGE_FILTER=\'waiting_in\'; renderSubMatView()">② 심의완료 · 입고대기 (' + (trCnts.waiting_in_cnt || 0) + '건)</button>' +
             '<button class="btn btn-sm ' + (TRANS_STAGE_FILTER === 'waiting_pack' ? 'btn-primary' : '') + '" onclick="TRANS_STAGE_FILTER=\'waiting_pack\'; renderSubMatView()">③ 입고완료 · 포장대기 (' + (trCnts.waiting_pack_cnt || 0) + '건)</button>' +
             '<button class="btn btn-sm ' + (TRANS_STAGE_FILTER === 'completed' ? 'btn-primary' : '') + '" onclick="TRANS_STAGE_FILTER=\'completed\'; renderSubMatView()">✅ 전환포장 완료 이력 (' + (trCnts.completed_cnt || 0) + '건)</button>' +
+            '<button class="btn btn-sm ' + (TRANS_STAGE_FILTER === 'all' ? 'btn-primary' : '') + '" onclick="TRANS_STAGE_FILTER=\'all\'; renderSubMatView()">📊 전체 흐름 통합 보기 (' + allFlowList.length + '건)</button>' +
           '</div>' +
-          '<div style="display:flex; gap:6px;">' +
-            '<button class="btn btn-sm" onclick="LABEL_TAB=\'transition\'; switchView(\'label\', \'transition\')">📑 미분류 심의완료 건 가져오기 (' + (trCnts.unclassified_cnt || 0) + '건)</button>' +
-            '<button class="btn btn-primary btn-sm" onclick="openTransitionRegisterModal(null, \'신규\')">+ 직접 추적 품목 등록</button>' +
+          '<div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">' +
+            '<input type="text" class="form-ctrl" style="width:210px; padding:4px 9px;" placeholder="품목명 · 날짜 · 부서 검색" oninput="filterSimpleTable(this.value, \'subTransTimelineTbl\')" />' +
+            '<button class="btn btn-sm" onclick="LABEL_TAB=\'transition\'; switchView(\'label\', \'transition\')">📑 미분류 후보 (' + (trCnts.unclassified_cnt || 0) + '건)</button>' +
+            '<button class="btn btn-primary btn-sm" onclick="openTransitionRegisterModal(null, \'신규\')">+ 직접 등록</button>' +
           '</div>' +
         '</div>' +
       '</div>' +
       '<div class="panel-card">' +
-        renderActiveTransitionTableHtml(targetList) +
+        renderActiveTransitionTableHtml(targetList, 'subTransTimelineTbl') +
       '</div>';
     return;
   }

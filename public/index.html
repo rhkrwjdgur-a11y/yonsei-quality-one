@@ -9584,7 +9584,12 @@ function ensureFullAlertsInProcessDetail() {
   if (typeof CURRENT_VIEW !== 'undefined' && CURRENT_VIEW !== 'process') return;
   const procSec = document.getElementById('view-process');
   if (!procSec || !BUNDLE || !BUNDLE.process) return;
-  if (document.getElementById('procFullAlertDetailBox')) return;
+
+  const oldBox = document.getElementById('procFullAlertDetailBox');
+  if (oldBox) oldBox.remove();
+
+  // '두유 배양검사 일보(soy)' 탭에서는 상온/냉장 포장 소비기한 배너를 표시하지 않음
+  if (PROC_MAIN_TAB === 'soy') return;
 
   const pr = BUNDLE.process;
   const ps = pr.summary || {};
@@ -9593,7 +9598,7 @@ function ensureFullAlertsInProcessDetail() {
     ? expAlerts.filter(function(a) { return String(a.msg || '').indexOf('[상온') === -1; })
     : (PROC_MAIN_TAB === 'rt'
       ? expAlerts.filter(function(a) { return String(a.msg || '').indexOf('[상온') !== -1; })
-      : expAlerts);
+      : []);
 
   const yNotes = (PROC_MAIN_TAB === 'rt') ? (ps.yest_notes || []) : [];
   const tNotes = (PROC_MAIN_TAB === 'rt') ? (ps.today_notes || []) : [];
@@ -9646,6 +9651,79 @@ function ensureFullAlertsInProcessDetail() {
     };
   }
   setTimeout(renderCompactQ1BottomNotes, 100);
+})();
+/* ============================================================================
+ * [전 화면 우측 상단 중복 바로가기 버튼 일괄 제거 모듈]
+ * - 좌측 사이드바 1클릭으로 이동 가능한 단순 네비게이션 버튼(← 통합 대시보드, 8대 KPI › 등) 전부 숨김
+ * - 실제 기능 버튼(등록 · 편집 · 저장 · 외부 HACCP 일지 ↗ 등)은 100% 그대로 유지
+ * ============================================================================ */
+function stripRedundantNavButtons() {
+  // 1) 각 서브 페이지 상단 헤더(.page-hdr) 내 단순 화면 이동 버튼 제거
+  document.querySelectorAll('.page-hdr button, .page-hdr a').forEach(function(btn) {
+    if (btn.classList.contains('btn-haccp-portal')) return; // HACCP 일지 관리 ↗ 유지
+    const txt = (btn.textContent || '').replace(/\s+/g, ' ').trim();
+    const oc = String(btn.getAttribute('onclick') || '');
+
+    // 등록·편집·추가·저장 등 실제 기능 모달 버튼은 반드시 보존
+    if (/등록|편집|수정|추가|저장|업로드|신규|초기화/.test(txt)) return;
+    if (/open.*Modal/.test(oc)) return;
+
+    // 좌측 메뉴와 겹치는 단순 뷰 전환 버튼 숨김
+    if (
+      txt.indexOf('통합 대시보드') !== -1 ||
+      txt.indexOf('8대 KPI') !== -1 ||
+      txt.indexOf('추적 보드 열기') !== -1 ||
+      oc.indexOf("switchView('home')") !== -1 ||
+      oc.indexOf("switchView('kpi')") !== -1 ||
+      oc.indexOf('openTransitionBoard') !== -1
+    ) {
+      btn.style.display = 'none';
+    }
+  });
+
+  // 2) 패널 소제목(.panel-title) 우측의 단순 타 메뉴 이동 보조버튼('표시사항 현황 ›' 등) 제거
+  document.querySelectorAll('.panel-title button').forEach(function(btn) {
+    const txt = (btn.textContent || '').trim();
+    const oc = String(btn.getAttribute('onclick') || '');
+    if (/등록|편집|수정|추가|확정/.test(txt)) return;
+    if (oc.indexOf('switchView(') !== -1 && txt.indexOf('분류') === -1 && txt.indexOf('가져오기') === -1) {
+      btn.style.display = 'none';
+    }
+  });
+}
+
+(function hookStripRedundantNavButtons() {
+  const viewRenderFns = [
+    'switchView', 'renderActiveView', 'renderKpiView', 'renderClaimView',
+    'renderLabelView', 'renderRawDbView', 'renderAuditView', 'renderSupplierView',
+    'renderLawView', 'renderProcessView', 'renderMicroView', 'renderDefectSubView', 'renderSubMatView'
+  ];
+  viewRenderFns.forEach(function(fnName) {
+    const orig = window[fnName];
+    if (typeof orig === 'function' && !orig._navCleaned) {
+      const wrapped = function() {
+        const res = orig.apply(this, arguments);
+        stripRedundantNavButtons();
+        return res;
+      };
+      wrapped._navCleaned = true;
+      window[fnName] = wrapped;
+    }
+  });
+
+  // DOM 내부 탭 전환으로 다시 그려질 때도 즉시 반영되도록 경량 감지
+  const mainArea = document.querySelector('main') || document.body;
+  let cleanScheduled = false;
+  const obs = new MutationObserver(function() {
+    if (cleanScheduled) return;
+    cleanScheduled = true;
+    requestAnimationFrame(function() {
+      cleanScheduled = false;
+      stripRedundantNavButtons();
+    });
+  });
+  obs.observe(mainArea, { childList: true, subtree: true });
+  setTimeout(stripRedundantNavButtons, 100);
 })();
 </script>
 </body>

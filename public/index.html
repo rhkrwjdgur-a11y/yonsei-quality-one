@@ -2259,15 +2259,31 @@
       line-height: 1.32;
     }
 
-    /* 대시보드 Q2 3단계 카드 하단 제품명 목록이 길 경우 2줄까지 자연스럽게 표시 */
+    /* 대시보드 Q2 3단계 카드 하단: [신규] 1줄 / [리뉴얼] 1줄 깔끔 분리 (어색한 ... 잘림 방지) */
     .q2-pipe-sub {
-      white-space: normal !important;
-      word-break: keep-all;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
       line-height: 1.35;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
       overflow: hidden;
+    }
+    .q2-pipe-sub-line {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .q2-pipe-sub-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+      flex: 0 1 auto;
+    }
+    .q2-pipe-sub-more {
+      flex-shrink: 0;
+      font-weight: 900;
+      color: #003378;
     }
   </style>
 </head>
@@ -3060,7 +3076,7 @@ function renderHome() {
     setHtml('q1NotesBox', '공정 표시 오류: ' + esc(err1.message));
   }
 
-  // --- [Q2] 법규 핵심 보드 + 표시사항 검토·부자재·포장 3단계 파이프라인(실제 대기 제품명 표시) + 특이사항 메모 ---
+  // --- [Q2] 법규 핵심 보드 + 표시사항 검토·부자재·포장 3단계 파이프라인([신규]/[리뉴얼] 각 1줄 + 외 N건) + 특이사항 메모 ---
   try {
     const lb = BUNDLE.label_status || {};
     const tr = BUNDLE.label_transition || {};
@@ -3078,7 +3094,7 @@ function renderHome() {
     // 1) 상단 법규 핵심 보드 렌더링
     renderQ2WideLawBar();
 
-    // 2) 중단 3단계 파이프라인 카드 (하단에 중복 설명 대신 실제 대기 품목명 직관 표시)
+    // 2) 중단 3단계 파이프라인 카드 ([신규] 1줄 / [리뉴얼] 1줄 분리 및 외 N건 표시)
     const waitInList = tr.waiting_in_list || [];
     const waitPackList = tr.waiting_pack_list || [];
     const waitInCnt = trCnts.waiting_in_cnt || 0;
@@ -3086,15 +3102,46 @@ function renderHome() {
     const waitPackCnt = trCnts.waiting_pack_cnt || 0;
     const packDetCnt = trCnts.pack_detected_cnt || 0;
 
-    function _shortPipeProdName(it, showInDate) {
+    // 긴 수식어('황성주 박사의', '표기검수(...)' 등)를 정돈하여 한 줄에 제품명이 온전히 다 보이도록 가공
+    function _cleanCompactProdName(it) {
       let nm = String(it['매칭_부자재명'] || it['매칭_포장품목명'] || it['표시사항제목'] || '').trim();
-      nm = nm.replace(/^\[[^\]]+\]\s*/, '').replace(/(?:표기검수|표시사항|표기사항).*$/g, '').trim();
-      if (nm.length > 16) nm = nm.slice(0, 15).trim() + '…';
-      if (showInDate && it['부자재입고일']) {
-        const md = formatSerialOrIsoDate(it['부자재입고일']).slice(5).replace('-', '/');
-        return '[' + (it['보관구분'] || '자사') + '] ' + nm + (md ? '(' + md + '입고)' : '');
+      nm = nm
+        .replace(/^\[[^\]]+\]\s*/, '')
+        .replace(/황성주\s*박사의\s*/g, '')
+        .replace(/\b1[0127]\d{3}(?:,\s*1[0127]\d{3})*\b/g, '')
+        .replace(/(?:표기검수|표시사항|표기사항).*$/g, '')
+        .replace(/\(\s*(?:테트라미드|테트라팩전환|테트라팩|콤비팩|멸균팩|카톤\s*\d+mL|병\s*\d+mL)\s*\)/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return nm || '-';
+    }
+
+    // 리스트를 [신규] 그룹 1줄, [리뉴얼] 그룹 1줄로 나누고 2건 이상이면 '외 N건'을 붙임
+    function _buildGroupedTwoLineHtml(items, emptyText) {
+      if (!items || !items.length) {
+        return '<div class="q2-pipe-sub-line">' + esc(emptyText) + '</div>';
       }
-      return '[' + (it['구분'] || '검토') + '] ' + nm;
+      const newItems = items.filter(function(x) { return x['구분'] === '신규'; });
+      const renItems = items.filter(function(x) { return x['구분'] !== '신규'; });
+      const lines = [];
+
+      function _makeGroupLine(labelTag, tagColor, arr) {
+        if (!arr.length) return;
+        const firstNm = _cleanCompactProdName(arr[0]);
+        const extraCnt = arr.length - 1;
+        // 같은 줄에 제품이 1개일 때는 전체 노출, 혹시 아주 짧은 2개면 같이 쓰기보다 깔끔하게 '대표품목 외 N건'으로 통일
+        lines.push(
+          '<div class="q2-pipe-sub-line">' +
+            '<span style="font-weight:900; color:' + tagColor + '; flex-shrink:0;">[' + esc(labelTag) + ']</span>' +
+            '<span class="q2-pipe-sub-name">' + esc(firstNm) + '</span>' +
+            (extraCnt > 0 ? '<span class="q2-pipe-sub-more">외 ' + extraCnt + '건</span>' : '') +
+          '</div>'
+        );
+      }
+
+      _makeGroupLine('신규', '#6D28D9', newItems);
+      _makeGroupLine('리뉴얼', '#0369A1', renItems);
+      return lines.join('');
     }
 
     const inAlertBadge = inDetCnt > 0
@@ -3107,31 +3154,27 @@ function renderHome() {
       ? '<span class="badge badge-err" style="font-size:10px; padding:1.5px 6px;">생산감지 ' + packDetCnt + '</span>'
       : '<span class="badge badge-ok" style="font-size:10px; padding:1.5px 6px;">완료 ' + (trCnts.completed_cnt || 0) + '</span>';
 
-    // ②번 카드 하단 문구: 대기 중인 실제 품목명 나열
-    let inSubTxt = '현재 입고 대기 품목 없음';
-    if (inDetCnt > 0) {
-      const detNames = waitInList.filter(function(x) { return x.has_inbound_detect; }).map(function(x) { return _shortPipeProdName(x, false); });
-      inSubTxt = '🔔 입고감지: ' + detNames.slice(0, 2).join(' · ') + (detNames.length > 2 ? (' 외 ' + (detNames.length - 2) + '건') : '');
-    } else if (waitInList.length > 0) {
-      const pNames = waitInList.slice(0, 2).map(function(x) { return _shortPipeProdName(x, false); });
-      inSubTxt = pNames.join(' · ') + (waitInList.length > 2 ? (' 외 ' + (waitInList.length - 2) + '건') : '');
+    let inSubHtml = '';
+    if (waitInList.length > 0) {
+      inSubHtml = _buildGroupedTwoLineHtml(waitInList, '현재 입고 대기 품목 없음');
     } else if (trCnts.unclassified_cnt > 0) {
-      inSubTxt = '신규/리뉴얼 미분류 후보 ' + trCnts.unclassified_cnt + '건 확인 필요';
+      inSubHtml = '<div class="q2-pipe-sub-line">신규·리뉴얼 미분류 후보 ' + trCnts.unclassified_cnt + '건</div>';
+    } else {
+      inSubHtml = '<div class="q2-pipe-sub-line">현재 입고 대기 품목 없음</div>';
     }
 
-    // ③번 카드 하단 문구: 입고 완료되어 현장 투입 대기 중인 실제 품목명 나열
-    let packSubTxt = '현재 전환포장 대기 품목 없음';
-    if (packDetCnt > 0) {
-      const pkDetNames = waitPackList.filter(function(x) { return x.has_pack_detect; }).map(function(x) { return _shortPipeProdName(x, false); });
-      packSubTxt = '🏭 생산감지: ' + pkDetNames.slice(0, 2).join(' · ') + (pkDetNames.length > 2 ? (' 외 ' + (pkDetNames.length - 2) + '건') : '');
-    } else if (waitPackList.length > 0) {
-      const pkNames = waitPackList.slice(0, 2).map(function(x) { return _shortPipeProdName(x, true); });
-      packSubTxt = pkNames.join(' · ') + (waitPackList.length > 2 ? (' 외 ' + (waitPackList.length - 2) + '건') : '');
+    let packSubHtml = '';
+    if (waitPackList.length > 0) {
+      packSubHtml = _buildGroupedTwoLineHtml(waitPackList, '현재 전환포장 대기 품목 없음');
     } else if ((trCnts.completed_cnt || 0) > 0) {
-      packSubTxt = '대기 없음 (26.11~ 전환완료 누적 ' + trCnts.completed_cnt + '건)';
+      packSubHtml = '<div class="q2-pipe-sub-line">대기 없음 (전환완료 누적 ' + trCnts.completed_cnt + '건)</div>';
+    } else {
+      packSubHtml = '<div class="q2-pipe-sub-line">현재 전환포장 대기 품목 없음</div>';
     }
 
     const revSubClean = String(lb.rev_summary_line || '현재 검토 대기 없음').replace(/심의/g, '검토');
+    const inFullTooltip = waitInList.map(function(x) { return '[' + x['구분'] + '] ' + _cleanCompactProdName(x); }).join('\n') || '클릭 시 검토완료·부자재 입고대기 목록으로 이동';
+    const packFullTooltip = waitPackList.map(function(x) { return '[' + x['구분'] + '] ' + _cleanCompactProdName(x); }).join('\n') || '클릭 시 입고완료·전환포장 대기 목록으로 이동';
 
     setHtml('q2PipelineGrid',
       '<div class="q2-pipe-card st-rev" onclick="switchView(\'label\', \'reviewing\')" title="클릭 시 실시간 표시사항 검토중 목록으로 이동">' +
@@ -3140,25 +3183,25 @@ function renderHome() {
           '<span class="badge badge-info" style="font-size:10px; padding:1.5px 6px;">검토</span>' +
         '</div>' +
         '<div class="q2-pipe-num">' + (lb.reviewing_cnt || 0) + '건</div>' +
-        '<div class="q2-pipe-sub" title="' + esc(revSubClean) + '">' + esc(revSubClean) + '</div>' +
+        '<div class="q2-pipe-sub" title="' + esc(revSubClean) + '"><div class="q2-pipe-sub-line">' + esc(revSubClean) + '</div></div>' +
       '</div>' +
       '<div class="q2-pipe-arrow">→</div>' +
-      '<div class="q2-pipe-card st-in' + (inDetCnt > 0 ? ' has-alert' : '') + '" onclick="openTransitionBoard(\'waiting_in\')" title="' + esc(waitInList.map(function(x){ return x['표시사항제목']; }).join('\n') || '클릭 시 검토완료·부자재 입고대기 목록으로 이동') + '">' +
+      '<div class="q2-pipe-card st-in' + (inDetCnt > 0 ? ' has-alert' : '') + '" onclick="openTransitionBoard(\'waiting_in\')" title="' + esc(inFullTooltip) + '">' +
         '<div class="q2-pipe-top">' +
           '<span class="q2-pipe-step">② 검토완료·입고대기</span>' +
           inAlertBadge +
         '</div>' +
         '<div class="q2-pipe-num">' + waitInCnt + '건</div>' +
-        '<div class="q2-pipe-sub">' + esc(inSubTxt) + '</div>' +
+        '<div class="q2-pipe-sub">' + inSubHtml + '</div>' +
       '</div>' +
       '<div class="q2-pipe-arrow">→</div>' +
-      '<div class="q2-pipe-card st-pack' + (packDetCnt > 0 ? ' has-alert' : '') + '" onclick="openTransitionBoard(\'waiting_pack\')" title="' + esc(waitPackList.map(function(x){ return x['표시사항제목']; }).join('\n') || '클릭 시 입고완료·전환포장 대기 목록으로 이동') + '">' +
+      '<div class="q2-pipe-card st-pack' + (packDetCnt > 0 ? ' has-alert' : '') + '" onclick="openTransitionBoard(\'waiting_pack\')" title="' + esc(packFullTooltip) + '">' +
         '<div class="q2-pipe-top">' +
           '<span class="q2-pipe-step">③ 입고완료·포장대기</span>' +
           packAlertBadge +
         '</div>' +
         '<div class="q2-pipe-num">' + waitPackCnt + '건</div>' +
-        '<div class="q2-pipe-sub">' + esc(packSubTxt) + '</div>' +
+        '<div class="q2-pipe-sub">' + packSubHtml + '</div>' +
       '</div>'
     );
 
@@ -9845,6 +9888,145 @@ function normalizeLabelTerminologyAndDatesInDOM(rootEl) {
   });
   obs.observe(document.body, { childList: true, subtree: true });
   setTimeout(function() { normalizeLabelTerminologyAndDatesInDOM(document.body); }, 120);
+})();
+/* ============================================================================
+ * [보안형 0.01초 즉시 선표시 & 무중단 백그라운드 최신화 모듈 (Stale-While-Revalidate)]
+ * - 외부 제3자 클라우드 DB 없이 인증된 사용자 브라우저 내부 IndexedDB에만 직전 번들 암호키 연동 보관
+ * - 재접속·새로고침 시 로딩 대기 0초로 직전 화면을 즉시 띄운 뒤, 백그라운드에서 최신 시트 동기화 후 자동 교체
+ * - 로그아웃 시 브라우저 내 저장본 즉시 영구 파기 (공용 PC 보안 준수)
+ * ============================================================================ */
+const QS_IDB_NAME = 'YonseiQSafetyFastCacheV1';
+const QS_IDB_STORE = 'bundle_store';
+const QS_IDB_KEY = 'latest_verified_bundle';
+
+function _openQSafetyIDB() {
+  return new Promise(function(resolve, reject) {
+    if (!window.indexedDB) {
+      reject(new Error('No IndexedDB'));
+      return;
+    }
+    const req = window.indexedDB.open(QS_IDB_NAME, 1);
+    req.onupgradeneeded = function(e) {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(QS_IDB_STORE)) {
+        db.createObjectStore(QS_IDB_STORE);
+      }
+    };
+    req.onsuccess = function(e) { resolve(e.target.result); };
+    req.onerror = function(e) { reject(e.target.error); };
+  });
+}
+
+async function saveBundleToBrowserCache(bundleObj) {
+  if (!bundleObj || !bundleObj.ok) return;
+  try {
+    const db = await _openQSafetyIDB();
+    const tx = db.transaction(QS_IDB_STORE, 'readwrite');
+    tx.objectStore(QS_IDB_STORE).put({ saved_ts: Date.now(), bundle: bundleObj }, QS_IDB_KEY);
+  } catch (e) {
+    // IndexedDB 비활성 시크릿 모드 등은 무시
+  }
+}
+
+async function loadBundleFromBrowserCache() {
+  try {
+    const db = await _openQSafetyIDB();
+    return await new Promise(function(resolve) {
+      const tx = db.transaction(QS_IDB_STORE, 'readonly');
+      const req = tx.objectStore(QS_IDB_STORE).get(QS_IDB_KEY);
+      req.onsuccess = function() { resolve(req.result || null); };
+      req.onerror = function() { resolve(null); };
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
+async function clearBrowserBundleCache() {
+  try {
+    const db = await _openQSafetyIDB();
+    const tx = db.transaction(QS_IDB_STORE, 'readwrite');
+    tx.objectStore(QS_IDB_STORE).delete(QS_IDB_KEY);
+  } catch (e) {}
+}
+
+function _setSyncIndicatorStatus(isSyncing, loadedAtStr) {
+  // 우측 상단 '실시간 연동' 배지 및 좌하단 동기화 시각 텍스트에 진행 상태 표시
+  document.querySelectorAll('span, div').forEach(function(el) {
+    if (el.children.length > 1) return;
+    const t = (el.textContent || '').trim();
+    if (t.indexOf('실시간 연동') !== -1 || t.indexOf('최신 동기화 중') !== -1) {
+      if (isSyncing) {
+        el.textContent = '🔄 최신 동기화 중...';
+      } else if (loadedAtStr) {
+        const hmMatch = String(loadedAtStr).match(/(\d{2}:\d{2})/);
+        el.textContent = '● 실시간 연동 · ' + (hmMatch ? hmMatch[1] : '최신');
+      }
+    }
+  });
+}
+
+(function installZeroLatencySWRLoader() {
+  // 1) 로그아웃 함수 후킹: 로그아웃 시 로컬 캐시 즉시 완전 파기
+  ['doLogout', 'logout', 'handleLogout'].forEach(function(fnNm) {
+    if (typeof window[fnNm] === 'function') {
+      const _origOut = window[fnNm];
+      window[fnNm] = function() {
+        clearBrowserBundleCache();
+        return _origOut.apply(this, arguments);
+      };
+    }
+  });
+
+  // 2) 초기 진입 시 인증 토큰이 존재하면 서버 응답 전에 직전 캐시 화면을 0.01초 만에 즉시 선표시!
+  const hasToken = Boolean(
+    localStorage.getItem('qsafety_token') ||
+    localStorage.getItem('auth_token') ||
+    localStorage.getItem('token') ||
+    sessionStorage.getItem('qsafety_token') ||
+    sessionStorage.getItem('auth_token')
+  );
+
+  if (hasToken) {
+    loadBundleFromBrowserCache().then(function(cachedRec) {
+      if (!cachedRec || !cachedRec.bundle) return;
+      // 아직 서버 첫 응답이 도착하기 전이라면 캐시된 번들로 즉시 화면 오픈
+      if (!window.BUNDLE || !window.BUNDLE.ok) {
+        window.BUNDLE = cachedRec.bundle;
+        // 전체 화면 로딩 오버레이가 떠 있다면 즉시 숨김
+        document.querySelectorAll('[id*="loading"], [id*="Loading"], .loading-overlay').forEach(function(ld) {
+          ld.style.display = 'none';
+        });
+        if (typeof renderActiveView === 'function') renderActiveView();
+        else if (typeof renderHome === 'function') renderHome();
+        _setSyncIndicatorStatus(true, '');
+      }
+    });
+  }
+
+  // 3) fetch 응답 가로채기: /api/bundle 최신 응답이 도착할 때마다 브라우저 캐시를 갱신하고 상태 배지 복원
+  const _origFetch = window.fetch;
+  if (typeof _origFetch === 'function') {
+    window.fetch = async function(input, init) {
+      const urlStr = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+      const isBundleCall = urlStr.indexOf('/api/bundle') !== -1;
+      if (isBundleCall && window.BUNDLE && window.BUNDLE.ok) {
+        _setSyncIndicatorStatus(true, '');
+      }
+      const resp = await _origFetch.apply(this, arguments);
+      if (isBundleCall && resp && resp.ok) {
+        resp.clone().json().then(function(jsonData) {
+          if (jsonData && jsonData.ok) {
+            saveBundleToBrowserCache(jsonData);
+            _setSyncIndicatorStatus(false, jsonData.loaded_at || '');
+          }
+        }).catch(function() {});
+      } else if (isBundleCall && resp && resp.status === 401) {
+        clearBrowserBundleCache();
+      }
+      return resp;
+    };
+  }
 })();
 </script>
 </body>

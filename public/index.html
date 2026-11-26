@@ -9295,20 +9295,45 @@ function autoExtractGuidelineFields() {
     document.getElementById('inpGuideEnfDt').value = y + '-' + m + '-' + d;
   }
 
-  // 4) 핵심 bullet 요약 자동 조합
-  const mGrace = raw.match(/계도기간\s*[:：]?\s*([^\n]+)/);
-  const bullets = [];
-  raw.split(/\r?\n/).forEach(function(ln) {
-    const s = ln.trim();
-    if (s.startsWith('-') && s.indexOf('계도기간') === -1 && s.indexOf('일괄 적용') === -1) {
-      bullets.push(s.replace(/^-\s*/, '').trim());
+  // 4) '-아래-' 구분선 및 인사말/맺음말 완전히 제거 후 본문 핵심 문장 추출
+  let bodyPart = raw;
+  const mBelow = bodyPart.match(/[-–—―]\s*아\s*래\s*[-–—―]?/);
+  if (mBelow) {
+    bodyPart = bodyPart.slice(mBelow.index + mBelow[0].length);
+  }
+  bodyPart = bodyPart.replace(/\n*\s*(?:자세한\s*사항은\s*붙임|감사합니다)[\s\S]*$/, '').trim();
+
+  const mGrace = bodyPart.match(/계도기간\s*[:：]?\s*([^\n]+)/);
+  const skipHeaderRe = /^(?:\d+[.)]?$|대상\s*제품|표시\s*방법|적용\s*일정|주요\s*내용|개정\s*내용|참고\s*사항)$/;
+  const clauses = [];
+
+  bodyPart.split(/\r?\n/).forEach(function(ln) {
+    let s = ln.replace(/^[\s\-–—―·•▪▫▸▶*]+/, '').trim();
+    if (!s || s.length < 6) return;
+    if (/^[-–—―]*\s*아\s*래\s*[-–—―]*$/.test(s)) return;
+    if (/^\d+[.)]\s*(?:대상\s*제품|표시\s*방법|적용\s*일정|주요\s*내용)$/.test(s)) return;
+    if (skipHeaderRe.test(s.replace(/\s+/g, ''))) return;
+    if (/안녕하세요|입니다\.?$|확인하여\s*주시기\s*바랍니다|공유드리오니/.test(s)) return;
+    if (/^(?:계도기간|일괄\s*적용|시행일?)\s*[:：]/.test(s)) return;
+    if (/기존\s*제품은\s*소비기한까지\s*유통/.test(s)) return;
+
+    s = s.replace(/^\d+[.)]\s*/, '').trim();
+    if (s && clauses.indexOf(s) === -1) {
+      clauses.push(s);
     }
   });
-  if (bullets.length) {
-    let joined = bullets.slice(0, 4).join(' / ');
-    if (joined.length > 125) joined = joined.slice(0, 125).trim();
+
+  if (clauses.length) {
+    let joined = clauses.slice(0, 4).join(' / ');
+    if (joined.length > 130) {
+      const cut = joined.slice(0, 130);
+      const lastSlash = cut.lastIndexOf(' / ');
+      const lastSpace = cut.lastIndexOf(' ');
+      joined = (lastSlash > 65 ? cut.slice(0, lastSlash) : (lastSpace > 80 ? cut.slice(0, lastSpace) : cut)).trim();
+    }
     if (mGrace) {
-      joined += ' (계도기간: ' + mGrace[1].trim() + ')';
+      const graceClean = mGrace[1].replace(/까지.*$/, '까지').trim();
+      joined += ' (계도기간: ' + graceClean + ')';
     }
     document.getElementById('inpGuideSummary').value = joined;
   }

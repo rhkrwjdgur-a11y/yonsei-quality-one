@@ -2061,57 +2061,64 @@
       overflow: hidden;
     }
 
-    /* [상단] 가로 100% 와이드 법규 개정 1줄 바 */
+    /* [상단] 법규 개정 핵심 보드 (확대 · 법규명 숨김 · D-Day + 요약 전문 줄바꿈 노출) */
     .q2-law-wide-bar {
-      background: linear-gradient(90deg, #F8FAFC 0%, #EFF6FF 100%);
+      flex: 1.2;
+      min-height: 0;
+      background: #F8FAFC;
       border: 1px solid #BFDBFE;
-      border-radius: 8px;
-      padding: clamp(5px, 0.72vh, 8px) 10px;
+      border-radius: 9px;
+      padding: 6px 8px;
       display: flex;
-      align-items: center;
-      gap: 7px;
-      flex-shrink: 0;
-      min-width: 0;
-    }
-    .q2-law-wide-main {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      align-items: center;
+      flex-direction: column;
       gap: 6px;
+      overflow-y: auto;
+    }
+    .q2-law-wide-bar::-webkit-scrollbar { width: 4px; }
+    .q2-law-wide-bar::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+
+    .q2-law-item-card {
+      background: #FFFFFF;
+      border: 1px solid #DBEAFE;
+      border-left: 3.5px solid var(--yonsei-blue);
+      border-radius: 7px;
+      padding: 7px 10px;
       cursor: pointer;
-      overflow: hidden;
+      transition: border-color 0.12s ease, background 0.12s ease;
     }
-    .q2-law-wide-main:hover .q2-law-wide-txt {
-      color: var(--yonsei-mid);
-      text-decoration: underline;
+    .q2-law-item-card.is-notice {
+      border-left-color: #7C3AED;
     }
-    .q2-law-wide-txt {
-      flex: 1;
-      min-width: 0;
+    .q2-law-item-card:hover {
+      background: #EFF6FF;
+      border-color: #60A5FA;
+    }
+    .q2-law-item-hdr {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .q2-law-item-left {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+    .q2-law-item-sum {
       font-size: var(--fs-sm);
       font-weight: 800;
       color: #0F172A;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .q2-law-wide-sum {
-      font-weight: 600;
-      color: #334155;
-      margin-left: 5px;
-    }
-    .q2-law-nav {
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
-      flex-shrink: 0;
+      line-height: 1.42;
+      white-space: normal;
+      word-break: keep-all;
+      overflow: visible;
     }
 
-    /* [중단] 표시사항 검토중 -> 입고대기 -> 포장대기 3단계 파이프라인 */
+    /* [중단] 표시사항 검토중 -> 입고대기 -> 포장대기 3단계 파이프라인 (알찬 높이 압축) */
     .q2-pipe-grid {
-      flex: 1;
-      min-height: 0;
+      flex: 0 0 auto;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
       align-items: stretch;
@@ -2131,10 +2138,11 @@
       border: 1.5px solid #CBD5E1;
       background: #F8FAFC;
       border-radius: 10px;
-      padding: clamp(7px, 0.9vh, 11px) 10px;
+      padding: clamp(5px, 0.7vh, 8px) 10px;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      justify-content: center;
+      gap: 2px;
       cursor: pointer;
       min-width: 0;
       transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
@@ -2177,11 +2185,11 @@
       text-overflow: ellipsis;
     }
     .q2-pipe-num {
-      font-size: calc(var(--fs-xl) * 1.12);
+      font-size: calc(var(--fs-xl) * 1.02);
       font-weight: 900;
       color: var(--yonsei-blue);
-      line-height: 1.15;
-      margin: 2px 0;
+      line-height: 1.12;
+      margin: 1px 0;
       white-space: nowrap;
     }
     .q2-pipe-card.st-in .q2-pipe-num { color: #B45309; }
@@ -8131,7 +8139,7 @@ let SUB_DB_MONTH_FILTER = 'ALL';
 let SUB_DB_TYPE_FILTER = 'ALL';
 let SUB_DB_CHG_ONLY = false;
 
-// --- [1] 통합 대시보드 Q2 상단 와이드 법규 개정 1줄 바 ---
+// --- [1] 통합 대시보드 Q2 상단 법규 핵심 보드 (법규명 숨김 · D-Day + 핵심요약 전문 노출) ---
 function getDashboardCheckedLaws() {
   const lw = (BUNDLE && BUNDLE.law) || {};
   if (lw.dashboard_laws && lw.dashboard_laws.length) return lw.dashboard_laws;
@@ -8141,54 +8149,44 @@ function getDashboardCheckedLaws() {
 function renderQ2WideLawBar() {
   const bar = document.getElementById('q2LawWideBar');
   if (!bar) return;
+  if (Q2_LAW_TIMER) {
+    clearInterval(Q2_LAW_TIMER);
+    Q2_LAW_TIMER = null;
+  }
+
   const laws = getDashboardCheckedLaws();
   if (!laws.length) {
     bar.innerHTML =
-      '<span class="badge badge-neutral">법규 핵심</span>' +
-      '<span class="q2-law-wide-txt" style="color:var(--text-muted); font-weight:700; cursor:pointer;" onclick="switchView(\'law\')">대시보드 노출로 체크된 개정 법규가 없습니다 — 클릭하여 선별 ›</span>';
+      '<div style="margin:auto; text-align:center; color:var(--text-muted); font-size:12.5px; font-weight:700; cursor:pointer;" onclick="switchView(\'law\')">' +
+        '대시보드 노출로 체크된 개정 법규가 없습니다 — 클릭하여 법규 선별 ›' +
+      '</div>';
     return;
   }
 
-  if (Q2_LAW_IDX >= laws.length || Q2_LAW_IDX < 0) Q2_LAW_IDX = 0;
-  const item = laws[Q2_LAW_IDX] || laws[0];
-  const stCls = item['예고여부'] ? 'badge-purple' : 'badge-info';
-  const sumTxt = item['실무조치요약'] || item['자동조치요약'] || '';
+  bar.innerHTML = laws.map(function(item) {
+    const isNotice = Boolean(item['예고여부']);
+    const stCls = isNotice ? 'badge-purple' : 'badge-info';
+    const sumTxt = item['실무조치요약'] || item['자동조치요약'] || '-';
+    const enfDt = (item['시행일'] && item['시행일'] !== '-' && item['시행일'] !== '미정')
+      ? ('시행 ' + item['시행일'])
+      : '시행일 미정';
+    const tipLawName = '법규명: ' + (item['법규명'] || '-') + ' (클릭 시 법령명·원문 및 요약 편집)';
 
-  bar.innerHTML =
-    '<span class="badge ' + stCls + '" style="padding:2.5px 7px; font-size:11px;">' + esc(item['법규단계'] || '고시') + '</span>' +
-    '<span class="badge ' + esc(item.d_day_cls || 'badge-info') + '" style="padding:2.5px 7px; font-size:11px;">' + esc(item.d_day_label || '-') + '</span>' +
-    '<div class="q2-law-wide-main" onclick="openLawDetailModal(\'' + esc(item.law_id || '') + '\')" title="클릭 시 법령 원문 및 1~2줄 요약 편집 팝업 열기">' +
-      '<div class="q2-law-wide-txt">' +
-        '<strong>' + esc(item['법규명'] || '-') + '</strong>' +
-        '<span class="q2-law-wide-sum">— ' + esc(sumTxt) + '</span>' +
+    return '<div class="q2-law-item-card' + (isNotice ? ' is-notice' : '') + '" onclick="openLawDetailModal(\'' + esc(item.law_id || '') + '\')" title="' + esc(tipLawName) + '">' +
+      '<div class="q2-law-item-hdr">' +
+        '<div class="q2-law-item-left">' +
+          '<span class="badge ' + stCls + '" style="padding:2px 7px; font-size:11px;">' + esc(item['법규단계'] || '고시') + '</span>' +
+          '<span class="badge ' + esc(item.d_day_cls || 'badge-info') + '" style="padding:2px 8px; font-size:11.5px; font-weight:900;">' + esc(item.d_day_label || '-') + '</span>' +
+          '<span style="font-size:11.5px; font-weight:700; color:#475569;">' + esc(enfDt) + '</span>' +
+        '</div>' +
+        '<div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">' +
+          '<span style="font-size:10.5px; font-weight:700; color:#64748B;">법령·원문 ›</span>' +
+          '<span class="badge ' + esc(item.prep_timing_cls || 'badge-neutral') + '" style="padding:2px 7px; font-size:10.5px;">' + esc(item.prep_status || '검토전') + '</span>' +
+        '</div>' +
       '</div>' +
-    '</div>' +
-    '<span class="badge ' + esc(item.prep_timing_cls || 'badge-neutral') + '" style="padding:2px 7px; font-size:10.5px;">' + esc(item.prep_status || '검토전') + '</span>' +
-    (laws.length > 1
-      ? '<div class="q2-law-nav">' +
-          '<span style="font-size:10.5px; font-weight:800; color:#64748B; margin-right:2px;">' + (Q2_LAW_IDX + 1) + '/' + laws.length + '</span>' +
-          '<button type="button" class="ticker-nav-btn" onclick="stepQ2Law(-1)" title="이전 법규">◀</button>' +
-          '<button type="button" class="ticker-nav-btn" onclick="stepQ2Law(1)" title="다음 법규">▶</button>' +
-        '</div>'
-      : '');
-
-  if (!Q2_LAW_TIMER) {
-    Q2_LAW_TIMER = setInterval(function() {
-      if (document.hidden || CURRENT_VIEW !== 'home') return;
-      const curLaws = getDashboardCheckedLaws();
-      if (curLaws.length > 1) {
-        Q2_LAW_IDX = (Q2_LAW_IDX + 1) % curLaws.length;
-        renderQ2WideLawBar();
-      }
-    }, 6500);
-  }
-}
-
-function stepQ2Law(delta) {
-  const laws = getDashboardCheckedLaws();
-  if (!laws.length) return;
-  Q2_LAW_IDX = (Q2_LAW_IDX + delta + laws.length) % laws.length;
-  renderQ2WideLawBar();
+      '<div class="q2-law-item-sum">' + esc(sumTxt) + '</div>' +
+    '</div>';
+  }).join('');
 }
 
 function openTransitionBoard(targetStage) {

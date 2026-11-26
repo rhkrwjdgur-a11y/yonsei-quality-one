@@ -6328,6 +6328,16 @@ def parse_label_transition_rows(rows: list) -> List[dict]:
         if not tid:
             continue
         norm_rec = {c: str(rec.get(c, "")).strip() for c in LABEL_TRANSITION_COLS}
+        if not norm_rec["심의완료일"] and rec.get("검토완료일"):
+            norm_rec["심의완료일"] = str(rec.get("검토완료일", "")).strip()
+
+        # UNFORMATTED_VALUE 조회 시 넘어오는 5자리 날짜 일련번호(예: 46339 -> 2026-11-13) 자동 복원
+        for dt_col in ("심의완료일", "부자재입고일", "전환포장일"):
+            raw_v = norm_rec.get(dt_col, "")
+            if raw_v and raw_v != "-":
+                d_obj = parse_date_obj(raw_v)
+                if d_obj:
+                    norm_rec[dt_col] = d_obj.strftime("%Y-%m-%d")
         out.append(norm_rec)
     return out
 

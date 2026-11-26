@@ -3875,11 +3875,13 @@ function renderLawView() {
     '<div class="page-hdr">' +
       '<div>' +
         '<h2 class="page-h2">HACCP 강화 · 법적 RISK · 식품 법규 · 주간 식품안전 관리</h2>' +
-        '<div class="page-desc">\'법규정보\' 시트의 [_법규요약DB] 및 [주간 식품안전] 탭과 실시간 양방향 연동됩니다.</div>' +
+        '<div class="page-desc">\'법규정보\' 시트의 [_법규요약DB] · [공문·지침] · [주간 식품안전] 탭과 실시간 양방향 연동됩니다.</div>' +
       '</div>' +
       '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' +
         '<a href="https://script.google.com/macros/s/AKfycbzRK6VOFx0D3u1qRIh5rMyijP3Jn6XREqJpYSYpoUIUwljG5C9jofioPxs0caOdvG6e/exec" target="_blank" rel="noopener noreferrer" class="btn-haccp-portal">📋 HACCP 일지 관리 ↗</a>' +
-        (LAW_TAB === 'weekly' ? '<button class="btn btn-primary" onclick="openSafetyNewsUploadModal()">+ 주간 식품안전 원문 등록</button>' : '') +
+        (LAW_TAB === 'weekly'
+          ? '<button class="btn btn-primary" onclick="openSafetyNewsUploadModal()">+ 주간 식품안전 원문 등록</button>'
+          : '<button class="btn btn-primary" onclick="openLawGuidelineModal()">+ 식약처 공문 · 지침 등록</button>') +
         '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
         '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
       '</div>' +
@@ -9134,6 +9136,177 @@ function applyCleanHomeDashboardUI() {
     };
   }
   setTimeout(applyCleanHomeDashboardUI, 80);
+})();
+/* ============================================================================
+ * [식약처 · 유가공협회 등 공문·지침 원문 붙여넣기 자동추출 & 대시보드 직결 모듈]
+ * ============================================================================ */
+function openLawGuidelineModal() {
+  const todayIso = (BUNDLE && BUNDLE.loaded_date) || '2026-11-26';
+  openModal(
+    '📌 식약처 · 협회 공문/지침 등록 (\'법규정보 > [공문·지침]\' 탭 직결)',
+    '<div style="background:#EFF6FF; border:1px solid #93C5FD; border-radius:8px; padding:10px 12px; margin-bottom:10px; font-size:12.5px; color:#1E3A8A; line-height:1.5;">' +
+      '• 수신한 메일이나 공문 내용을 아래 칸에 붙여넣고 <b>[✨ 원문에서 자동 추출]</b>을 누르면 제목 · 시행일 · 핵심 요약이 자동으로 채워집니다.<br>' +
+      '• 저장 시 <b>\'법규정보\' 시트의 [공문·지침] 탭</b>에 기록되며, 통합 대시보드 법규 보드에 즉시 추가됩니다.' +
+    '</div>' +
+    '<div class="form-row">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">' +
+        '<label class="form-lbl" style="margin:0;">1. 메일 · 공문 원문 붙여넣기</label>' +
+        '<button type="button" class="btn btn-sm" style="background:#EEF2FF; border-color:#818CF8; color:#3730A3; font-weight:900;" onclick="autoExtractGuidelineFields()">✨ 원문에서 제목·시행일·요약 자동 추출</button>' +
+      '</div>' +
+      '<textarea id="inpGuideRaw" class="form-ctrl" rows="5" placeholder="유가공협회·식약처 안내 메일이나 공문 텍스트를 그대로 붙여넣으세요..." oninput="if(!document.getElementById(\'inpGuideTitle\').value) autoExtractGuidelineFields();"></textarea>' +
+    '</div>' +
+    '<div style="display:grid; grid-template-columns:1.2fr 0.9fr 0.9fr; gap:8px;">' +
+      '<div class="form-row"><label class="form-lbl">발신 · 주무부처</label>' +
+        '<input type="text" id="inpGuideMinistry" class="form-ctrl" value="식품의약품안전처" />' +
+      '</div>' +
+      '<div class="form-row"><label class="form-lbl">수신 · 안내일</label>' +
+        '<input type="date" id="inpGuideNoticeDt" class="form-ctrl" value="' + esc(todayIso) + '" />' +
+      '</div>' +
+      '<div class="form-row"><label class="form-lbl">일괄적용 · 시행일 (D-Day 계산)</label>' +
+        '<input type="date" id="inpGuideEnfDt" class="form-ctrl" value="" />' +
+      '</div>' +
+    '</div>' +
+    '<div class="form-row">' +
+      '<label class="form-lbl">공문 · 지침 제목 (클릭 팝업 시 표시)</label>' +
+      '<input type="text" id="inpGuideTitle" class="form-ctrl" placeholder="예: 「가공유 제품의 원재료 표시 개선」 지침 (식약처·유가공협회)" />' +
+    '</div>' +
+    '<div class="form-row">' +
+      '<label class="form-lbl">★ 대시보드 노출용 핵심 요약 (메인 화면에 말줄임 없이 그대로 표시됨)</label>' +
+      '<textarea id="inpGuideSummary" class="form-ctrl" rows="2" placeholder="예: \'우유류\' 외 제품명에 \'우유(milk)\' 사용 시 우유 관련 원재료명(대표명)·최종제품 기준 함량 14pt 이상 표시 의무화 (27.12.31까지 계도)"></textarea>' +
+    '</div>' +
+    '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:4px;">' +
+      '<input type="text" id="inpGuideDept" class="form-ctrl" style="flex:1;" value="품질안전부문, 마케팅팀, 중앙연구소" placeholder="관련부서" />' +
+      '<label style="font-size:12.5px; font-weight:900; color:#003378; display:inline-flex; align-items:center; gap:5px; white-space:nowrap; cursor:pointer;">' +
+        '<input type="checkbox" id="chkGuideShowDash" checked /> 통합 대시보드에 즉시 노출' +
+      '</label>' +
+    '</div>',
+    '<button class="btn" onclick="closeModal()">취소</button>' +
+    '<button class="btn btn-primary" onclick="submitLawGuidelineSave()">✓ 시트 저장 및 대시보드 반영</button>'
+  );
+}
+
+function autoExtractGuidelineFields() {
+  const raw = (document.getElementById('inpGuideRaw').value || '').trim();
+  if (!raw) return;
+
+  // 1) 발신·부처 추출
+  let ministry = '식품의약품안전처';
+  if (raw.indexOf('유가공협회') !== -1 && raw.indexOf('식품의약품안전처') !== -1) {
+    ministry = '식품의약품안전처 (유가공협회 공문)';
+  } else if (raw.indexOf('유가공협회') !== -1) {
+    ministry = '한국유가공협회';
+  } else if (raw.indexOf('농림축산식품부') !== -1) {
+    ministry = '농림축산식품부';
+  }
+  document.getElementById('inpGuideMinistry').value = ministry;
+
+  // 2) 「...」 제목 추출
+  const mTitle = raw.match(/[「『]([^」』]{3,60})[」』]/);
+  if (mTitle) {
+    document.getElementById('inpGuideTitle').value = '「' + mTitle[1].trim() + '」 지침';
+  }
+
+  // 3) 일괄 적용 / 시행일 추출 (예: 2028년 1월 1일)
+  const mEnf = raw.match(/(?:일괄\s*적용|시행일?|적용\s*시점|적용일)\s*[:：]?\s*(20\d{2})\s*[년.\-/]\s*(\d{1,2})\s*[월.\-/]\s*(\d{1,2})/);
+  if (mEnf) {
+    const y = mEnf[1];
+    const m = String(mEnf[2]).padStart(2, '0');
+    const d = String(mEnf[3]).padStart(2, '0');
+    document.getElementById('inpGuideEnfDt').value = y + '-' + m + '-' + d;
+  }
+
+  // 4) 핵심 bullet 요약 자동 조합
+  const mGrace = raw.match(/계도기간\s*[:：]?\s*([^\n]+)/);
+  const bullets = [];
+  raw.split(/\r?\n/).forEach(function(ln) {
+    const s = ln.trim();
+    if (s.startsWith('-') && s.indexOf('계도기간') === -1 && s.indexOf('일괄 적용') === -1) {
+      bullets.push(s.replace(/^-\s*/, '').trim());
+    }
+  });
+  if (bullets.length) {
+    let joined = bullets.slice(0, 4).join(' / ');
+    if (joined.length > 125) joined = joined.slice(0, 125).trim();
+    if (mGrace) {
+      joined += ' (계도기간: ' + mGrace[1].trim() + ')';
+    }
+    document.getElementById('inpGuideSummary').value = joined;
+  }
+}
+
+async function submitLawGuidelineSave() {
+  const rawTxt = (document.getElementById('inpGuideRaw').value || '').trim();
+  const titleVal = (document.getElementById('inpGuideTitle').value || '').trim();
+  const sumVal = (document.getElementById('inpGuideSummary').value || '').trim();
+  const minVal = (document.getElementById('inpGuideMinistry').value || '식품의약품안전처').trim();
+  const ntDt = document.getElementById('inpGuideNoticeDt').value;
+  const efDt = document.getElementById('inpGuideEnfDt').value;
+  const deptVal = (document.getElementById('inpGuideDept').value || '품질안전부문').trim();
+  const showDash = document.getElementById('chkGuideShowDash').checked;
+
+  if (!titleVal) {
+    showToast('공문·지침 제목을 입력하거나 [자동 추출]을 눌러주세요.', 2600);
+    return;
+  }
+
+  // 인사말 제거한 깔끔한 본문 정리
+  let cleanBody = rawTxt;
+  const mBelow = rawTxt.match(/-\s*아\s*래\s*-/);
+  if (mBelow) {
+    cleanBody = rawTxt.slice(mBelow.index + mBelow[0].length).trim();
+  }
+  cleanBody = cleanBody.replace(/\n*\s*(?:자세한\s*사항은\s*붙임|감사합니다)[\s\S]*$/, '').trim();
+
+  try {
+    const res = await apiPost('/api/law-guideline', {
+      action: 'save',
+      ministry: minVal,
+      law_name: titleVal,
+      content: cleanBody || rawTxt || sumVal,
+      summary: sumVal,
+      notice_date: ntDt,
+      enf_date: efDt,
+      rel_dept: deptVal,
+      show_on_dashboard: showDash
+    });
+    if (res.law) BUNDLE.law = res.law;
+    closeModal();
+    renderActiveView();
+    showToast(res.message);
+  } catch (e) {
+    showToast(e.message, 3200);
+  }
+}
+
+async function deleteLawGuidelineItem(lawId) {
+  if (!confirm('이 [공문·지침] 항목을 시트와 대시보드에서 삭제하시겠습니까?')) return;
+  try {
+    const res = await apiPost('/api/law-guideline', { action: 'delete', law_id: lawId });
+    if (res.law) BUNDLE.law = res.law;
+    closeModal();
+    renderActiveView();
+    showToast(res.message);
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
+}
+
+// 대시보드 Q2 법규 보드에서 [공문·지침]은 초록색 배지로 시각 구분되도록 보강
+(function enhanceQ2LawBarForGuideline() {
+  const _origQ2Bar = window.renderQ2WideLawBar;
+  if (typeof _origQ2Bar !== 'function') return;
+  window.renderQ2WideLawBar = function() {
+    _origQ2Bar.apply(this, arguments);
+    const bar = document.getElementById('q2LawWideBar');
+    if (!bar) return;
+    bar.querySelectorAll('.q2-law-item-card').forEach(function(card) {
+      const firstBadge = card.querySelector('.badge');
+      if (firstBadge && (firstBadge.textContent || '').indexOf('공문') !== -1) {
+        firstBadge.className = 'badge badge-ok';
+        card.style.borderLeftColor = '#059669';
+      }
+    });
+  };
 })();
 </script>
 </body>

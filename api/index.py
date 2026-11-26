@@ -1977,11 +1977,39 @@ def calc_rt_limit_date_from_spec(prod_d: date, spec_str: str) -> Optional[date]:
     return None
 
 
+def is_test_production_entry(prod_name: Any, exp_raw: Any, remark_raw: Any = "") -> bool:
+    """제품명·소비기한·특이사항에 TEST / 테스트 / 시생산 표기가 있는 시험가동 건 판별"""
+    pool = f"{prod_name or ''} {exp_raw or ''} {remark_raw or ''}"
+    if re.search(r"(?<![A-Za-z])test(?![A-Za-z])", pool, re.IGNORECASE):
+        return True
+    pool_ns = re.sub(r"\s+", "", pool)
+    return any(k in pool_ns for k in ["테스트", "시생산", "시험생산", "샘플생산"])
+
+
+def strip_mfg_date_segments(s: str) -> str:
+    """
+    수출품 표기 등에서 제조일(MNF / MFG / MFD / PRO / PRD / 제조일)과 소비기한(EXP / BBE)이
+    한 셀에 병기된 경우(예: 'MNF: 27.11.2026 EXP: 26.11.2027') 제조일을 제외하고 소비기한만 남긴다.
+    """
+    m_exp = re.search(r"\b(?:EXP|BBE|BEST\s*BEFORE)\b\s*[:\.]?\s*(.+)$", s, re.IGNORECASE)
+    if m_exp and re.search(r"\b(?:MNF|MFG|MFD|PRO|PRD|PROD)\b", s[:m_exp.start()], re.IGNORECASE):
+        return m_exp.group(1).strip()
+
+    cleaned = re.sub(
+        r"\b(?:MNF|MFG|MFD|PRO|PRD|PROD|제조일?)\b\s*[:\.]?\s*(?:\d{1,4}[\.\-/\s]+[A-Za-z0-9]{1,9}[\.\-/\s]+\d{1,4})",
+        " ",
+        s,
+        flags=re.IGNORECASE
+    )
+    return cleaned.strip()
+
+
 def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int = 14) -> List[date]:
-    s = normalize_serial_exp_text(exp_raw)
-    if not s or s in ("-", "00.00", "0.0", "미기입", "미기입(대기)"):
+    s_orig = normalize_serial_exp_text(exp_raw)
+    if not s_orig or s_orig in ("-", "00.00", "0.0", "미기입", "미기입(대기)"):
         return []
 
+    s = strip_mfg_date_segments(s_orig)
     out: List[date] = []
     used_spans: List[Tuple[int, int]] = []
 
@@ -1996,8 +2024,9 @@ def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int 
             s_chars[i] = " "
     s_work = "".join(s_chars)
 
+    # 1) YYYY.MM.DD (연.월.일)
     used_spans_4 = []
-    for m4 in re.finditer(r"(20\d{2})[\.\-/\s]+(\d{1,2})[\.\-/\s]+(\d{1,2})(?!\d)", s_work):
+    for m4 in re.finditer(r"(?<!\d)(20\d{2})[\.\-/\s]+(\d{1,2})[\.\-/\s]+(\d{1,2})(?!\d)", s_work):
         try:
             d_obj = date(int(m4.group(1)), int(m4.group(2)), int(m4.group(3)))
             if d_obj not in out:
@@ -2006,12 +2035,59 @@ def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int 
         except ValueError:
             pass
 
-    s_rem = list(s_work)
+    s_rem0 = list(s_work)
     for st, ed in used_spans_4:
+        for i in range(st, ed):
+            s_rem0[i] = " "
+    s_work_rev = "".join(s_rem0)
+
+    # 2) DD.MM.YYYY 또는 MM.DD.YYYY (수출용 숫자 표기: 예 '26.11.2027')
+    used_spans_dmy = []
+    for md4 in re.finditer(r"(?<!\d)(\d{1,2})[\.\-/]\s*(\d{1,2})[\.\-/]\s*(20\d{2})(?!\d)", s_work_rev):
+        p1, p2, yr4 = int(md4.group(1)), int(md4.group(2)), int(md4.group(3))
+        d_obj = None
+        if p1 > 12 and 1 <= p2 <= 12:
+            try:
+                d_obj = date(yr4, p2, p1)
+            except ValueError:
+                pass
+        elif p2 > 12 and 1 <= p1 <= 12:
+            try:
+                d_obj = date(yr4, p1, p2)
+            except ValueError:
+                pass
+        elif 1 <= p1 <= 12 and 1 <= p2 <= 12:
+            cand_dmy, cand_mdy = None, None
+            try:
+                cand_dmy = date(yr4, p2, p1)
+            except ValueError:
+                pass
+            try:
+                cand_mdy = date(yr4, p1, p2)
+            except ValueError:
+                pass
+            m_mnf = re.search(r"\b(?:MNF|MFG|MFD|PRO|PRD)\b\s*[:\.]?\s*(\d{1,2})[\.\-/](\d{1,2})[\.\-/](20\d{2})", s_orig, re.IGNORECASE)
+            if m_mnf:
+                mp1, mp2 = int(m_mnf.group(1)), int(m_mnf.group(2))
+                if mp1 == prod_d.day and mp2 == prod_d.month:
+                    d_obj = cand_dmy
+                elif mp1 == prod_d.month and mp2 == prod_d.day:
+                    d_obj = cand_mdy
+            if d_obj is None:
+                d_obj = cand_dmy or cand_mdy
+
+        if d_obj is not None:
+            if d_obj not in out:
+                out.append(d_obj)
+            used_spans_dmy.append((md4.start(), md4.end()))
+
+    s_rem = list(s_work_rev)
+    for st, ed in used_spans_dmy:
         for i in range(st, ed):
             s_rem[i] = " "
     s2 = "".join(s_rem)
 
+    # 3) YY.MM.DD
     used_spans2 = []
     for m2 in re.finditer(r"(?<!\d)(\d{2})[\.\-/]\s*(\d{1,2})[\.\-/]\s*(\d{1,2})(?!\d)", s2):
         yr2, mm2, dd2 = int(m2.group(1)), int(m2.group(2)), int(m2.group(3))
@@ -2030,6 +2106,7 @@ def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int 
             s_rem2[i] = " "
     s3 = "".join(s_rem2)
 
+    # 4) MM.DD
     for ms in re.finditer(r"(?<!\d)(\d{1,2})[\./](\d{1,2})(?![\.\d])", s3):
         mm = int(ms.group(1))
         d_str = ms.group(2)
@@ -2068,9 +2145,17 @@ def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int 
 
 
 def extract_rt_shelf_specs_from_rows(rows: list, spec_map: Dict[str, dict]):
-    """상온 시트 하단 기준표(품목코드+제품명 구조 포함) 및 '제품명 식품안전나라' 탭에서 품목제조·실운영 기간 추출"""
+    """상온 시트 하단 기준표 및 '제품명 식품안전나라' 탭에서 품목제조·실운영 기간 추출 ('140일 / 수출용: 8개월' 분리 처리 포함)"""
     if not rows:
         return
+
+    def _split_dom_and_exp_spec(cell_val: Any) -> Tuple[str, str]:
+        raw_s = str(cell_val or "").strip()
+        if "수출" in raw_s and "/" in raw_s:
+            parts = raw_s.split("/", 1)
+            return extract_duration_spec_token(parts[0]), extract_duration_spec_token(parts[1])
+        return extract_duration_spec_token(raw_s), ""
+
     c_prod, c_mfg, c_ops, c_exp_ops = -1, -1, -1, -1
     for r in rows:
         if not r:
@@ -2091,14 +2176,13 @@ def extract_rt_shelf_specs_from_rows(rows: list, spec_map: Dict[str, dict]):
 
         if c_prod >= 0 and c_prod < len(r):
             raw_cell = re.sub(r"\s+", " ", str(r[c_prod])).strip()
-            # 앞열이 5자리 품목코드(예: 10474)인 경우 바로 옆 열의 실제 제품명을 참조
             if re.match(r"^\d{4,6}$", raw_cell) and (c_prod + 1) < len(r):
                 raw_cell = re.sub(r"\s+", " ", str(r[c_prod + 1])).strip()
             pk = clean_product_for_match(raw_cell)
             if len(pk) >= 2 and not pk.isdigit():
-                mfg_t = extract_duration_spec_token(r[c_mfg]) if (0 <= c_mfg < len(r)) else ""
+                mfg_t, exp_from_mfg = _split_dom_and_exp_spec(r[c_mfg]) if (0 <= c_mfg < len(r)) else ("", "")
                 ops_t = extract_duration_spec_token(r[c_ops]) if (0 <= c_ops < len(r)) else ""
-                exp_t = extract_duration_spec_token(r[c_exp_ops]) if (0 <= c_exp_ops < len(r)) else ""
+                exp_t = (extract_duration_spec_token(r[c_exp_ops]) if (0 <= c_exp_ops < len(r)) else "") or exp_from_mfg
                 if mfg_t or ops_t or exp_t:
                     cur = spec_map.setdefault(pk, {"mfg": "", "ops": "", "exp_ops": ""})
                     if mfg_t:
@@ -2109,7 +2193,6 @@ def extract_rt_shelf_specs_from_rows(rows: list, spec_map: Dict[str, dict]):
                         cur["exp_ops"] = exp_t
             continue
 
-        # 헤더 없는 하단 기준표 스캔: 앞쪽 품목코드(숫자)는 건너뛰고 첫 한글/영문 품목명 + 우측 기간(개월·주·일) 추출
         cand_p, p_col = "", -1
         for ci in range(min(5, len(r))):
             cs = re.sub(r"\s+", " ", str(r[ci])).strip()
@@ -2136,11 +2219,6 @@ def extract_rt_shelf_specs_from_rows(rows: list, spec_map: Dict[str, dict]):
 
 
 def _norm_rt_pack_group(ho_raw: Any) -> str:
-    """
-    상온 포장재 동일성 기준 호기 그룹핑:
-    - B호기 · D호기 : 동일 포장재를 공용하므로 'B·D호기' 단일 재고 그룹으로 통합 비교
-    - A호기 · C호기 · E호기 · F호기 : 포장재가 서로 다르므로 각각 독립 호기로 분리 비교
-    """
     h = re.sub(r"\s+", "", str(ho_raw or "")).upper()
     if h in ("B호기", "D호기", "B", "D"):
         return "B·D호기"
@@ -2155,12 +2233,6 @@ def fix_rt_today_shifted_exp(
     spec_map: Dict[str, dict],
     saved_ts_raw: str = ""
 ) -> Tuple[str, str]:
-    """
-    1) _이력DB_상온생산에 5자리 날짜 일련번호(예: 46618, 46526, 46557)로 저장된 셀을 'YYYY.MM.DD' 날짜 문자열로 즉시 복원한다.
-    2) 과거 날짜 탭의 소비기한 셀에 '=TODAY()' 연동 수식이 남아 있어 조회일/저장일 기준으로
-       소비기한이 밀려버린 경우, 해당 포장재 그룹(B·D 통합 / A·C·E·F 개별)·품목 기준을 대조해
-       원래 생산일(prod_d) 기준 소비기한으로 복원한다.
-    """
     raw_s = normalize_serial_exp_text(re.sub(r"\s+", " ", str(exp_raw or "")).strip())
     prod_d = parse_date_obj(prod_iso)
     today_d = now_kst().date()
@@ -2172,6 +2244,8 @@ def fix_rt_today_shifted_exp(
         return raw_s, ""
 
     std_iso = ", ".join([d.strftime("%Y-%m-%d") for d in exp_dates])
+    if is_test_production_entry(p_name, raw_s):
+        return raw_s, std_iso
     if prod_d >= today_d or len(exp_dates) != 1:
         return raw_s, std_iso
 
@@ -2184,7 +2258,14 @@ def fix_rt_today_shifted_exp(
     ho_norm = re.sub(r"\s+", "", str(ho_raw or "").strip()).upper()
     ho_grp = _norm_rt_pack_group(ho_norm)
     pk = clean_product_for_match(p_name)
-    spec = spec_map.get(f"{ho_norm}|{pk}") or spec_map.get(f"{ho_grp}|{pk}") or spec_map.get(pk, {})
+    pk_base = re.sub(r"(?:수출용|수출|export)$", "", pk)
+    spec = (
+        spec_map.get(f"{ho_norm}|{pk}")
+        or spec_map.get(f"{ho_grp}|{pk}")
+        or spec_map.get(pk)
+        or (spec_map.get(pk_base) if pk_base else None)
+        or {}
+    )
     cand_specs = []
     for k_sp in ("ops", "mfg", "exp_ops"):
         sv = spec.get(k_sp, "")
@@ -2215,17 +2296,23 @@ def fix_rt_today_shifted_exp(
 def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[str, dict]) -> Dict[str, List[dict]]:
     """
     [_이력DB_상온생산] 확정 데이터 기준 검증:
-    1) 포장재 동일 그룹([B·D호기 통합] vs [A / C / E / F호기 개별]) + 제품명 + 수출여부 단위로 시계열 그룹핑
-    2) 호기별 품목제조보고 기간 초과(빨강) 및 실운영 기간 초과(노랑) 판별
-    3) 동일 포장재 그룹 내 직전 생산 재고 소비기한 대비 날짜 역전(감소) 발생 시 즉시 부적합(빨강)
+    - 수출용 표기('수출', 'MNF/EXP')는 내수 재고와 분리하고 기본 품목의 수출 기준(exp_ops)까지 자동 연결
+    - 시생산('TEST', '테스트', '시생산') 건은 별도 안내 후 본생산 직전 재고 역전 기준(prev_max_exp)에서 제외하여 후속 오탐 차단
     """
     grouped: Dict[Tuple[str, str, bool], List[dict]] = {}
     for rec in rt_hist_p:
         ho_grp = _norm_rt_pack_group(rec.get("포장호기", ""))
         p_nm = str(rec.get("제품명", "")).strip()
         exp_raw = str(rec.get("표기소비기한_원문", "")).strip()
-        is_exp_lot = ("수출" in p_nm) or ("export" in p_nm.lower()) or ("수출" in exp_raw)
-        gk = (ho_grp, clean_product_for_match(p_nm), is_exp_lot)
+        is_exp_lot = (
+            ("수출" in p_nm)
+            or ("export" in p_nm.lower())
+            or ("수출" in exp_raw)
+            or bool(re.search(r"\b(?:MNF|MFG|EXP|BBE)\b", exp_raw, re.IGNORECASE))
+        )
+        pk_full = clean_product_for_match(p_nm)
+        pk_norm = re.sub(r"(?:수출용|수출|export)$", "", pk_full) if is_exp_lot else pk_full
+        gk = (ho_grp, pk_norm or pk_full, is_exp_lot)
         grouped.setdefault(gk, []).append(rec)
 
     alerts_by_date: Dict[str, List[dict]] = {}
@@ -2245,11 +2332,27 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[str, dict
             p_nm = str(r.get("제품명", "-")).strip()
             exp_raw = str(r.get("표기소비기한_원문", "-")).strip()
             prod_d = parse_date_obj(dt_iso)
+            pk_exact = clean_product_for_match(p_nm)
 
-            spec = spec_map.get(f"{ho_norm}|{pk}") or spec_map.get(f"{ho_grp}|{pk}") or spec_map.get(pk, {})
+            # TEST / 시생산 건은 직전 재고 역전 기준을 오염시키지 않도록 즉시 분리 처리
+            if is_test_production_entry(p_nm, exp_raw, r.get("특이사항", "")):
+                r["_cls_exp"] = "cell-green"
+                r["_exp_tip"] = f"시생산(TEST) 확인 품목 — 정식 본생산 역전 비교 기준에서 제외됨 ({exp_raw})"
+                r["_exp_alert"] = ""
+                continue
+
+            spec = (
+                spec_map.get(f"{ho_norm}|{pk_exact}")
+                or spec_map.get(f"{ho_grp}|{pk_exact}")
+                or spec_map.get(pk_exact)
+                or spec_map.get(f"{ho_norm}|{pk}")
+                or spec_map.get(f"{ho_grp}|{pk}")
+                or spec_map.get(pk)
+                or {}
+            )
             mfg_s = spec.get("mfg", "")
-            ops_s = spec.get("exp_ops", "") if (is_exp_lot and spec.get("exp_ops")) else (spec.get("ops") or mfg_s)
             exp_ops_s = spec.get("exp_ops", "")
+            ops_s = exp_ops_s if (is_exp_lot and exp_ops_s) else (spec.get("ops") or mfg_s)
 
             if not prod_d:
                 r["_cls_exp"] = ""
@@ -2271,11 +2374,13 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[str, dict
             ops_lim = calc_rt_limit_date_from_spec(prod_d, ops_s)
             exp_ops_lim = calc_rt_limit_date_from_spec(prod_d, exp_ops_s)
 
-            matches_export = bool(exp_ops_lim and abs((max_e - exp_ops_lim).days) <= 1)
+            matches_export = is_exp_lot or bool(exp_ops_lim and abs((max_e - exp_ops_lim).days) <= 1)
             eff_mfg_lim = max([d for d in [mfg_lim, exp_ops_lim if matches_export else None] if d is not None], default=None)
 
             cls_v = "cell-green"
             tip_parts = []
+            if is_exp_lot:
+                tip_parts.append(f"수출 소비기한 인식: {max_e.strftime('%Y.%m.%d')}")
             if ops_lim:
                 tip_parts.append(f"실운영({ops_s}): {ops_lim.strftime('%Y.%m.%d')}")
             if mfg_lim and mfg_s != ops_s:
@@ -2290,10 +2395,11 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[str, dict
                 cls_v = "cell-red"
                 alert_lv = "red"
                 alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 생산일({dt_iso}) 이전으로 오기입되었습니다. 지금 확인이 필요합니다."
-            elif eff_mfg_lim and max_e > eff_mfg_lim:
+            elif eff_mfg_lim and (not is_exp_lot or exp_ops_lim is not None) and max_e > eff_mfg_lim:
                 cls_v = "cell-red"
                 alert_lv = "red"
-                alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 품목제조보고 상한({mfg_s}, {eff_mfg_lim.strftime('%Y.%m.%d')})을 초과했습니다. 지금 확인이 필요합니다."
+                std_nm_lbl = exp_ops_s if (is_exp_lot and exp_ops_s) else mfg_s
+                alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 기준 상한({std_nm_lbl}, {eff_mfg_lim.strftime('%Y.%m.%d')})을 초과했습니다. 지금 확인이 필요합니다."
             elif prev_max_exp and prev_prod_iso < dt_iso and (not matches_export) and min_e < prev_max_exp:
                 cls_v = "cell-red"
                 alert_lv = "red"
@@ -2303,11 +2409,11 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[str, dict
                 cls_v = "cell-yellow"
                 alert_lv = "yellow"
                 mfg_note = f" / 품목제조 {mfg_s} 이내" if eff_mfg_lim else ""
-                alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 실운영 기준({ops_s}, {ops_lim.strftime('%Y.%m.%d')})보다 길게 기입되었습니다{mfg_note}. 연휴·수출 적용 확인이 필요합니다."
+                alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 실운영 기준({ops_s}, {ops_lim.strftime('%Y.%m.%d')})보다 길게 기입되었습니다{mfg_note}. 연휴·연장 적용 확인이 필요합니다."
             elif ops_lim and (not matches_export) and min_e < (ops_lim - timedelta(days=15)):
                 cls_v = "cell-yellow"
                 alert_lv = "yellow"
-                alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 실운영 기준({ops_lim.strftime('%Y.%m.%d')}) 대비 15일 이상 짧습니다. 연·월 오타 확인이 필요합니다."
+                alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 실운영 기준({ops_s}, {ops_lim.strftime('%Y.%m.%d')}) 대비 15일 이상 짧습니다. 연·월 오타 확인이 필요합니다."
 
             r["_cls_exp"] = cls_v
             r["_exp_tip"] = alert_msg if alert_msg else ("정상 (" + " / ".join(tip_parts) + ")" if tip_parts else "소비기한 정상")
@@ -2502,9 +2608,16 @@ def parse_rt_process_rows(tab_title_raw: str, rows: list):
                 pk_s = clean_product_for_match(p_name)
                 ho_norm_s = re.sub(r"\s+", "", current_ho).upper()
                 ho_grp_s = "B·D호기" if ho_norm_s in ("B호기", "D호기", "B", "D") else (ho_norm_s or "-")
-                mfg_tok = extract_duration_spec_token(spec_cells[0])
+                raw_mfg_cell = str(spec_cells[0] or "")
+                if "수출" in raw_mfg_cell and "/" in raw_mfg_cell:
+                    _m_p0, _m_p1 = raw_mfg_cell.split("/", 1)
+                    mfg_tok = extract_duration_spec_token(_m_p0)
+                    exp_from_mfg = extract_duration_spec_token(_m_p1)
+                else:
+                    mfg_tok = extract_duration_spec_token(raw_mfg_cell)
+                    exp_from_mfg = ""
                 ops_tok = extract_duration_spec_token(spec_cells[1])
-                exp_ops_tok = extract_duration_spec_token(spec_cells[2])
+                exp_ops_tok = extract_duration_spec_token(spec_cells[2]) or exp_from_mfg
                 if pk_s and (mfg_tok or ops_tok or exp_ops_tok):
                     for sp_key in dict.fromkeys([f"{ho_norm_s}|{pk_s}", f"{ho_grp_s}|{pk_s}", pk_s]):
                         sp_entry = slot_spec_map.setdefault(sp_key, {"mfg": "", "ops": "", "exp_ops": ""})
@@ -7157,6 +7270,8 @@ def _match_pack_logs_for_item(
             ho_s = str(rr.get("포장호기") or "-").strip()
             chk_cell = str(rr.get("포장확인시간") or rr.get("확인시간") or "").strip()
             exp_cell = str(rr.get("표기소비기한_원문") or "").strip()
+            if is_test_production_entry(r_nm, exp_cell, rr.get("특이사항", "")):
+                continue
 
             ho_rems_list = list(rt_ho_rem_by_dt.get((p_dt, ho_s), []))
             direct_ho_rem = str(rr.get("멸균특이사항") or rr.get("특이사항") or "").strip()

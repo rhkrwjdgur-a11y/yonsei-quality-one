@@ -6616,7 +6616,8 @@ PACK_TRANSITION_SIGNAL_KEYWORDS = [
 TRANSITION_STRIP_META = [
     "표기검수", "표시사항", "표기사항", "표시문안", "도안검토", "테트라팩전환", "테트라미드",
     "테트라팩", "콤비팩", "카톤팩", "멸균팩", "랩어라운드", "번들포장지", "선물상자",
-    "슬리브", "트레이", "외박스", "케이스", "유통용", "자사생산", "리뉴얼", "신규",
+    "슬리브", "트레이", "외박스", "케이스", "유통용", "자사생산",
+    "리뉴얼팩", "신규팩", "변경팩", "전환포장", "첫생산", "첫포장", "초도", "리뉴얼", "신규",
     "npb", "pb", "wt", "일반우유", "일반"
 ]
 
@@ -6816,12 +6817,15 @@ def _match_pack_logs_for_item(
     dairy_hist_p: List[dict],
     dairy_hist_c: List[dict],
     rt_today_obj: Optional[dict] = None,
-    rt_yest_obj: Optional[dict] = None
+    rt_yest_obj: Optional[dict] = None,
+    all_waiting_pack_items: Optional[List[dict]] = None
 ) -> List[dict]:
     """
-    부자재 입고일(없으면 심의완료일, 최소 2026-11-01) 이후 상온·유제품 포장일보 가동 및 특이사항 스캔
-    1) 유제품: _이력DB_유제품포장 가동 확인 + _이력DB_유제품공정CCP의 '특이사항' 열에서 해당 품목 첫생산·리뉴얼 문구 대조
-    2) 상온: _이력DB_상온생산 가동 확인 + 멸균기 블록별 '멸균특이사항' / 우측 '당일전달사항' / 실시간 탭 메모 통합 대조
+    상온·유제품 포장일보 가동 및 '첫생산/리뉴얼' 자동 인식:
+    1) 상온 상단 제품명 칸 또는 바로 옆 확인시간 칸('포장확인시간'/'확인시간')에 '첫생산' 기입 시 -> 즉시 인식
+    2) 상온 멸균기 호기별 특이사항 칸에 제품명 없이 '첫생산'만 기입 시 ->
+       해당 호기 가동 품목이 1개이거나, 해당 호기에서 가동된 '포장대기' 추적 품목이 이 품목 1개뿐이면 즉시 인식!
+    3) 우측 공통 전달사항 및 유제품 공통 특이사항 칸 -> 제품명 언급 시 인식 (당일 가동된 '포장대기' 품목이 1개뿐이면 단독 '첫생산'도 인식)
     """
     pack_nm = str(tr_item.get("매칭_포장품목명") or tr_item.get("매칭_부자재명") or "").strip()
     if not pack_nm or pack_nm == "-":
@@ -6831,12 +6835,18 @@ def _match_pack_logs_for_item(
         x for x in [pack_nm, str(tr_item.get("매칭_부자재명") or "").strip(), str(tr_item.get("표시사항제목") or "").strip()]
         if x and x != "-"
     ]
+    other_pack_names = [
+        str(w.get("매칭_포장품목명") or w.get("매칭_부자재명") or "").strip()
+        for w in (all_waiting_pack_items or [])
+        if w.get("추적ID") != tr_item.get("추적ID")
+    ]
+    other_pack_names = [x for x in other_pack_names if x and x != "-"]
 
     in_dt = str(tr_item.get("부자재입고일") or tr_item.get("심의완료일") or LABEL_TRANSITION_CUTOFF).strip()
     min_dt = max(LABEL_TRANSITION_CUTOFF, in_dt) if in_dt.startswith("20") else LABEL_TRANSITION_CUTOFF
     storage_s = str(tr_item.get("보관구분") or "")
 
-    # 유제품 일자·라인별 특이사항 인덱스 (_이력DB_유제품공정CCP 연동)
+    # 유제품 일자·라인별 특이사항 인덱스
     dairy_notes_by_dt: Dict[str, List[Tuple[str, str]]] = {}
     for cr in (dairy_hist_c or []):
         c_dt = str(cr.get("생산일자") or "").strip()
@@ -6870,11 +6880,25 @@ def _match_pack_logs_for_item(
                 if sn and sn not in rt_shared_notes_by_dt.setdefault(l_dt, []):
                     rt_shared_notes_by_dt[l_dt].append(sn)
 
-    # 상온 날짜·호기별 가동 품목 수 (단독 가동 호기인지 다품목 가동 호기인지 구분용)
+    # 상온 날짜·호기별 전체 품목 수 & 다른 '포장대기' 품목 동시 가동 여부 계산
     rt_ho_prod_cnt: Dict[Tuple[str, str], int] = {}
+    rt_ho_has_other_tracked: Dict[Tuple[str, str], bool] = {}
+    rt_day_has_other_tracked: Dict[str, bool] = {}
     for rr in (rt_hist_p or []):
-        k_dh = (str(rr.get("생산일자") or "").strip(), str(rr.get("포장호기") or "").strip())
-        rt_ho_prod_cnt[k_dh] = rt_ho_prod_cnt.get(k_dh, 0) + 1
+        d_k = str(rr.get("생산일자") or "").strip()
+        h_k = str(rr.get("포장호기") or "").strip()
+        p_k = str(rr.get("제품명") or "").strip()
+        rt_ho_prod_cnt[(d_k, h_k)] = rt_ho_prod_cnt.get((d_k, h_k), 0) + 1
+        if any(is_related_transition_product(op, p_k) for op in other_pack_names):
+            rt_ho_has_other_tracked[(d_k, h_k)] = True
+            rt_day_has_other_tracked[d_k] = True
+
+    dairy_day_has_other_tracked: Dict[str, bool] = {}
+    for dr in (dairy_hist_p or []):
+        d_k = str(dr.get("생산일자") or "").strip()
+        p_k = str(dr.get("제품명") or "").strip()
+        if any(is_related_transition_product(op, p_k) for op in other_pack_names):
+            dairy_day_has_other_tracked[d_k] = True
 
     hits = []
 
@@ -6889,8 +6913,12 @@ def _match_pack_logs_for_item(
                 continue
 
             d_ln = str(dr.get("라인구분") or "유제품").strip()
+            chk_t = str(dr.get("확인시간") or "").strip()
+            inline_sig = has_pack_transition_signal(r_nm) or has_pack_transition_signal(chk_t)
+
             is_ferm_prod = ("발효" in d_ln) or ("호상" in d_ln)
             day_notes = dairy_notes_by_dt.get(p_dt, [])
+            only_this_tracked_today = not dairy_day_has_other_tracked.get(p_dt, False)
 
             matched_sig_notes = []
             general_notes = []
@@ -6903,9 +6931,18 @@ def _match_pack_logs_for_item(
                 if note_mentions_tracked_product(n_txt, ref_names + [r_nm]):
                     if n_txt not in matched_sig_notes:
                         matched_sig_notes.append(n_txt)
+                elif only_this_tracked_today and has_pack_transition_signal(n_txt) and not note_mentions_tracked_product(n_txt, other_pack_names):
+                    # 당일 가동된 포장대기 품목이 이 1건뿐이고 다른 제품 이름이 특정된 메모가 아닌 단독 '첫생산' 메모인 경우 허용
+                    if len(_extract_transition_sig_tokens(n_txt)) == 0 and n_txt not in matched_sig_notes:
+                        matched_sig_notes.append(n_txt)
 
-            has_sig = len(matched_sig_notes) > 0
-            disp_note = " / ".join(matched_sig_notes) if has_sig else (" / ".join(general_notes) if general_notes else "특이사항 미기입")
+            has_sig = inline_sig or (len(matched_sig_notes) > 0)
+            if inline_sig:
+                disp_note = f"제품/확인란 표기 ({chk_t if has_pack_transition_signal(chk_t) else r_nm})"
+            elif matched_sig_notes:
+                disp_note = " / ".join(matched_sig_notes)
+            else:
+                disp_note = " / ".join(general_notes) if general_notes else "특이사항 미기입"
 
             hits.append({
                 "생산일자": p_dt,
@@ -6927,27 +6964,46 @@ def _match_pack_logs_for_item(
                 continue
 
             ho_s = str(rr.get("포장호기") or "-").strip()
+            chk_cell = str(rr.get("포장확인시간") or rr.get("확인시간") or "").strip()
+            exp_cell = str(rr.get("표기소비기한_원문") or "").strip()
             ho_rem = str(rr.get("멸균특이사항") or rr.get("특이사항") or "").strip()
             daily_memo = str(rr.get("당일전달사항") or "").strip()
             extra_notes = rt_shared_notes_by_dt.get(p_dt, [])
 
-            # (A) 해당 호기 멸균특이사항 검사: 그 호기에 오늘 1품목만 단독 생산했으면 키워드만으로 인정, 다품목 가동이면 제품명 언급 확인
+            # (A) 상단 포장표의 제품명 칸 / 바로 옆 확인시간 칸 / 소비기한 칸에 직접 '첫생산' 등을 적은 경우 -> 100% 해당 제품이므로 즉시 인정!
+            slot_inline_sig = (
+                has_pack_transition_signal(r_nm)
+                or has_pack_transition_signal(chk_cell)
+                or has_pack_transition_signal(exp_cell)
+            )
+
+            # (B) 하단 멸균기 호기별 특이사항 칸에 적은 경우 ->
+            #     단독 가동이거나, 그 호기에서 다른 '포장대기' 추적 품목이 동시에 가동되지 않았다면 제품명 없이 '첫생산'만 적어도 인정!
+            ho_no_other_tracked = not rt_ho_has_other_tracked.get((p_dt, ho_s), False)
             ho_only_one = (rt_ho_prod_cnt.get((p_dt, ho_s), 1) <= 1)
             ho_sig_ok = False
             if has_pack_transition_signal(ho_rem):
-                if ho_only_one or note_mentions_tracked_product(ho_rem, ref_names + [r_nm]):
+                if note_mentions_tracked_product(ho_rem, ref_names + [r_nm]):
+                    ho_sig_ok = True
+                elif ho_only_one or (ho_no_other_tracked and len(_extract_transition_sig_tokens(ho_rem)) == 0):
                     ho_sig_ok = True
 
-            # (B) 우측 당일전달사항 및 실시간 탭 메모 검사: 전 호기 공통이므로 제품명 언급 확인
+            # (C) 우측 당일전달사항 및 실시간 탭 메모 검사
+            only_this_rt_today = not rt_day_has_other_tracked.get(p_dt, False)
             shared_pool = [x for x in ([daily_memo] + extra_notes) if x and x not in ("-", "없음", "이상없음")]
-            matched_shared = [
-                sn for sn in shared_pool
-                if note_mentions_tracked_product(sn, ref_names + [r_nm])
-                or (ho_s != "-" and ho_s in sn and ho_only_one and has_pack_transition_signal(sn))
-            ]
+            matched_shared = []
+            for sn in shared_pool:
+                if note_mentions_tracked_product(sn, ref_names + [r_nm]):
+                    matched_shared.append(sn)
+                elif ho_s != "-" and ho_s in sn and ho_no_other_tracked and has_pack_transition_signal(sn) and len(_extract_transition_sig_tokens(sn)) == 0:
+                    matched_shared.append(sn)
+                elif only_this_rt_today and has_pack_transition_signal(sn) and len(_extract_transition_sig_tokens(sn)) == 0:
+                    matched_shared.append(sn)
 
-            has_sig = ho_sig_ok or (len(matched_shared) > 0)
-            if ho_sig_ok:
+            has_sig = slot_inline_sig or ho_sig_ok or (len(matched_shared) > 0)
+            if slot_inline_sig:
+                disp_note = chk_cell if has_pack_transition_signal(chk_cell) else r_nm
+            elif ho_sig_ok:
                 disp_note = ho_rem
             elif matched_shared:
                 disp_note = " / ".join(matched_shared)
@@ -6958,7 +7014,7 @@ def _match_pack_logs_for_item(
                 "생산일자": p_dt,
                 "라인_호기": f"상온 {ho_s}",
                 "제품명": r_nm,
-                "소비기한": rr.get("표기소비기한_원문", "-"),
+                "소비기한": exp_cell or "-",
                 "특이사항": disp_note,
                 "has_signal": has_sig
             })
@@ -7093,7 +7149,8 @@ def build_label_transition_pipeline(
 
         # 2) 포장대기 -> 상온/유제품 포장일보 가동 + 특이사항('첫생산/리뉴얼' 등) 매칭 시 전환완료로 자동 종결
         if stage == "포장대기":
-            det_pk = _match_pack_logs_for_item(tr, rt_hist_p, rt_hc_list, dairy_hist_p, dy_hc_list, rt_today_obj, rt_yest_obj)
+            pack_stage_pool = [x for x in (saved_tr_records or []) if x.get("진행단계") == "포장대기"]
+            det_pk = _match_pack_logs_for_item(tr, rt_hist_p, rt_hc_list, dairy_hist_p, dy_hc_list, rt_today_obj, rt_yest_obj, pack_stage_pool)
             pk_sig_hit = next((p for p in det_pk if p.get("has_signal")), None)
             if pk_sig_hit and "[포장되돌림]" not in memo_s:
                 tr["진행단계"] = "전환완료"

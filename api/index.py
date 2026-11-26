@@ -1365,11 +1365,32 @@ def parse_exp_query_info(exp_input: str) -> dict:
     return {"empty": False, "iso_full": "", "mm_dd_dash": "", "mm_dd_dot": "", "m_d_dot": "", "raw": s}
 
 
+def normalize_serial_exp_text(exp_raw: Any) -> str:
+    """
+    구글 시트/엑셀 날짜 일련번호(5자리 숫자, 예: '46618', '46526.0', '46618 F1')가
+    소비기한 원문에 저장된 경우 실제 날짜 문자열('2027.08.19' 등)로 복원한다.
+    5자리 제품코드(10000~19999 등)와 절대 충돌하지 않도록 43831(2020-01-01)~51500(2040-12-31) 범위만 변환한다.
+    """
+    s = str(exp_raw or "").strip()
+    if not s:
+        return s
+
+    def _repl(m: re.Match) -> str:
+        num_val = float(m.group(1))
+        if 43831 <= num_val <= 51500:
+            dt = datetime(1899, 12, 30) + timedelta(days=int(num_val))
+            return dt.strftime("%Y.%m.%d")
+        return m.group(0)
+
+    return re.sub(r"(?<!\d)(4[3-9]\d{3}|5[01]\d{3})(?:\.0+)?(?!\d)", _repl, s)
+
+
 def is_exp_match(raw_exp: str, iso_exp: str, q_info: dict) -> bool:
     if q_info.get("empty", True):
         return True
 
-    raw_s = re.sub(r"\s+", "", str(raw_exp or ""))
+    norm_raw_exp = normalize_serial_exp_text(raw_exp)
+    raw_s = re.sub(r"\s+", "", str(norm_raw_exp or ""))
     iso_s = re.sub(r"\s+", "", str(iso_exp or ""))
 
     if q_info.get("iso_full"):
@@ -1922,7 +1943,7 @@ def calc_rt_limit_date_from_spec(prod_d: date, spec_str: str) -> Optional[date]:
 
 
 def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int = 14) -> List[date]:
-    s = str(exp_raw or "").strip()
+    s = normalize_serial_exp_text(exp_raw)
     if not s or s in ("-", "00.00", "0.0", "미기입", "미기입(대기)"):
         return []
 
@@ -2100,11 +2121,12 @@ def fix_rt_today_shifted_exp(
     saved_ts_raw: str = ""
 ) -> Tuple[str, str]:
     """
-    과거 날짜 탭의 소비기한 셀에 '=TODAY()' 연동 수식이 남아 있어 조회일/저장일 기준으로
-    소비기한이 밀려버린 경우, 해당 포장재 그룹(B·D 통합 / A·C·E·F 개별)·품목 기준을 대조해
-    원래 생산일(prod_d) 기준 소비기한으로 복원한다.
+    1) _이력DB_상온생산에 5자리 날짜 일련번호(예: 46618, 46526, 46557)로 저장된 셀을 'YYYY.MM.DD' 날짜 문자열로 즉시 복원한다.
+    2) 과거 날짜 탭의 소비기한 셀에 '=TODAY()' 연동 수식이 남아 있어 조회일/저장일 기준으로
+       소비기한이 밀려버린 경우, 해당 포장재 그룹(B·D 통합 / A·C·E·F 개별)·품목 기준을 대조해
+       원래 생산일(prod_d) 기준 소비기한으로 복원한다.
     """
-    raw_s = re.sub(r"\s+", " ", str(exp_raw or "")).strip()
+    raw_s = normalize_serial_exp_text(re.sub(r"\s+", " ", str(exp_raw or "")).strip())
     prod_d = parse_date_obj(prod_iso)
     today_d = now_kst().date()
     if not raw_s or raw_s == "-" or not prod_d:

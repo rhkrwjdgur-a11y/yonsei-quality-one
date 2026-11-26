@@ -706,125 +706,158 @@ ENG_MONTH_MAP = {
 _ENG_MON_REGEX = r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
 
 
-def extract_eng_month_dates(text: Any) -> List[Tuple[date, int, int]]:
+def extract_eng_month_dates(text: Any, ref_prod_d: Optional[date] = None) -> List[Tuple[date, int, int]]:
     """
     수출품 영문 소비기한 표기 추출:
-    - 월.일.연 : NOV.23.2027 / NOV 23, 2027 / NOV-23-27
+    - 월.일.연 : NOV.23.2027 / NOV 17, 2027 / NOV-23-27
     - 일.월.연 : 23.NOV.2027 / 23 NOV 2027 / 23-NOV-27
     - 연.월.일 : 2027.NOV.23 / 2027-NOV-23
+    - 연도 생략 월·일 : NOV 17 / NOV.17 / 17 NOV (생산일 ref_prod_d 기준 도래 연도 자동 산출)
     """
-    s = str(text or "")
-    if not s or not re.search(r"[A-Za-z]{3}", s):
+    s_raw = str(text or "")
+    if not s_raw or not re.search(r"[A-Za-z]{3}", s_raw):
         return []
 
     found: List[Tuple[date, int, int]] = []
+    used_mask = [False] * len(s_raw)
+
+    def _mark(st: int, ed: int):
+        for idx in range(st, ed):
+            used_mask[idx] = True
+
+    def _is_free(st: int, ed: int) -> bool:
+        return not any(used_mask[st:ed])
 
     def _to_yr(y_str: str) -> int:
         y = int(y_str)
         return (2000 + y) if y < 100 else y
 
-    # 1) MON.DD.YYYY 또는 MON.DD.YY (예: NOV.23.2027)
+    # 1) MON.DD.YYYY 또는 MON.DD.YY (예: NOV.23.2027, NOV 17, 2027)
     pat_mdy = rf"(?<![A-Za-z])({_ENG_MON_REGEX})[\.\-/\s,]+(\d{{1,2}})[\.\-/\s,]+(20\d{{2}}|\d{{2}})(?!\d)"
-    for m in re.finditer(pat_mdy, s, re.IGNORECASE):
+    for m in re.finditer(pat_mdy, s_raw, re.IGNORECASE):
         mm = ENG_MONTH_MAP.get(m.group(1).lower(), 0)
         dd = int(m.group(2))
         yr = _to_yr(m.group(3))
         if mm and 2020 <= yr <= 2040:
             try:
                 found.append((date(yr, mm, dd), m.start(), m.end()))
+                _mark(m.start(), m.end())
             except ValueError:
                 pass
 
     # 2) DD.MON.YYYY 또는 DD.MON.YY (예: 23.NOV.2027)
     pat_dmy = rf"(?<!\d)(\d{{1,2}})[\.\-/\s,]+({_ENG_MON_REGEX})[\.\-/\s,]+(20\d{{2}}|\d{{2}})(?!\d)"
-    for m in re.finditer(pat_dmy, s, re.IGNORECASE):
+    for m in re.finditer(pat_dmy, s_raw, re.IGNORECASE):
+        if not _is_free(m.start(), m.end()):
+            continue
         dd = int(m.group(1))
         mm = ENG_MONTH_MAP.get(m.group(2).lower(), 0)
         yr = _to_yr(m.group(3))
         if mm and 2020 <= yr <= 2040:
             try:
                 found.append((date(yr, mm, dd), m.start(), m.end()))
+                _mark(m.start(), m.end())
             except ValueError:
                 pass
 
     # 3) YYYY.MON.DD (예: 2027.NOV.23)
     pat_ymd = rf"(?<!\d)(20\d{{2}})[\.\-/\s,]+({_ENG_MON_REGEX})[\.\-/\s,]+(\d{{1,2}})(?!\d)"
-    for m in re.finditer(pat_ymd, s, re.IGNORECASE):
+    for m in re.finditer(pat_ymd, s_raw, re.IGNORECASE):
+        if not _is_free(m.start(), m.end()):
+            continue
         yr = int(m.group(1))
         mm = ENG_MONTH_MAP.get(m.group(2).lower(), 0)
         dd = int(m.group(3))
         if mm and 2020 <= yr <= 2040:
             try:
                 found.append((date(yr, mm, dd), m.start(), m.end()))
+                _mark(m.start(), m.end())
             except ValueError:
                 pass
+
+    # 4) 연도 생략 영문 월·일 표기 (예: 'NOV 17', 'NOV.17', '17 NOV')
+    if ref_prod_d is not None:
+        pat_md_short = rf"(?<![A-Za-z])({_ENG_MON_REGEX})[\.\-/\s]+(\d{{1,2}})(?![\dA-Za-z])"
+        for m in re.finditer(pat_md_short, s_raw, re.IGNORECASE):
+            if not _is_free(m.start(), m.end()):
+                continue
+            mm = ENG_MONTH_MAP.get(m.group(1).lower(), 0)
+            dd = int(m.group(2))
+            if mm and 1 <= dd <= 31:
+                try:
+                    cand = date(ref_prod_d.year, mm, dd)
+                    if cand <= ref_prod_d:
+                        cand = date(ref_prod_d.year + 1, mm, dd)
+                    found.append((cand, m.start(), m.end()))
+                    _mark(m.start(), m.end())
+                except ValueError:
+                    pass
+
+        pat_dm_short = rf"(?<!\d)(\d{{1,2}})[\.\-/\s]+({_ENG_MON_REGEX})(?![\dA-Za-z])"
+        for m in re.finditer(pat_dm_short, s_raw, re.IGNORECASE):
+            if not _is_free(m.start(), m.end()):
+                continue
+            dd = int(m.group(1))
+            mm = ENG_MONTH_MAP.get(m.group(2).lower(), 0)
+            if mm and 1 <= dd <= 31:
+                try:
+                    cand = date(ref_prod_d.year, mm, dd)
+                    if cand <= ref_prod_d:
+                        cand = date(ref_prod_d.year + 1, mm, dd)
+                    found.append((cand, m.start(), m.end()))
+                    _mark(m.start(), m.end())
+                except ValueError:
+                    pass
 
     return found
 
 
-ENG_MONTH_MAP = {
-    "jan": 1, "january": 1,
-    "feb": 2, "february": 2,
-    "mar": 3, "march": 3,
-    "apr": 4, "april": 4,
-    "may": 5,
-    "jun": 6, "june": 6,
-    "jul": 7, "july": 7,
-    "aug": 8, "august": 8,
-    "sep": 9, "sept": 9, "september": 9,
-    "oct": 10, "october": 10,
-    "nov": 11, "november": 11,
-    "dec": 12, "december": 12
-}
+def detect_export_exp_format(prod_name: Any, exp_raw: Any) -> str:
+    """
+    [상온 공정일보 전용 · 전 품목 범용] 수출 표기 형식 판별 (특정 제품명 하드코딩 없음):
+    - 'ENG_MONTH'    : JAN~DEC 영문 월 표기 (예: NOV 17, NOV.23.2027 등 — 일반적으로 미국 수출 등)
+    - 'MNF_EXP'      : MNF/MFG/EXP/BBE 병기 또는 DD.MM.YYYY 표기 (예: MNF: 27.11.2026 EXP: 26.11.2027 — 일반적으로 베트남 수출 등)
+    - 'EXPORT_PLAIN' : 품목명·소비기한란에 '수출' 또는 'export'가 명시되어 있으나 일반 숫자 날짜로 기입된 경우
+    - ''             : 일반 내수 품목
+    """
+    p_s = str(prod_name or "").strip()
+    e_s = str(exp_raw or "").strip()
+    if not e_s or e_s in ("-", "00.00", "0.0", "미기입", "미기입(대기)"):
+        return ""
 
-_ENG_MON_REGEX = r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+    has_mnf_exp = bool(re.search(r"\b(?:MNF|MFG|MFD|EXP|BBE|BEST\s*BEFORE)\b", e_s, re.IGNORECASE))
+    e_no_tag = re.sub(r"\b(?:MNF|MFG|MFD|PRO|PRD|PROD|EXP|BBE|BEST\s*BEFORE|TEST)\b", " ", e_s, flags=re.IGNORECASE)
+    has_eng_mon = bool(re.search(rf"(?<![A-Za-z]){_ENG_MON_REGEX}(?![A-Za-z])", e_no_tag, re.IGNORECASE))
+
+    if has_eng_mon:
+        return "ENG_MONTH"
+    if has_mnf_exp:
+        return "MNF_EXP"
+    if re.search(r"(?<!\d)\d{1,2}[\.\-/]\s*\d{1,2}[\.\-/]\s*20\d{2}(?!\d)", e_s):
+        return "MNF_EXP"
+
+    pool_low = f"{p_s} {e_s}".lower()
+    if ("수출" in pool_low) or ("export" in pool_low):
+        return "EXPORT_PLAIN"
+    return ""
 
 
-def extract_eng_month_dates(text: Any) -> List[Tuple[date, int, int]]:
-    s = str(text or "")
-    if not s or not re.search(r"[A-Za-z]{3}", s):
-        return []
-
-    found: List[Tuple[date, int, int]] = []
-
-    def _to_yr(y_str: str) -> int:
-        y = int(y_str)
-        return (2000 + y) if y < 100 else y
-
-    pat_mdy = rf"(?<![A-Za-z])({_ENG_MON_REGEX})[\.\-/\s,]+(\d{{1,2}})[\.\-/\s,]+(20\d{{2}}|\d{{2}})(?!\d)"
-    for m in re.finditer(pat_mdy, s, re.IGNORECASE):
-        mm = ENG_MONTH_MAP.get(m.group(1).lower(), 0)
-        dd = int(m.group(2))
-        yr = _to_yr(m.group(3))
-        if mm and 2020 <= yr <= 2040:
-            try:
-                found.append((date(yr, mm, dd), m.start(), m.end()))
-            except ValueError:
-                pass
-
-    pat_dmy = rf"(?<!\d)(\d{{1,2}})[\.\-/\s,]+({_ENG_MON_REGEX})[\.\-/\s,]+(20\d{{2}}|\d{{2}})(?!\d)"
-    for m in re.finditer(pat_dmy, s, re.IGNORECASE):
-        dd = int(m.group(1))
-        mm = ENG_MONTH_MAP.get(m.group(2).lower(), 0)
-        yr = _to_yr(m.group(3))
-        if mm and 2020 <= yr <= 2040:
-            try:
-                found.append((date(yr, mm, dd), m.start(), m.end()))
-            except ValueError:
-                pass
-
-    pat_ymd = rf"(?<!\d)(20\d{{2}})[\.\-/\s,]+({_ENG_MON_REGEX})[\.\-/\s,]+(\d{{1,2}})(?!\d)"
-    for m in re.finditer(pat_ymd, s, re.IGNORECASE):
-        yr = int(m.group(1))
-        mm = ENG_MONTH_MAP.get(m.group(2).lower(), 0)
-        dd = int(m.group(3))
-        if mm and 2020 <= yr <= 2040:
-            try:
-                found.append((date(yr, mm, dd), m.start(), m.end()))
-            except ValueError:
-                pass
-
-    return found
+def build_export_verify_alert_msg(prefix_tag: str, exp_fmt: str, exp_raw: str, parsed_exp_d: date) -> str:
+    parsed_str = parsed_exp_d.strftime("%Y.%m.%d")
+    if exp_fmt == "MNF_EXP":
+        return (
+            f"[{prefix_tag}] 수출 표기({exp_raw} → 소비기한 {parsed_str}) 감지 — "
+            f"일반적으로 베트남 수출용(MNF/EXP · 일.월.연) 형식이나, 실제 수출 대상국 표기 기준 및 소비기한 일치 여부를 한 번 더 확인해 주세요."
+        )
+    if exp_fmt == "ENG_MONTH":
+        return (
+            f"[{prefix_tag}] 수출 영문월 표기({exp_raw} → 소비기한 {parsed_str}) 감지 — "
+            f"일반적으로 미국 수출용(영문 월) 형식이나, 실제 수출 대상국 표기 기준 및 소비기한 일치 여부를 한 번 더 확인해 주세요."
+        )
+    return (
+        f"[{prefix_tag}] 수출 품목이 일반 숫자 날짜({exp_raw})로 기입되었습니다 — "
+        f"수출 대상국별 표기 방식(베트남 MNF/EXP, 미국 영문 월 등) 및 소비기한({parsed_str}) 기준을 한 번 더 확인해 주세요."
+    )
 
 
 def parse_date_obj(val: Any) -> Optional[date]:
@@ -2013,7 +2046,7 @@ def parse_exp_dates_against_prod(exp_raw: Any, prod_d: date, expected_days: int 
     out: List[date] = []
     used_spans: List[Tuple[int, int]] = []
 
-    for d_eng, st_e, ed_e in extract_eng_month_dates(s):
+    for d_eng, st_e, ed_e in extract_eng_month_dates(s, ref_prod_d=prod_d):
         if d_eng not in out:
             out.append(d_eng)
         used_spans.append((st_e, ed_e))
@@ -2244,7 +2277,7 @@ def fix_rt_today_shifted_exp(
         return raw_s, ""
 
     std_iso = ", ".join([d.strftime("%Y-%m-%d") for d in exp_dates])
-    if is_test_production_entry(p_name, raw_s):
+    if is_test_production_entry(p_name, raw_s) or detect_export_exp_format(p_name, raw_s):
         return raw_s, std_iso
     if prod_d >= today_d or len(exp_dates) != 1:
         return raw_s, std_iso
@@ -2296,20 +2329,17 @@ def fix_rt_today_shifted_exp(
 def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[str, dict]) -> Dict[str, List[dict]]:
     """
     [_이력DB_상온생산] 확정 데이터 기준 검증:
-    - 수출용 표기('수출', 'MNF/EXP')는 내수 재고와 분리하고 기본 품목의 수출 기준(exp_ops)까지 자동 연결
-    - 시생산('TEST', '테스트', '시생산') 건은 별도 안내 후 본생산 직전 재고 역전 기준(prev_max_exp)에서 제외하여 후속 오탐 차단
+    - 수출 표기(MNF/EXP: 일반적으로 베트남 수출 / 영문 월 NOV 17 등: 일반적으로 미국 수출 / 일반 숫자 수출품)는
+      단정 통과시키지 않고 실제 수출 대상국 표기 규정 및 소비기한 일치 여부를 재확인하도록 주의 알람(노랑) 발생
+    - 시생산('TEST', '테스트', '시생산') 건은 직전 재고 역전 비교 기준에서 분리 보호
     """
     grouped: Dict[Tuple[str, str, bool], List[dict]] = {}
     for rec in rt_hist_p:
         ho_grp = _norm_rt_pack_group(rec.get("포장호기", ""))
         p_nm = str(rec.get("제품명", "")).strip()
         exp_raw = str(rec.get("표기소비기한_원문", "")).strip()
-        is_exp_lot = (
-            ("수출" in p_nm)
-            or ("export" in p_nm.lower())
-            or ("수출" in exp_raw)
-            or bool(re.search(r"\b(?:MNF|MFG|EXP|BBE)\b", exp_raw, re.IGNORECASE))
-        )
+        exp_fmt_tag = detect_export_exp_format(p_nm, exp_raw)
+        is_exp_lot = bool(exp_fmt_tag)
         pk_full = clean_product_for_match(p_nm)
         pk_norm = re.sub(r"(?:수출용|수출|export)$", "", pk_full) if is_exp_lot else pk_full
         gk = (ho_grp, pk_norm or pk_full, is_exp_lot)
@@ -2333,8 +2363,8 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[str, dict
             exp_raw = str(r.get("표기소비기한_원문", "-")).strip()
             prod_d = parse_date_obj(dt_iso)
             pk_exact = clean_product_for_match(p_nm)
+            exp_fmt = detect_export_exp_format(p_nm, exp_raw)
 
-            # TEST / 시생산 건은 직전 재고 역전 기준을 오염시키지 않도록 즉시 분리 처리
             if is_test_production_entry(p_nm, exp_raw, r.get("특이사항", "")):
                 r["_cls_exp"] = "cell-green"
                 r["_exp_tip"] = f"시생산(TEST) 확인 품목 — 정식 본생산 역전 비교 기준에서 제외됨 ({exp_raw})"
@@ -2363,7 +2393,7 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[str, dict
             if not exp_dates:
                 r["_cls_exp"] = "cell-red"
                 r["_exp_badge"] = "미기입"
-                msg = f"[상온 {ho} · {p_nm}] 소비기한이 미기입 상태입니다. 지금 확인이 필요합니다."
+                msg = f"[상온 {ho} · {p_nm}] 소비기한이 미기입 또는 판독 불가({exp_raw}) 상태입니다. 지금 확인이 필요합니다."
                 r["_exp_tip"] = msg
                 r["_exp_alert"] = msg
                 alerts_by_date.setdefault(dt_iso, []).append({"level": "red", "msg": msg})
@@ -2374,13 +2404,11 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[str, dict
             ops_lim = calc_rt_limit_date_from_spec(prod_d, ops_s)
             exp_ops_lim = calc_rt_limit_date_from_spec(prod_d, exp_ops_s)
 
-            matches_export = is_exp_lot or bool(exp_ops_lim and abs((max_e - exp_ops_lim).days) <= 1)
+            matches_export = bool(exp_fmt) or bool(exp_ops_lim and abs((max_e - exp_ops_lim).days) <= 1)
             eff_mfg_lim = max([d for d in [mfg_lim, exp_ops_lim if matches_export else None] if d is not None], default=None)
 
             cls_v = "cell-green"
             tip_parts = []
-            if is_exp_lot:
-                tip_parts.append(f"수출 소비기한 인식: {max_e.strftime('%Y.%m.%d')}")
             if ops_lim:
                 tip_parts.append(f"실운영({ops_s}): {ops_lim.strftime('%Y.%m.%d')}")
             if mfg_lim and mfg_s != ops_s:
@@ -2395,25 +2423,30 @@ def validate_rt_shelf_life_on_db(rt_hist_p: List[dict], spec_map: Dict[str, dict
                 cls_v = "cell-red"
                 alert_lv = "red"
                 alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 생산일({dt_iso}) 이전으로 오기입되었습니다. 지금 확인이 필요합니다."
-            elif eff_mfg_lim and (not is_exp_lot or exp_ops_lim is not None) and max_e > eff_mfg_lim:
+            elif eff_mfg_lim and (not exp_fmt or exp_ops_lim is not None) and max_e > eff_mfg_lim:
                 cls_v = "cell-red"
                 alert_lv = "red"
-                std_nm_lbl = exp_ops_s if (is_exp_lot and exp_ops_s) else mfg_s
+                std_nm_lbl = exp_ops_s if (exp_fmt and exp_ops_s) else mfg_s
                 alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 기준 상한({std_nm_lbl}, {eff_mfg_lim.strftime('%Y.%m.%d')})을 초과했습니다. 지금 확인이 필요합니다."
             elif prev_max_exp and prev_prod_iso < dt_iso and (not matches_export) and min_e < prev_max_exp:
                 cls_v = "cell-red"
                 alert_lv = "red"
                 grp_lbl = f"동일 포장재({prev_ho_actual})" if prev_ho_actual != ho else f"동일 호기({ho})"
                 alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 {grp_lbl} 직전 생산 재고({prev_prod_iso[5:].replace('-', '/')} 생산, {prev_exp_raw})보다 짧게 역전 기입되었습니다. 지금 확인이 필요합니다."
+            elif exp_fmt:
+                # 수출 표기(베트남 MNF/EXP · 미국 영문월 NOV 17 등) 감지 시 수출국 표기 기준 재확인 알람(노랑) 발생!
+                cls_v = "cell-yellow"
+                alert_lv = "yellow"
+                alert_msg = build_export_verify_alert_msg(f"상온 {ho} · {p_nm}", exp_fmt, exp_raw, max_e)
             elif ops_lim and (not matches_export) and max_e > (ops_lim + timedelta(days=1)):
                 cls_v = "cell-yellow"
                 alert_lv = "yellow"
                 mfg_note = f" / 품목제조 {mfg_s} 이내" if eff_mfg_lim else ""
-                alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 실운영 기준({ops_s}, {ops_lim.strftime('%Y.%m.%d')})보다 길게 기입되었습니다{mfg_note}. 연휴·연장 적용 확인이 필요합니다."
+                alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 실운영 기준({ops_s}, {ops_lim.strftime('%Y.%m.%d')})보다 길게 기입되었습니다{mfg_note}. 연휴·수출 적용 확인이 필요합니다."
             elif ops_lim and (not matches_export) and min_e < (ops_lim - timedelta(days=15)):
                 cls_v = "cell-yellow"
                 alert_lv = "yellow"
-                alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 실운영 기준({ops_s}, {ops_lim.strftime('%Y.%m.%d')}) 대비 15일 이상 짧습니다. 연·월 오타 확인이 필요합니다."
+                alert_msg = f"[상온 {ho} · {p_nm}] 표기 소비기한({exp_raw})이 실운영 기준({ops_lim.strftime('%Y.%m.%d')}) 대비 15일 이상 짧습니다. 연·월 오타 확인이 필요합니다."
 
             r["_cls_exp"] = cls_v
             r["_exp_tip"] = alert_msg if alert_msg else ("정상 (" + " / ".join(tip_parts) + ")" if tip_parts else "소비기한 정상")
@@ -2448,9 +2481,10 @@ def _ferm_sub_kind(ln_str: str, sec_str: str = "") -> str:
 
 def validate_dairy_shelf_life_on_db(dairy_hist_p: List[dict], ferm_days_map: Dict[Tuple[str, str], int]) -> Dict[str, List[dict]]:
     """
-    [_이력DB_유제품포장] 확정 데이터 기준 검증:
+    [_이력DB_유제품포장] 확정 데이터 기준 검증 (냉장 수출품도 일반 내수와 동일한 기준 적용):
     - 우유(카톤·병): 생산일 + 14일(제조일 포함 15일) 초과 시 부적합(빨강) / 전일 부족분 동일 날짜 중복은 적합(초록) 허용 / 본생산 소비기한 역전 시(빨강)
     - 발효유·호상: 세부유형(호상/병/카톤)별 최대 소비기한(생산일 + N - 1일) 초과 시 부적합(빨강) / 직전 본생산(max_e) 대비 당일 본생산(max_e) 역전 시(빨강)
+    - 시생산(TEST) 표기 건은 직전 재고 역전 비교 기준에서 분리 보호
     """
     grouped: Dict[Tuple[bool, str, str], List[dict]] = {}
     for rec in dairy_hist_p:
@@ -2468,7 +2502,6 @@ def validate_dairy_shelf_life_on_db(dairy_hist_p: List[dict], ferm_days_map: Dic
         recs.sort(key=lambda x: str(x.get("생산일자", "")))
         ferm_n_days = ferm_days_map.get((ln_grp, pk), 0) or ferm_days_map.get(("발효유", pk), 0)
         if is_ferm and ferm_n_days <= 0:
-            # 반드시 동일한 세부유형(예: 호상끼리만, 병발효끼리만) 안에서만 연세/세브란스 접두어 차이 허용!
             pk_strip = re.sub(r"^(?:연세대학교|연세우유|연세|세브란스)", "", pk)
             if len(pk_strip) >= 2:
                 for (m_grp, map_k), map_d in ferm_days_map.items():
@@ -2489,6 +2522,12 @@ def validate_dairy_shelf_life_on_db(dairy_hist_p: List[dict], ferm_days_map: Dic
             p_nm = str(r.get("제품명", "-")).strip()
             exp_raw = str(r.get("표기소비기한_원문", "-")).strip()
             prod_d = parse_date_obj(dt_iso)
+
+            if is_test_production_entry(p_nm, exp_raw):
+                r["_cls_exp"] = "cell-green"
+                r["_exp_tip"] = f"시생산(TEST) 확인 품목 ({exp_raw})"
+                r["_exp_alert"] = ""
+                continue
 
             if not prod_d:
                 r["_cls_exp"] = ""

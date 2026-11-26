@@ -8221,7 +8221,7 @@ function guessCleanProductFromTitle(rawTitle) {
   return s || rawTitle || '';
 }
 
-// --- [3] 표시사항 진행 현황 (renderLabelView 확장: 4번째 탭 [🔄 부자재 전환 분류 (26.11~)] 추가) ---
+// --- [3] 표시사항 진행 현황 (기본 탭은 원래 4대 지표 복원 · 전환 탭 클릭 시에만 입고/포장대기 표시) ---
 window.renderLabelView = function() {
   const lb = BUNDLE.label_status;
   const tr = BUNDLE.label_transition || { counts: {}, unclassified_candidates: [], all_nov_completed: [], waiting_in_list: [], waiting_pack_list: [], completed_list: [], excluded_list: [] };
@@ -8230,26 +8230,38 @@ window.renderLabelView = function() {
   const sec = document.getElementById('view-label');
 
   const diffSign = lb.ytd_diff >= 0 ? '+' : '';
+  const curMDiff = (lb.cnt_26_cur_m || 0) - (lb.cnt_25_cur_m || 0);
+  const curMDiffStr = (curMDiff >= 0 ? '+' : '') + curMDiff + '건';
+
+  const topKpiCardsHtml = (LABEL_TAB === 'transition')
+    ? '<div class="kpi-grid-4">' +
+        '<div class="stat-card"><div class="stat-lbl">26.11~ 미분류 자사 완료 후보</div><div class="stat-val">' + (trCnts.unclassified_cnt || 0) + '건</div><div class="stat-sub">[신규 / 리뉴얼 / 제외] 분류 대기</div></div>' +
+        '<div class="stat-card" style="background:#FFFBEB; border-color:#FDE68A; cursor:pointer;" onclick="openTransitionBoard(\'waiting_in\')"><div class="stat-lbl" style="color:#92400E;">② 심의완료 · 부자재 입고대기</div><div class="stat-val" style="color:#B45309;">입고대기 ' + (trCnts.waiting_in_cnt || 0) + '건</div><div class="stat-sub" style="color:#78350F; font-weight:700;">원부자재DB 입고감지 ' + (trCnts.inbound_detected_cnt || 0) + '건 (클릭 시 확정 화면)</div></div>' +
+        '<div class="stat-card" style="background:#ECFDF5; border-color:#86EFAC; cursor:pointer;" onclick="openTransitionBoard(\'waiting_pack\')"><div class="stat-lbl" style="color:#065F46;">③ 부자재 입고완료 · 전환포장 대기</div><div class="stat-val" style="color:#047857;">포장대기 ' + (trCnts.waiting_pack_cnt || 0) + '건</div><div class="stat-sub" style="color:#065F46; font-weight:700;">포장일보 생산감지 ' + (trCnts.pack_detected_cnt || 0) + '건</div></div>' +
+        '<div class="stat-card" style="cursor:pointer;" onclick="openTransitionBoard(\'completed\')"><div class="stat-lbl">전환포장 최종 완료 누적</div><div class="stat-val">' + (trCnts.completed_cnt || 0) + '건</div><div class="stat-sub">제외 처리 ' + (trCnts.excluded_cnt || 0) + '건</div></div>' +
+      '</div>'
+    : '<div class="kpi-grid-4">' +
+        '<div class="stat-card"><div class="stat-lbl">현재 식품안전팀 검토중</div><div class="stat-val">' + lb.reviewing_cnt + '건</div><div class="stat-sub">' + esc(lb.rev_summary_line) + '</div></div>' +
+        '<div class="stat-card"><div class="stat-lbl">2026년 누적 심의 (' + (lb.cur_month || 11) + '월 당월 ' + (lb.cnt_26_cur_m || 0) + '건 · 전년동월비 ' + curMDiffStr + ')</div><div class="stat-val">' + lb.cnt_26_all + '건</div><div class="stat-sub">검토완료 ' + lb.completed_26_cnt + '건 (월평균 ' + lb.m_avg_26 + '건)</div></div>' +
+        '<div class="stat-card"><div class="stat-lbl">동기간(1~' + lb.max_m_26 + '월) 전년 대비</div><div class="stat-val">' + diffSign + lb.ytd_diff + '건 (' + diffSign + lb.ytd_pct + '%)</div><div class="stat-sub">25년 동기간 ' + lb.cnt_25_ytd + '건 vs 26년 ' + lb.cnt_26_ytd + '건</div></div>' +
+        '<div class="stat-card"><div class="stat-lbl">[특이사항] 탭 연동 메모</div><div style="font-size:12px; color:#78350F; margin-top:5px; white-space:pre-line; max-height:52px; overflow-y:auto;">' + esc(memoTxt || '등록된 특이사항 없음') + '</div></div>' +
+      '</div>';
+
   sec.innerHTML =
     '<div class="page-hdr">' +
-      '<div><h2 class="page-h2">표시사항 심의 진행 현황 및 부자재 전환 분류 (26년 11월~)</h2><div class="page-desc">월별 통계 및 실시간 심의 목록과 함께, 심의 완료된 자사 제조 품목을 [신규 / 리뉴얼 / 제외]로 분류하여 부자재 입고·포장까지 추적합니다.</div></div>' +
+      '<div><h2 class="page-h2">표시사항 심의 진행 현황 및 25년 vs 26년 업무량 분석</h2><div class="page-desc">월별 통계 및 부서별 업무량 분석을 기본 제공하며, [특이사항] 탭 메모 양방향 편집 및 자사 부자재 전환 분류를 지원합니다.</div></div>' +
       '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
-        '<button class="btn" style="border-color:#0052B4; color:#003378;" onclick="openTransitionBoard(\'waiting_in\')">📦 부자재 전환 추적 보드 열기 ›</button>' +
+        (LABEL_TAB === 'transition' ? '<button class="btn" style="border-color:#0052B4; color:#003378;" onclick="openTransitionBoard(\'waiting_in\')">📦 부자재 전환 추적 보드 열기 ›</button>' : '') +
         '<button class="btn btn-primary" onclick="openLabelMemoModal()">📝 [특이사항] 탭 메모 편집</button>' +
         '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
       '</div>' +
     '</div>' +
-    '<div class="kpi-grid-4">' +
-      '<div class="stat-card" style="cursor:pointer;" onclick="LABEL_TAB=\'reviewing\'; renderLabelView()"><div class="stat-lbl">① 현재 식품안전팀 검토중</div><div class="stat-val">' + lb.reviewing_cnt + '건</div><div class="stat-sub">' + esc(lb.rev_summary_line) + '</div></div>' +
-      '<div class="stat-card" style="cursor:pointer; background:#FFFBEB; border-color:#FDE68A;" onclick="LABEL_TAB=\'transition\'; renderLabelView()"><div class="stat-lbl" style="color:#92400E;">② 26.11~ 자사 완료분 분류·입고대기</div><div class="stat-val" style="color:#B45309;">입고대기 ' + (trCnts.waiting_in_cnt || 0) + '건</div><div class="stat-sub" style="color:#78350F; font-weight:700;">미분류 후보 ' + (trCnts.unclassified_cnt || 0) + '건 · 입고감지 ' + (trCnts.inbound_detected_cnt || 0) + '건</div></div>' +
-      '<div class="stat-card" style="cursor:pointer; background:#ECFDF5; border-color:#86EFAC;" onclick="openTransitionBoard(\'waiting_pack\')"><div class="stat-lbl" style="color:#065F46;">③ 부자재 입고완료 · 전환포장 대기</div><div class="stat-val" style="color:#047857;">포장대기 ' + (trCnts.waiting_pack_cnt || 0) + '건</div><div class="stat-sub" style="color:#065F46; font-weight:700;">생산감지 ' + (trCnts.pack_detected_cnt || 0) + '건 · 전환완료 누적 ' + (trCnts.completed_cnt || 0) + '건</div></div>' +
-      '<div class="stat-card"><div class="stat-lbl">2026년 누적 심의 (' + diffSign + lb.ytd_pct + '%)</div><div class="stat-val">' + lb.cnt_26_all + '건</div><div class="stat-sub">검토완료 ' + lb.completed_26_cnt + '건 · 월평균 ' + lb.m_avg_26 + '건</div></div>' +
-    '</div>' +
+    topKpiCardsHtml +
     '<div class="tab-bar">' +
-      '<button class="tab-btn ' + (LABEL_TAB === 'analytics' ? 'active' : '') + '" onclick="LABEL_TAB=\'analytics\'; renderLabelView()">📊 월별 · 부서별 · 생산처별 통계</button>' +
-      '<button class="tab-btn ' + (LABEL_TAB === 'reviewing' ? 'active' : '') + '" onclick="LABEL_TAB=\'reviewing\'; renderLabelView()">📑 실시간 검토중 목록 (' + lb.reviewing_cnt + '건)</button>' +
+      '<button class="tab-btn ' + (LABEL_TAB === 'analytics' ? 'active' : '') + '" onclick="LABEL_TAB=\'analytics\'; renderLabelView()">월별 · 부서별 · 생산처별 통계 (기본)</button>' +
+      '<button class="tab-btn ' + (LABEL_TAB === 'reviewing' ? 'active' : '') + '" onclick="LABEL_TAB=\'reviewing\'; renderLabelView()">실시간 검토중 목록 (' + lb.reviewing_cnt + '건 · 대시보드 핀)</button>' +
       '<button class="tab-btn ' + (LABEL_TAB === 'transition' ? 'active' : '') + '" onclick="LABEL_TAB=\'transition\'; renderLabelView()">🔄 자사 부자재 전환 분류 · 관리 (미분류 ' + (trCnts.unclassified_cnt || 0) + ' / 진행 ' + ((trCnts.waiting_in_cnt || 0) + (trCnts.waiting_pack_cnt || 0)) + '건)</button>' +
-      '<button class="tab-btn ' + (LABEL_TAB === 'all' ? 'active' : '') + '" onclick="LABEL_TAB=\'all\'; renderLabelView()">📚 전체 누적 심의 이력 (' + lb.all_records.length + '건)</button>' +
+      '<button class="tab-btn ' + (LABEL_TAB === 'all' ? 'active' : '') + '" onclick="LABEL_TAB=\'all\'; renderLabelView()">전체 누적 심의 이력 (' + lb.all_records.length + '건)</button>' +
     '</div>' +
     '<div id="labelTabContent"></div>';
 
@@ -8306,17 +8318,17 @@ window.renderLabelView = function() {
     const list = lb.reviewing_list || [];
     box.innerHTML =
       '<div class="panel-card">' +
-        '<div class="panel-title"><span>📌 현재 식품안전팀 검토중 목록 (검토 완료 시 [자사 부자재 전환 분류] 탭에 자동 후보로 올라옵니다)</span></div>' +
+        '<div class="panel-title"><span>📌 체크박스 선택 시 통합 대시보드에 대표 품목으로 우선 표시됩니다.</span></div>' +
         '<div class="tbl-wrap"><table class="data-tbl">' +
-          '<thead><tr><th>문서번호</th><th>요청부서</th><th>품목 · 제목</th><th>카테고리</th><th>보관</th><th>생산처</th><th>포장재 유형</th><th>등록일</th></tr></thead>' +
+          '<thead><tr><th>대시보드 핀</th><th>문서번호</th><th>요청부서</th><th>품목 · 제목</th><th>카테고리</th><th>생산처</th><th>포장재 유형</th><th>등록일</th></tr></thead>' +
           '<tbody>' +
           (list.length ? list.map(function(r) {
             return '<tr>' +
+              '<td><input type="checkbox" ' + (r._pinned ? 'checked' : '') + ' onchange="toggleLabelPin(\'' + esc(r._item_key) + '\', this.checked)" /></td>' +
               '<td>' + esc(r['*docNo'] || '-') + '</td>' +
               '<td><span class="badge badge-info">' + esc(r['요청부서'] || '-') + '</span></td>' +
               '<td class="td-left"><strong>' + esc(r._clean_title || r['제목']) + '</strong></td>' +
               '<td>' + esc(r['대분류(마케팅 카테고리)'] || '-') + '</td>' +
-              '<td>' + esc(r['보관방법'] || '-') + '</td>' +
               '<td>' + esc(r['생산처'] || '-') + '</td>' +
               '<td>' + esc(r['검토 포장재 유형'] || '-') + '</td>' +
               '<td>' + esc(r['등록일자'] || '-') + '</td>' +

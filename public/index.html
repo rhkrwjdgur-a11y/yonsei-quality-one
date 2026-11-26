@@ -4809,6 +4809,7 @@ function renderProcessView() {
     const cntF = viewFermRows.filter(function(r) { return isDairyActiveStatus(r['가동여부']); }).length;
 
     const dyAlertsForDay = (pr.dairy_exp_alerts_map && pr.dairy_exp_alerts_map[targetIso]) ? pr.dairy_exp_alerts_map[targetIso] : [];
+    const dyNotesForDay = (pr.dairy_hist_notes_map && pr.dairy_hist_notes_map[targetIso]) ? pr.dairy_hist_notes_map[targetIso] : [];
     const todayBtnLbl = '금일 실시간 (' + fmtIsoToSlashMmDd(dairyTodayIso) + ')';
     const yestBtnLbl = '전일 마감 (' + fmtIsoToSlashMmDd(dairyYestIso) + ')';
 
@@ -4837,6 +4838,10 @@ function renderProcessView() {
         '</div>' +
       '</div>' +
       renderExpAlertBannerHtml(dyAlertsForDay) +
+      (dyNotesForDay.length ? '<div class="panel-card" style="background:#FFFBEB; border-color:#FCD34D; padding:10px 14px; font-weight:700; color:#78350F; line-height:1.55;">' +
+        '<div style="font-weight:900; color:#166534; margin-bottom:3px;">📋 해당 일자(' + esc(targetIso) + ') 우유 · 발효유 포장 현장 특이사항 원문</div>' +
+        dyNotesForDay.map(function(n) { return '<div>• ' + esc(n) + '</div>'; }).join('') +
+      '</div>' : '') +
       '<div class="panel-card">' +
         '<div class="panel-title"><span>🕒 [우유] 라인 가동 현황 (' + esc(targetIso) + ') — 카톤 / 병포장 분리 (상한 +14일 · 전일 중복 허용)</span></div>' +
         renderRuntimeCardsHtml(viewMilkTimes) +

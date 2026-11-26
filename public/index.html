@@ -2051,6 +2051,190 @@
       justify-content: space-between;
       gap: 8px;
     }
+  /* ==================== [신규 확장] Q2 3단 와이드 법규바 + 표시·부자재·포장 파이프라인 ==================== */
+    .q2-v2-body {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: clamp(6px, 0.8vh, 9px);
+      overflow: hidden;
+    }
+
+    /* [상단] 가로 100% 와이드 법규 개정 1줄 바 */
+    .q2-law-wide-bar {
+      background: linear-gradient(90deg, #F8FAFC 0%, #EFF6FF 100%);
+      border: 1px solid #BFDBFE;
+      border-radius: 8px;
+      padding: clamp(5px, 0.72vh, 8px) 10px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-shrink: 0;
+      min-width: 0;
+    }
+    .q2-law-wide-main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    .q2-law-wide-main:hover .q2-law-wide-txt {
+      color: var(--yonsei-mid);
+      text-decoration: underline;
+    }
+    .q2-law-wide-txt {
+      flex: 1;
+      min-width: 0;
+      font-size: var(--fs-sm);
+      font-weight: 800;
+      color: #0F172A;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .q2-law-wide-sum {
+      font-weight: 600;
+      color: #334155;
+      margin-left: 5px;
+    }
+    .q2-law-nav {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      flex-shrink: 0;
+    }
+
+    /* [중단] 표시사항 검토중 -> 입고대기 -> 포장대기 3단계 파이프라인 */
+    .q2-pipe-grid {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: stretch;
+      gap: 5px;
+    }
+    .q2-pipe-arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #94A3B8;
+      font-size: calc(14px * var(--ui-scale));
+      font-weight: 900;
+      user-select: none;
+      padding: 0 1px;
+    }
+    .q2-pipe-card {
+      border: 1.5px solid #CBD5E1;
+      background: #F8FAFC;
+      border-radius: 10px;
+      padding: clamp(7px, 0.9vh, 11px) 10px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      cursor: pointer;
+      min-width: 0;
+      transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+    }
+    .q2-pipe-card:hover {
+      transform: translateY(-1px);
+      border-color: var(--yonsei-mid);
+      background: #FFFFFF;
+      box-shadow: 0 4px 12px rgba(0, 51, 120, 0.09);
+    }
+    .q2-pipe-card.st-rev {
+      background: #EFF6FF;
+      border-color: #93C5FD;
+    }
+    .q2-pipe-card.st-in {
+      background: #FFFBEB;
+      border-color: #FCD34D;
+    }
+    .q2-pipe-card.st-pack {
+      background: #ECFDF5;
+      border-color: #6EE7B7;
+    }
+    .q2-pipe-card.has-alert {
+      border-width: 2px;
+      border-color: #F59E0B;
+      box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.14);
+    }
+    .q2-pipe-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+    }
+    .q2-pipe-step {
+      font-size: var(--fs-xs);
+      font-weight: 900;
+      color: #334155;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .q2-pipe-num {
+      font-size: calc(var(--fs-xl) * 1.12);
+      font-weight: 900;
+      color: var(--yonsei-blue);
+      line-height: 1.15;
+      margin: 2px 0;
+      white-space: nowrap;
+    }
+    .q2-pipe-card.st-in .q2-pipe-num { color: #B45309; }
+    .q2-pipe-card.st-pack .q2-pipe-num { color: #047857; }
+    .q2-pipe-sub {
+      font-size: var(--fs-xs);
+      font-weight: 700;
+      color: var(--text-sub);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* HACCP 일지 관리 외부 웹앱 바로가기 강조 버튼 */
+    .btn-haccp-portal {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 13px;
+      border-radius: 7px;
+      font-size: var(--fs-sm);
+      font-weight: 900;
+      text-decoration: none;
+      background: linear-gradient(135deg, #0F766E 0%, #0D9488 100%);
+      color: #FFFFFF !important;
+      border: 1px solid #0F766E;
+      box-shadow: 0 2px 6px rgba(15, 118, 110, 0.22);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: transform 0.12s ease, filter 0.12s ease;
+    }
+    .btn-haccp-portal:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.07);
+    }
+
+    /* 전환 추적 단계 배지 및 감지 알림 박스 */
+    .tr-detect-box {
+      margin-top: 4px;
+      padding: 5px 8px;
+      border-radius: 6px;
+      background: #FEFCE8;
+      border: 1px solid #FDE047;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #854D0E;
+      line-height: 1.4;
+    }
+    .tr-detect-box.pack {
+      background: #ECFDF5;
+      border-color: #6EE7B7;
+      color: #065F46;
+    }
   </style>
 </head>
 <body>
@@ -2187,27 +2371,32 @@
           <div class="bottom-notes-3line q1-ok" id="q1NotesBox">시트 데이터를 불러오는 중입니다...</div>
         </div>
 
-        <!-- Q2: 표시사항 심의 · 법규 개정 D-Day 현황 -->
+        <!-- Q2: 법규 개정 핵심(와이드 1줄) + 표시사항·부자재·포장 3단 파이프라인 + 특이사항 메모 -->
         <div class="quad-card">
           <div class="quad-hdr">
-            <div class="quad-title">● 표시사항 심의 · 법규 개정 D-Day 현황</div>
+            <div class="quad-title">
+              <span>● 표시사항 · 부자재 전환 & 법규 현황</span>
+              <span class="badge badge-info" id="q2RevBadge" style="cursor:pointer;" onclick="LABEL_TAB='reviewing'; switchView('label')" title="현재 식품안전팀 검토중 목록 보기">검토중 0건</span>
+              <span class="badge badge-neutral" id="q2CumBadge" style="cursor:pointer;" onclick="LABEL_TAB='analytics'; switchView('label')" title="표시사항 월별 통계 보기">당월 0건</span>
+            </div>
             <div class="quad-actions">
-              <span class="badge badge-info" id="q2RevBadge">심의중 0건</span>
-              <span class="badge badge-warn" id="q2LawBadge">1년내 준비 0건</span>
+              <span class="badge badge-warn" id="q2UnclassBadge" style="display:none; cursor:pointer;" onclick="LABEL_TAB='transition'; switchView('label')" title="신규/리뉴얼 분류 대기 건수">분류대기 0건</span>
+              <button class="link-chip" onclick="SUB_MAT_TAB='transition'; switchView('sub_mat', 'transition')">부자재 전환추적 ›</button>
               <button class="link-chip" onclick="switchView('law')">법규 선별 ›</button>
-              <button class="link-chip" onclick="switchView('label')">업무량 분석 ›</button>
             </div>
           </div>
-          <div class="q2-split">
-            <div class="lbl-stat-stack" id="q2LabelStatsStack"></div>
-            <div class="sub-col-box">
-              <div class="sub-col-hdr">
-                <span class="sub-col-title">법규 개정 핵심 ([대시보드] 연동)</span>
-                <button class="link-chip" onclick="switchView('law')">+ 넣기/빼기 ›</button>
-              </div>
-              <div class="mini-scroll-list" id="q2LawList"></div>
+
+          <div class="q2-v2-body">
+            <!-- [상단] 가로 100% 와이드 법규 개정 바 -->
+            <div class="q2-law-wide-bar" id="q2LawWideBar">
+              <span class="badge badge-neutral">법규 연동 중...</span>
             </div>
+
+            <!-- [중단] 1) 표시사항 검토중 -> 2) 심의완료·입고대기 -> 3) 입고완료·포장대기 -->
+            <div class="q2-pipe-grid" id="q2PipelineGrid"></div>
           </div>
+
+          <!-- [하단] 표시사항 특이사항 메모 (기존 100% 유지) -->
           <div class="bottom-notes-3line q2-memo">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
               <span style="color:#92400E; font-weight:900;">★ 표시사항 특이사항 메모 ("표시사항 현황" 시트 [특이사항] 탭 실시간 연동)</span>
@@ -2630,7 +2819,8 @@ function switchView(viewKey, subOpt) {
   });
   document.getElementById('lblBreadcrumb').textContent = VIEW_TITLES[viewKey];
 
- if (subOpt && viewKey === 'process') PROC_MAIN_TAB = subOpt;
+  if (subOpt && viewKey === 'process') PROC_MAIN_TAB = subOpt;
+  if (subOpt && viewKey === 'label') LABEL_TAB = subOpt;
   if (subOpt && viewKey === 'audit') AUDIT_TAB = subOpt;
   if (subOpt && viewKey === 'defect_sub') DEFECT_SUB_TAB = subOpt;
   if (subOpt && viewKey === 'sub_mat') SUB_MAT_TAB = subOpt;
@@ -2841,60 +3031,98 @@ function renderHome() {
     setHtml('q1NotesBox', '공정 표시 오류: ' + esc(err1.message));
   }
 
-  // --- [Q2] 표시사항 심의 + 왼쪽 법규 탭에서 체크된(show_on_dashboard) 법규 그대로 출력 ---
+  // --- [Q2] 와이드 법규 개정 1줄 바 + 표시사항·부자재·포장 3단계 파이프라인 + 특이사항 메모 ---
   try {
     const lb = BUNDLE.label_status || {};
     const lw = BUNDLE.law || {};
+    const tr = BUNDLE.label_transition || {};
+    const trCnts = tr.counts || {
+      unclassified_cnt: 0,
+      waiting_in_cnt: 0,
+      inbound_detected_cnt: 0,
+      waiting_pack_cnt: 0,
+      pack_detected_cnt: 0,
+      completed_cnt: 0
+    };
 
-    const checkedLaws = (lw.dashboard_laws && lw.dashboard_laws.length)
-      ? lw.dashboard_laws
-      : (lw.all_laws || []).filter(function(x) { return Boolean(x && x.show_on_dashboard); });
+    setTxt('q2RevBadge', '검토중 ' + (lb.reviewing_cnt || 0) + '건');
+    setTxt('q2CumBadge', (lb.cur_month || 11) + '월 ' + (lb.cnt_26_cur_m || 0) + '건 (누적 ' + (lb.cnt_26_all || 0) + ')');
 
-    setTxt('q2RevBadge', '심의중 ' + (lb.reviewing_cnt || 0) + '건');
-    setTxt('q2LawBadge', '노출 ' + checkedLaws.length + '건 · 1년내 ' + (lw.prep_1yr_cnt || 0) + '건');
+    const unclassEl = document.getElementById('q2UnclassBadge');
+    if (unclassEl) {
+      if (trCnts.unclassified_cnt > 0) {
+        unclassEl.style.display = 'inline-flex';
+        unclassEl.textContent = '분류대기 ' + trCnts.unclassified_cnt + '건';
+      } else {
+        unclassEl.style.display = 'none';
+      }
+    }
 
-    const diffCurM = (lb.cnt_26_cur_m || 0) - (lb.cnt_25_cur_m || 0);
-    setHtml('q2LabelStatsStack',
-      '<div class="lbl-num-card highlight" onclick="switchView(\'label\')">' +
-        '<div class="lnc-row"><span class="lnc-title">현재 검토중</span><span class="lnc-big">' + (lb.reviewing_cnt || 0) + '건</span></div>' +
-        '<div class="lnc-sub">' + esc(lb.rev_summary_line || '-') + '</div>' +
+    // 1) 상단 와이드 법규 개정 1줄 바 렌더링
+    renderQ2WideLawBar();
+
+    // 2) 중단 3단계 파이프라인 카드 렌더링
+    const waitInCnt = trCnts.waiting_in_cnt || 0;
+    const inDetCnt = trCnts.inbound_detected_cnt || 0;
+    const waitPackCnt = trCnts.waiting_pack_cnt || 0;
+    const packDetCnt = trCnts.pack_detected_cnt || 0;
+
+    const inAlertBadge = inDetCnt > 0
+      ? '<span class="badge badge-err" style="font-size:10px; padding:1.5px 6px;">입고감지 ' + inDetCnt + '</span>'
+      : (trCnts.unclassified_cnt > 0
+        ? '<span class="badge badge-warn" style="font-size:10px; padding:1.5px 6px;">미분류 ' + trCnts.unclassified_cnt + '</span>'
+        : '<span class="badge badge-neutral" style="font-size:10px; padding:1.5px 6px;">대기</span>');
+
+    const packAlertBadge = packDetCnt > 0
+      ? '<span class="badge badge-err" style="font-size:10px; padding:1.5px 6px;">생산감지 ' + packDetCnt + '</span>'
+      : '<span class="badge badge-ok" style="font-size:10px; padding:1.5px 6px;">완료 ' + (trCnts.completed_cnt || 0) + '</span>';
+
+    const inSubTxt = inDetCnt > 0
+      ? ('★ 원부자재DB 입고 감지 ' + inDetCnt + '건 확인')
+      : (trCnts.unclassified_cnt > 0
+        ? ('신규/리뉴얼 분류 대기 ' + trCnts.unclassified_cnt + '건 있음')
+        : '심의완료 후 부자재 입고 대기');
+
+    const packSubTxt = packDetCnt > 0
+      ? ('★ 포장일보 가동 감지 ' + packDetCnt + '건 확인!')
+      : '부자재 입고 후 전환포장 확인 전';
+
+    setHtml('q2PipelineGrid',
+      '<div class="q2-pipe-card st-rev" onclick="switchView(\'label\', \'reviewing\')" title="클릭 시 실시간 표시사항 검토중 목록으로 이동">' +
+        '<div class="q2-pipe-top">' +
+          '<span class="q2-pipe-step">① 표시사항 검토중</span>' +
+          '<span class="badge badge-info" style="font-size:10px; padding:1.5px 6px;">심의</span>' +
+        '</div>' +
+        '<div class="q2-pipe-num">' + (lb.reviewing_cnt || 0) + '건</div>' +
+        '<div class="q2-pipe-sub" title="' + esc(lb.rev_summary_line || '-') + '">' + esc(lb.rev_summary_line || '현재 검토 대기 없음') + '</div>' +
       '</div>' +
-      '<div class="lbl-num-card" onclick="switchView(\'label\')">' +
-        '<div class="lnc-row"><span class="lnc-title">' + (lb.cur_month || 11) + '월 당월 심의</span><span class="lnc-pill">' + (lb.cnt_26_cur_m || 0) + '건</span></div>' +
-        '<div class="lnc-sub">전년 동월 대비 ' + (diffCurM >= 0 ? '+' : '') + diffCurM + '건</div>' +
+      '<div class="q2-pipe-arrow">→</div>' +
+      '<div class="q2-pipe-card st-in' + (inDetCnt > 0 ? ' has-alert' : '') + '" onclick="openTransitionBoard(\'waiting_in\')" title="클릭 시 심의완료·부자재 입고대기 상세 목록으로 이동">' +
+        '<div class="q2-pipe-top">' +
+          '<span class="q2-pipe-step">② 심의완료·입고대기</span>' +
+          inAlertBadge +
+        '</div>' +
+        '<div class="q2-pipe-num">' + waitInCnt + '건</div>' +
+        '<div class="q2-pipe-sub">' + esc(inSubTxt) + '</div>' +
       '</div>' +
-      '<div class="lbl-num-card" onclick="switchView(\'label\')">' +
-        '<div class="lnc-row"><span class="lnc-title">2026년 누적</span><span class="lnc-pill">' + (lb.cnt_26_all || 0) + '건</span></div>' +
-        '<div class="lnc-sub">검토완료 ' + (lb.completed_26_cnt || 0) + '건 (월평균 ' + (lb.m_avg_26 || 0) + '건)</div>' +
+      '<div class="q2-pipe-arrow">→</div>' +
+      '<div class="q2-pipe-card st-pack' + (packDetCnt > 0 ? ' has-alert' : '') + '" onclick="openTransitionBoard(\'waiting_pack\')" title="클릭 시 입고완료·전환포장 대기 상세 목록으로 이동">' +
+        '<div class="q2-pipe-top">' +
+          '<span class="q2-pipe-step">③ 입고완료·포장대기</span>' +
+          packAlertBadge +
+        '</div>' +
+        '<div class="q2-pipe-num">' + waitPackCnt + '건</div>' +
+        '<div class="q2-pipe-sub">' + esc(packSubTxt) + '</div>' +
       '</div>'
     );
 
-    if (!checkedLaws.length) {
-      setHtml('q2LawList', '<div style="color:var(--text-muted); font-size:12px; padding:8px;">대시보드 노출로 체크된 법규가 없습니다.</div>');
-    } else {
-      setHtml('q2LawList', checkedLaws.map(function(item) {
-        const stCls = item['예고여부'] ? 'badge-purple' : 'badge-info';
-        return '<div class="mini-item" onclick="openLawDetailModal(\'' + esc(item.law_id || '') + '\')">' +
-          '<div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">' +
-            '<div style="display:flex; align-items:center; gap:4px; min-width:0;">' +
-              '<span class="badge ' + stCls + '">' + esc(item['법규단계'] || '고시') + '</span>' +
-              '<span class="badge ' + esc(item.d_day_cls || 'badge-info') + '">' + esc(item.d_day_label || '-') + '</span>' +
-              '<span style="font-size:10.5px; color:var(--text-muted);">' + esc(item['시행일'] || '-') + '</span>' +
-            '</div>' +
-            '<span class="badge ' + esc(item.prep_timing_cls || 'badge-neutral') + '">' + esc(item.prep_status || '검토전') + '</span>' +
-          '</div>' +
-          '<div class="law-mini-title">' + esc(item['법규명'] || '-') + '</div>' +
-          '<div class="law-mini-sum">' + esc(item['실무조치요약'] || item['자동조치요약'] || '-') + '</div>' +
-        '</div>';
-      }).join(''));
-    }
-
+    // 3) 하단 표시사항 특이사항 메모 유지
     const memoVal = (BUNDLE.special_boards && BUNDLE.special_boards.label_memo) ? String(BUNDLE.special_boards.label_memo).trim() : '';
     setTxt('q2LabelMemoTxt', (memoVal && memoVal !== '-')
       ? memoVal
       : '• 원자재 변경 품목 전성분 및 알레르기 유발물질 표시 교차 점검 진행\n• 표시사항 신규·변경 의뢰 건 부자재 발주 전 최종 확인필 여부 상시 체크');
   } catch (err2) {
-    setHtml('q2LawList', '<div style="color:var(--err-fg); font-size:12px; padding:8px;">법규 표시 오류: ' + esc(err2.message) + '</div>');
+    setHtml('q2PipelineGrid', '<div style="color:var(--err-fg); font-size:12px; padding:8px;">표시·부자재 파이프라인 표시 오류: ' + esc(err2.message) + '</div>');
   }
 
   // --- [Q3] 방문심사(준비20->심사50->현장75->서류90->종료100) + 협력업체(방문예정/방문완료) 2단 정렬 ---
@@ -3646,7 +3874,8 @@ function renderLawView() {
         '<h2 class="page-h2">HACCP 강화 · 법적 RISK · 식품 법규 · 주간 식품안전 관리</h2>' +
         '<div class="page-desc">\'법규정보\' 시트의 [_법규요약DB] 및 [주간 식품안전] 탭과 실시간 양방향 연동됩니다.</div>' +
       '</div>' +
-      '<div style="display:flex; gap:8px;">' +
+      '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' +
+        '<a href="https://script.google.com/macros/s/AKfycbzRK6VOFx0D3u1qRIh5rMyijP3Jn6XREqJpYSYpoUIUwljG5C9jofioPxs0caOdvG6e/exec" target="_blank" rel="noopener noreferrer" class="btn-haccp-portal">📋 HACCP 일지 관리 ↗</a>' +
         (LAW_TAB === 'weekly' ? '<button class="btn btn-primary" onclick="openSafetyNewsUploadModal()">+ 주간 식품안전 원문 등록</button>' : '') +
         '<button class="btn" onclick="switchView(\'kpi\')">2026 부문 8대 KPI ›</button>' +
         '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
@@ -7888,6 +8117,908 @@ async function uncheckAndDeleteSqcRecord() {
     }
   });
 })();
+/* ============================================================================
+ * [Q-Safety 확장 모듈 2]
+ * 1) 통합 대시보드 Q2 와이드 법규 1줄 바 롤링/수동 넘김
+ * 2) 표시사항 진행 현황 > [부자재 전환 분류 (26.11~)] 탭 (신규/리뉴얼/제외 원클릭 & 2종 분리 등록)
+ * 3) 부자재 관리 > [전환 추적 보드] + [원부자재 DB 10·11월~ 전체 검수 내역] 실시간 연동
+ * ============================================================================ */
+let Q2_LAW_IDX = 0;
+let Q2_LAW_TIMER = null;
+let TRANS_STAGE_FILTER = 'waiting_in'; // 'waiting_in' | 'waiting_pack' | 'completed' | 'unclassified'
+let LBL_TR_SHOW_ALL_COMPLETED = false;
+let SUB_DB_MONTH_FILTER = 'ALL';
+let SUB_DB_TYPE_FILTER = 'ALL';
+let SUB_DB_CHG_ONLY = false;
+
+// --- [1] 통합 대시보드 Q2 상단 와이드 법규 개정 1줄 바 ---
+function getDashboardCheckedLaws() {
+  const lw = (BUNDLE && BUNDLE.law) || {};
+  if (lw.dashboard_laws && lw.dashboard_laws.length) return lw.dashboard_laws;
+  return (lw.all_laws || []).filter(function(x) { return Boolean(x && x.show_on_dashboard); });
+}
+
+function renderQ2WideLawBar() {
+  const bar = document.getElementById('q2LawWideBar');
+  if (!bar) return;
+  const laws = getDashboardCheckedLaws();
+  if (!laws.length) {
+    bar.innerHTML =
+      '<span class="badge badge-neutral">법규 핵심</span>' +
+      '<span class="q2-law-wide-txt" style="color:var(--text-muted); font-weight:700; cursor:pointer;" onclick="switchView(\'law\')">대시보드 노출로 체크된 개정 법규가 없습니다 — 클릭하여 선별 ›</span>';
+    return;
+  }
+
+  if (Q2_LAW_IDX >= laws.length || Q2_LAW_IDX < 0) Q2_LAW_IDX = 0;
+  const item = laws[Q2_LAW_IDX] || laws[0];
+  const stCls = item['예고여부'] ? 'badge-purple' : 'badge-info';
+  const sumTxt = item['실무조치요약'] || item['자동조치요약'] || '';
+
+  bar.innerHTML =
+    '<span class="badge ' + stCls + '" style="padding:2.5px 7px; font-size:11px;">' + esc(item['법규단계'] || '고시') + '</span>' +
+    '<span class="badge ' + esc(item.d_day_cls || 'badge-info') + '" style="padding:2.5px 7px; font-size:11px;">' + esc(item.d_day_label || '-') + '</span>' +
+    '<div class="q2-law-wide-main" onclick="openLawDetailModal(\'' + esc(item.law_id || '') + '\')" title="클릭 시 법령 원문 및 1~2줄 요약 편집 팝업 열기">' +
+      '<div class="q2-law-wide-txt">' +
+        '<strong>' + esc(item['법규명'] || '-') + '</strong>' +
+        '<span class="q2-law-wide-sum">— ' + esc(sumTxt) + '</span>' +
+      '</div>' +
+    '</div>' +
+    '<span class="badge ' + esc(item.prep_timing_cls || 'badge-neutral') + '" style="padding:2px 7px; font-size:10.5px;">' + esc(item.prep_status || '검토전') + '</span>' +
+    (laws.length > 1
+      ? '<div class="q2-law-nav">' +
+          '<span style="font-size:10.5px; font-weight:800; color:#64748B; margin-right:2px;">' + (Q2_LAW_IDX + 1) + '/' + laws.length + '</span>' +
+          '<button type="button" class="ticker-nav-btn" onclick="stepQ2Law(-1)" title="이전 법규">◀</button>' +
+          '<button type="button" class="ticker-nav-btn" onclick="stepQ2Law(1)" title="다음 법규">▶</button>' +
+        '</div>'
+      : '');
+
+  if (!Q2_LAW_TIMER) {
+    Q2_LAW_TIMER = setInterval(function() {
+      if (document.hidden || CURRENT_VIEW !== 'home') return;
+      const curLaws = getDashboardCheckedLaws();
+      if (curLaws.length > 1) {
+        Q2_LAW_IDX = (Q2_LAW_IDX + 1) % curLaws.length;
+        renderQ2WideLawBar();
+      }
+    }, 6500);
+  }
+}
+
+function stepQ2Law(delta) {
+  const laws = getDashboardCheckedLaws();
+  if (!laws.length) return;
+  Q2_LAW_IDX = (Q2_LAW_IDX + delta + laws.length) % laws.length;
+  renderQ2WideLawBar();
+}
+
+function openTransitionBoard(targetStage) {
+  TRANS_STAGE_FILTER = targetStage || 'waiting_in';
+  SUB_MAT_TAB = 'transition';
+  switchView('sub_mat', 'transition');
+}
+
+// --- [2] 공통 품목 추천 풀 (원부자재 DB 품목명 + 상온/유제품 포장일보 품목명) ---
+function getSubMatProductSuggestions(storageHint) {
+  const sm = (BUNDLE && BUNDLE.sub_material) || {};
+  const pr = (BUNDLE && BUNDLE.process) || {};
+  const subList = (sm.sub_products || []).slice();
+  const packPool = [];
+  if (storageHint === '냉장') {
+    (pr.dairy_products || []).forEach(function(p) { if (p && packPool.indexOf(p) === -1) packPool.push(p); });
+  } else if (storageHint === '상온') {
+    (pr.rt_products || []).forEach(function(p) { if (p && packPool.indexOf(p) === -1) packPool.push(p); });
+  } else {
+    (pr.master_products || []).forEach(function(p) { if (p && packPool.indexOf(p) === -1) packPool.push(p); });
+  }
+  return {
+    subProducts: subList,
+    packProducts: packPool.sort(function(a, b) { return a.localeCompare(b, 'ko'); })
+  };
+}
+
+function guessCleanProductFromTitle(rawTitle) {
+  let s = String(rawTitle || '').trim();
+  s = s.replace(/^\[[^\]]+\]\s*/, '');
+  s = s.replace(/(?:표시사항|표기검수|표기사항|표시문안|도안|검토|심의|요청의?\s*건|요청|의뢰|변경|리뉴얼|신규).*$/g, '').trim();
+  return s || rawTitle || '';
+}
+
+// --- [3] 표시사항 진행 현황 (renderLabelView 확장: 4번째 탭 [🔄 부자재 전환 분류 (26.11~)] 추가) ---
+window.renderLabelView = function() {
+  const lb = BUNDLE.label_status;
+  const tr = BUNDLE.label_transition || { counts: {}, unclassified_candidates: [], all_nov_completed: [], waiting_in_list: [], waiting_pack_list: [], completed_list: [], excluded_list: [] };
+  const trCnts = tr.counts || {};
+  const memoTxt = (BUNDLE.special_boards && BUNDLE.special_boards.label_memo) || '';
+  const sec = document.getElementById('view-label');
+
+  const diffSign = lb.ytd_diff >= 0 ? '+' : '';
+  sec.innerHTML =
+    '<div class="page-hdr">' +
+      '<div><h2 class="page-h2">표시사항 심의 진행 현황 및 부자재 전환 분류 (26년 11월~)</h2><div class="page-desc">월별 통계 및 실시간 심의 목록과 함께, 심의 완료된 자사 제조 품목을 [신규 / 리뉴얼 / 제외]로 분류하여 부자재 입고·포장까지 추적합니다.</div></div>' +
+      '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+        '<button class="btn" style="border-color:#0052B4; color:#003378;" onclick="openTransitionBoard(\'waiting_in\')">📦 부자재 전환 추적 보드 열기 ›</button>' +
+        '<button class="btn btn-primary" onclick="openLabelMemoModal()">📝 [특이사항] 탭 메모 편집</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="kpi-grid-4">' +
+      '<div class="stat-card" style="cursor:pointer;" onclick="LABEL_TAB=\'reviewing\'; renderLabelView()"><div class="stat-lbl">① 현재 식품안전팀 검토중</div><div class="stat-val">' + lb.reviewing_cnt + '건</div><div class="stat-sub">' + esc(lb.rev_summary_line) + '</div></div>' +
+      '<div class="stat-card" style="cursor:pointer; background:#FFFBEB; border-color:#FDE68A;" onclick="LABEL_TAB=\'transition\'; renderLabelView()"><div class="stat-lbl" style="color:#92400E;">② 26.11~ 자사 완료분 분류·입고대기</div><div class="stat-val" style="color:#B45309;">입고대기 ' + (trCnts.waiting_in_cnt || 0) + '건</div><div class="stat-sub" style="color:#78350F; font-weight:700;">미분류 후보 ' + (trCnts.unclassified_cnt || 0) + '건 · 입고감지 ' + (trCnts.inbound_detected_cnt || 0) + '건</div></div>' +
+      '<div class="stat-card" style="cursor:pointer; background:#ECFDF5; border-color:#86EFAC;" onclick="openTransitionBoard(\'waiting_pack\')"><div class="stat-lbl" style="color:#065F46;">③ 부자재 입고완료 · 전환포장 대기</div><div class="stat-val" style="color:#047857;">포장대기 ' + (trCnts.waiting_pack_cnt || 0) + '건</div><div class="stat-sub" style="color:#065F46; font-weight:700;">생산감지 ' + (trCnts.pack_detected_cnt || 0) + '건 · 전환완료 누적 ' + (trCnts.completed_cnt || 0) + '건</div></div>' +
+      '<div class="stat-card"><div class="stat-lbl">2026년 누적 심의 (' + diffSign + lb.ytd_pct + '%)</div><div class="stat-val">' + lb.cnt_26_all + '건</div><div class="stat-sub">검토완료 ' + lb.completed_26_cnt + '건 · 월평균 ' + lb.m_avg_26 + '건</div></div>' +
+    '</div>' +
+    '<div class="tab-bar">' +
+      '<button class="tab-btn ' + (LABEL_TAB === 'analytics' ? 'active' : '') + '" onclick="LABEL_TAB=\'analytics\'; renderLabelView()">📊 월별 · 부서별 · 생산처별 통계</button>' +
+      '<button class="tab-btn ' + (LABEL_TAB === 'reviewing' ? 'active' : '') + '" onclick="LABEL_TAB=\'reviewing\'; renderLabelView()">📑 실시간 검토중 목록 (' + lb.reviewing_cnt + '건)</button>' +
+      '<button class="tab-btn ' + (LABEL_TAB === 'transition' ? 'active' : '') + '" onclick="LABEL_TAB=\'transition\'; renderLabelView()">🔄 자사 부자재 전환 분류 · 관리 (미분류 ' + (trCnts.unclassified_cnt || 0) + ' / 진행 ' + ((trCnts.waiting_in_cnt || 0) + (trCnts.waiting_pack_cnt || 0)) + '건)</button>' +
+      '<button class="tab-btn ' + (LABEL_TAB === 'all' ? 'active' : '') + '" onclick="LABEL_TAB=\'all\'; renderLabelView()">📚 전체 누적 심의 이력 (' + lb.all_records.length + '건)</button>' +
+    '</div>' +
+    '<div id="labelTabContent"></div>';
+
+  const box = document.getElementById('labelTabContent');
+  if (LABEL_TAB === 'analytics') {
+    box.innerHTML =
+      '<div style="display:grid; grid-template-columns:minmax(0, 1.3fr) minmax(0, 0.7fr); gap:12px; margin-bottom:12px;">' +
+        '<div class="panel-card" style="margin-bottom:0;"><div class="panel-title">월별 표시사항 심의 건수 비교 (2025년 vs 2026년)</div><div style="height:250px;"><canvas id="chartLabelMonthly"></canvas></div></div>' +
+        '<div class="panel-card" style="margin-bottom:0;"><div class="panel-title">2026년 주요 생산처 비중</div><div style="height:250px;"><canvas id="chartLabelSite"></canvas></div></div>' +
+      '</div>' +
+      '<div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">' +
+        '<div class="panel-card"><div class="panel-title">요청부서별 심의 현황</div><div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>요청부서</th><th>2025년</th><th>2026년</th><th>현재 검토중</th><th>증감</th></tr></thead><tbody>' +
+          (lb.dept_cmp || []).map(function(d) {
+            return '<tr><td><b>' + esc(d['요청부서']) + '</b></td><td>' + d['2025년'] + '</td><td><b>' + d['2026년'] + '</b></td><td>' + d['현재_검토중'] + '</td><td>' + (d['증감(26-25)'] >= 0 ? '+' : '') + d['증감(26-25)'] + '</td></tr>';
+          }).join('') +
+        '</tbody></table></div></div>' +
+        '<div class="panel-card"><div class="panel-title">마케팅 카테고리별 비중</div><div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>카테고리</th><th>2025년</th><th>2026년</th><th>26년 비중</th></tr></thead><tbody>' +
+          (lb.cat_cmp || []).map(function(c) {
+            return '<tr><td><b>' + esc(c['카테고리']) + '</b></td><td>' + c['2025년_건수'] + '</td><td><b>' + c['2026년_건수'] + '</b></td><td>' + c['26년_비중(%)'] + '%</td></tr>';
+          }).join('') +
+        '</tbody></table></div></div>' +
+      '</div>';
+
+    destroyChart('lblMonthly');
+    const ctxM = document.getElementById('chartLabelMonthly');
+    if (ctxM) {
+      CHARTS['lblMonthly'] = new Chart(ctxM, {
+        type: 'bar',
+        data: {
+          labels: lb.monthly_cmp.map(function(x) { return x['월']; }),
+          datasets: [
+            { label: '2025년', data: lb.monthly_cmp.map(function(x) { return x['2025년']; }), backgroundColor: '#CBD5E1' },
+            { label: '2026년', data: lb.monthly_cmp.map(function(x) { return x['2026년']; }), backgroundColor: '#003378' }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+    }
+    destroyChart('lblSite');
+    const ctxS = document.getElementById('chartLabelSite');
+    if (ctxS && lb.site_chart) {
+      CHARTS['lblSite'] = new Chart(ctxS, {
+        type: 'doughnut',
+        data: {
+          labels: lb.site_chart.map(function(x) { return x.label; }),
+          datasets: [{ data: lb.site_chart.map(function(x) { return x.count; }), backgroundColor: ['#003378', '#0284C7', '#10B981', '#F59E0B', '#6366F1', '#94A3B8'] }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+    }
+  } else if (LABEL_TAB === 'reviewing') {
+    const list = lb.reviewing_list || [];
+    box.innerHTML =
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>📌 현재 식품안전팀 검토중 목록 (검토 완료 시 [자사 부자재 전환 분류] 탭에 자동 후보로 올라옵니다)</span></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>문서번호</th><th>요청부서</th><th>품목 · 제목</th><th>카테고리</th><th>보관</th><th>생산처</th><th>포장재 유형</th><th>등록일</th></tr></thead>' +
+          '<tbody>' +
+          (list.length ? list.map(function(r) {
+            return '<tr>' +
+              '<td>' + esc(r['*docNo'] || '-') + '</td>' +
+              '<td><span class="badge badge-info">' + esc(r['요청부서'] || '-') + '</span></td>' +
+              '<td class="td-left"><strong>' + esc(r._clean_title || r['제목']) + '</strong></td>' +
+              '<td>' + esc(r['대분류(마케팅 카테고리)'] || '-') + '</td>' +
+              '<td>' + esc(r['보관방법'] || '-') + '</td>' +
+              '<td>' + esc(r['생산처'] || '-') + '</td>' +
+              '<td>' + esc(r['검토 포장재 유형'] || '-') + '</td>' +
+              '<td>' + esc(r['등록일자'] || '-') + '</td>' +
+            '</tr>';
+          }).join('') : '<tr><td colspan="8" class="cell-gray">현재 검토 중인 항목이 없습니다.</td></tr>') +
+          '</tbody></table></div></div>';
+  } else if (LABEL_TAB === 'transition') {
+    renderLabelTransitionSubTab(box);
+  } else {
+    const allR = (lb.all_records || []).slice(0, 250);
+    box.innerHTML =
+      '<div class="panel-card"><div class="panel-title">최근 등록·심의 이력 (최대 250건 표시)</div>' +
+      '<div class="tbl-wrap"><table class="data-tbl">' +
+        '<thead><tr><th>분류</th><th>요청부서</th><th>제목</th><th>생산처</th><th>포장재</th><th>등록일자</th></tr></thead><tbody>' +
+        allR.map(function(r) {
+          const cls = r['분류'] === '식품안전팀 검토중' ? 'badge-warn' : (r['분류'].indexOf('완료') !== -1 ? 'badge-ok' : 'badge-neutral');
+          return '<tr><td><span class="badge ' + cls + '">' + esc(r['분류']) + '</span></td><td>' + esc(r['요청부서']) + '</td><td class="td-left">' + esc(r['제목']) + '</td><td>' + esc(r['생산처']) + '</td><td>' + esc(r['검토 포장재 유형']) + '</td><td>' + esc(r['등록일자']) + '</td></tr>';
+        }).join('') +
+      '</tbody></table></div></div>';
+  }
+};
+
+function renderLabelTransitionSubTab(box) {
+  const tr = BUNDLE.label_transition || {};
+  const cands = LBL_TR_SHOW_ALL_COMPLETED
+    ? (tr.all_nov_completed || []).filter(function(c) { return !c.already_handled; })
+    : (tr.unclassified_candidates || []);
+  const activeTrackings = [].concat(tr.waiting_in_list || [], tr.waiting_pack_list || []);
+  const excludedList = tr.excluded_list || [];
+
+  box.innerHTML =
+    '<div class="panel-card" style="background:#EFF6FF; border-color:#BFDBFE; padding:11px 15px;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
+        '<div style="font-size:12.5px; color:#1E3A8A; line-height:1.5;">' +
+          '• <b>2026-11-01 이후 심의 완료 건</b> 중 아산공장 제조 후보(이롬 자사제조분 포함 / 외주가공·냉동·건기식·스틱파우치·에콜린 자동 제외)만 추출했습니다.<br>' +
+          '• <b>[🆕 신규 추적]</b>(2종 분리 가능) 또는 <b>[🔄 리뉴얼 추적]</b>을 누르면 <b>\'표시사항 현황\' 숨김 탭(<code>_이력DB_부자재전환</code>)</b>에 저장되고 부자재 입고대기 카운트에 반영됩니다.' +
+        '</div>' +
+        '<div style="display:flex; gap:8px; align-items:center;">' +
+          '<label style="font-size:12px; font-weight:800; color:#003378; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">' +
+            '<input type="checkbox" ' + (LBL_TR_SHOW_ALL_COMPLETED ? 'checked' : '') + ' onchange="LBL_TR_SHOW_ALL_COMPLETED=this.checked; renderLabelView()" /> 자동제외(외주 등) 건도 함께 보기' +
+          '</label>' +
+          '<button class="btn btn-primary btn-sm" onclick="openTransitionRegisterModal(null, \'신규\')">+ 수동 직접 추적 등록</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="panel-card">' +
+      '<div class="panel-title">' +
+        '<span>1. [분류 대기 목록] 2026년 11월 이후 심의 완료 후보 (' + cands.length + '건)</span>' +
+        '<input type="text" class="form-ctrl" style="width:240px; padding:4px 9px;" placeholder="제목 · 부서 · 포장재 검색" oninput="filterSimpleTable(this.value, \'lblCandTbl\')" />' +
+      '</div>' +
+      '<div class="tbl-wrap"><table class="data-tbl" id="lblCandTbl">' +
+        '<thead><tr><th>심의완료일</th><th>요청부서</th><th>보관</th><th>포장재유형</th><th>표시사항 제목 (문서번호)</th><th style="width:270px;">원클릭 전환 추적 분류</th></tr></thead>' +
+        '<tbody>' +
+        (cands.length ? cands.map(function(c, idx) {
+          const stBadge = c.보관구분 === '냉장' ? 'badge-info' : 'badge-ok';
+          return '<tr>' +
+            '<td><b>' + esc(c.심의완료일) + '</b></td>' +
+            '<td>' + esc(c.요청부서) + '</td>' +
+            '<td><span class="badge ' + stBadge + '">' + esc(c.보관구분) + '</span></td>' +
+            '<td>' + esc(c.포장재유형) + '</td>' +
+            '<td class="td-left"><strong>' + esc(c.clean_title || c.제목) + '</strong> <span style="font-size:11px; color:#64748B;">(' + esc(c.doc_no) + ')</span></td>' +
+            '<td style="white-space:nowrap;">' +
+              '<button class="btn btn-primary btn-sm" onclick="openCandRegisterByIdx(' + idx + ', \'신규\')">🆕 신규</button> ' +
+              '<button class="btn btn-sm" style="background:#EFF6FF; border-color:#60A5FA; color:#003378;" onclick="openCandRegisterByIdx(' + idx + ', \'리뉴얼\')">🔄 리뉴얼</button> ' +
+              '<button class="btn btn-sm" style="color:#64748B;" onclick="excludeLabelCandidate(\'' + esc(c.doc_no) + '\', ' + idx + ')">✕ 제외</button>' +
+            '</td>' +
+          '</tr>';
+        }).join('') : '<tr><td colspan="6" class="cell-gray" style="padding:22px;">미분류 상태인 2026년 11월 이후 자사 심의완료 후보가 없습니다.</td></tr>') +
+        '</tbody></table></div>' +
+    '</div>' +
+    '<div class="panel-card">' +
+      '<div class="panel-title">' +
+        '<span>2. 현재 진행 중인 자사 부자재 전환 추적 품목 (' + activeTrackings.length + '건)</span>' +
+        '<button class="btn btn-sm" onclick="openTransitionBoard(\'waiting_in\')">📦 부자재 관리에서 입고·포장 확정하기 ›</button>' +
+      '</div>' +
+      renderActiveTransitionTableHtml(activeTrackings) +
+    '</div>' +
+    (excludedList.length
+      ? '<div class="panel-card" style="background:#F8FAFC;">' +
+          '<div class="panel-title"><span>제외 처리된 항목 (' + excludedList.length + '건 · 외주/단순검토)</span></div>' +
+          '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+            excludedList.slice(0, 20).map(function(ex) {
+              return '<span class="badge badge-neutral" style="padding:4px 9px; gap:6px;">' +
+                esc(ex['표시사항제목']) +
+                ' <button type="button" style="border:none; background:none; color:#2563EB; font-weight:900; cursor:pointer;" onclick="restoreExcludedLabel(\'' + esc(ex['추적ID']) + '\')" title="후보 목록으로 복구">복구↺</button>' +
+              '</span>';
+            }).join('') +
+          '</div>' +
+        '</div>'
+      : '');
+
+  window._CUR_LBL_CANDS = cands;
+}
+
+function openCandRegisterByIdx(idx, trackType) {
+  const cands = window._CUR_LBL_CANDS || [];
+  if (!cands[idx]) return;
+  openTransitionRegisterModal(cands[idx], trackType);
+}
+
+// --- [4] 신규 / 리뉴얼 추적 등록 모달 (리뉴얼 드롭다운 매칭 + 신규 2종 분리 등록 지원) ---
+function openTransitionRegisterModal(candObj, initType) {
+  const isManual = !candObj;
+  const tType = initType || '리뉴얼';
+  const docNo = candObj ? candObj.doc_no : ('M_' + Date.now().toString().slice(-6));
+  const titleVal = candObj ? (candObj.clean_title || candObj.제목) : '';
+  const deptVal = candObj ? candObj.요청부서 : '자사등록';
+  const storageVal = candObj ? candObj.보관구분 : '상온';
+  const pkgVal = candObj ? candObj.포장재유형 : '멸균팩';
+  const revDate = candObj ? candObj.심의완료일 : ((BUNDLE && BUNDLE.loaded_date) || '2026-11-26');
+  const guessedName = guessCleanProductFromTitle(titleVal);
+
+  const sugs = getSubMatProductSuggestions(storageVal);
+
+  window._TR_REG_CTX = {
+    doc_no: docNo,
+    dept: deptVal,
+    pkg_type: pkgVal,
+    review_date: revDate
+  };
+
+  openModal(
+    (tType === '신규' ? '🆕 [신규 품목] 부자재 입고·전환포장 추적 등록' : '🔄 [리뉴얼 품목] 부자재 입고·전환포장 추적 등록'),
+    '<div style="background:' + (tType === '신규' ? '#EFF6FF' : '#FFFBEB') + '; border:1px solid ' + (tType === '신규' ? '#93C5FD' : '#FCD34D') + '; border-radius:8px; padding:10px 12px; margin-bottom:12px; font-size:12.5px; line-height:1.5;">' +
+      (tType === '신규'
+        ? '• <b>신규 출시 품목 :</b> 기존 유사 품목(예: 심플러스 1A 등)과 섞이지 않도록 <b>신규 품목명</b>을 직접 기입해 주세요. 문서 1건에 <b>2종(예: 일반/저지방)</b>이 묶여 있다면 아래 <b>[+ 품목 분리 추가]</b>를 눌러 각각 추적할 수 있습니다.'
+        : '• <b>기존 품목 리뉴얼 :</b> 아래 입력칸 클릭 시 <b>원부자재 DB 품목명</b>과 <b>포장일보 품목명</b> 자동완성 목록이 뜹니다. 연결해 두면 심의완료일(' + esc(revDate) + ') 이후 입고·생산분을 자동 감지합니다.') +
+    '</div>' +
+    '<div style="display:grid; grid-template-columns:0.8fr 0.8fr 1fr; gap:8px;">' +
+      '<div class="form-row"><label class="form-lbl">추적 구분</label>' +
+        '<select id="selTrRegType" class="form-ctrl">' +
+          '<option value="신규" ' + (tType === '신규' ? 'selected' : '') + '>🆕 신규 출시</option>' +
+          '<option value="리뉴얼" ' + (tType === '리뉴얼' ? 'selected' : '') + '>🔄 기존 리뉴얼</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="form-row"><label class="form-lbl">보관·라인 구분</label>' +
+        '<select id="selTrRegStorage" class="form-ctrl" onchange="refreshTrModalDatalists(this.value)">' +
+          '<option value="상온" ' + (storageVal !== '냉장' ? 'selected' : '') + '>📦 상온 (멸균·두유·음료)</option>' +
+          '<option value="냉장" ' + (storageVal === '냉장' ? 'selected' : '') + '>❄️ 냉장 (우유·발효유)</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="form-row"><label class="form-lbl">심의완료 기준일 (이후 입고분 탐색)</label>' +
+        '<input type="date" id="inpTrRegDate" class="form-ctrl" value="' + esc(revDate) + '" />' +
+      '</div>' +
+    '</div>' +
+    '<div class="form-row">' +
+      '<label class="form-lbl">표시사항 심의 제목</label>' +
+      '<input type="text" id="inpTrRegTitle" class="form-ctrl" value="' + esc(titleVal) + '" ' + (isManual ? 'placeholder="예: 홈플러스 익스프레스 NPB 전용목장 1A우유"' : '') + ' />' +
+    '</div>' +
+    '<div style="display:flex; justify-content:space-between; align-items:center; margin:8px 0 6px;">' +
+      '<span style="font-size:12.5px; font-weight:900; color:#003378;">🔗 매칭할 부자재명 & 포장일보 제품명 지정</span>' +
+      '<button type="button" class="btn btn-sm" style="background:#EFF6FF; border-color:#93C5FD; color:#003378;" onclick="addTrSplitRow()">+ 2종 이상 품목 분리 추가</button>' +
+    '</div>' +
+    '<div id="trSplitRowsContainer">' +
+      buildTrSplitRowHtml(1, '', guessedName, guessedName) +
+    '</div>' +
+    '<div class="form-row" style="margin-top:8px;">' +
+      '<label class="form-lbl">변경 핵심 메모 (선택 · 예: 원산지 변경, 칼슘 함량 변경, 초도 물량 확인)</label>' +
+      '<input type="text" id="inpTrRegMemo" class="form-ctrl" placeholder="입고·포장 검수 시 참고할 특이사항 입력" />' +
+    '</div>' +
+    '<datalist id="dlTrSubNames">' + sugs.subProducts.map(function(p) { return '<option value="' + esc(p) + '"></option>'; }).join('') + '</datalist>' +
+    '<datalist id="dlTrPackNames">' + sugs.packProducts.map(function(p) { return '<option value="' + esc(p) + '"></option>'; }).join('') + '</datalist>',
+    '<button class="btn" onclick="closeModal()">취소</button>' +
+    '<button class="btn btn-primary" onclick="submitTransitionRegister()">✓ 부자재 입고대기 추적 시작</button>'
+  );
+}
+
+function buildTrSplitRowHtml(seqNo, sfx, subNm, packNm) {
+  return '<div class="tr-split-item" style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:8px; padding:9px 10px; margin-bottom:7px;">' +
+    '<div style="display:grid; grid-template-columns:0.65fr 1.15fr 1.15fr auto; gap:6px; align-items:end;">' +
+      '<div><label class="form-lbl" style="font-size:11.5px;">구분명(2종 분리시)</label>' +
+        '<input type="text" class="form-ctrl inp-tr-sfx" value="' + esc(sfx || '') + '" placeholder="예: 일반 / 저지방" />' +
+      '</div>' +
+      '<div><label class="form-lbl" style="font-size:11.5px;">원부자재 DB 품목명 *</label>' +
+        '<input type="text" list="dlTrSubNames" class="form-ctrl inp-tr-sub" value="' + esc(subNm || '') + '" placeholder="입고 시트 제품명 선택·입력" />' +
+      '</div>' +
+      '<div><label class="form-lbl" style="font-size:11.5px;">포장일보 품목명 *</label>' +
+        '<input type="text" list="dlTrPackNames" class="form-ctrl inp-tr-pack" value="' + esc(packNm || '') + '" placeholder="상온/유제품 일보 제품명" />' +
+      '</div>' +
+      '<div>' +
+        (seqNo > 1 ? '<button type="button" class="btn btn-sm" style="color:var(--err-fg); height:33px;" onclick="this.closest(\'.tr-split-item\').remove()">✕</button>' : '') +
+      '</div>' +
+    '</div>' +
+  '</div>';
+}
+
+function addTrSplitRow() {
+  const wrap = document.getElementById('trSplitRowsContainer');
+  if (!wrap) return;
+  const cnt = wrap.querySelectorAll('.tr-split-item').length + 1;
+  const div = document.createElement('div');
+  div.innerHTML = buildTrSplitRowHtml(cnt, cnt + '종', '', '');
+  wrap.appendChild(div.firstElementChild);
+}
+
+function refreshTrModalDatalists(storageVal) {
+  const sugs = getSubMatProductSuggestions(storageVal);
+  const dlS = document.getElementById('dlTrSubNames');
+  const dlP = document.getElementById('dlTrPackNames');
+  if (dlS) dlS.innerHTML = sugs.subProducts.map(function(p) { return '<option value="' + esc(p) + '"></option>'; }).join('');
+  if (dlP) dlP.innerHTML = sugs.packProducts.map(function(p) { return '<option value="' + esc(p) + '"></option>'; }).join('');
+}
+
+async function submitTransitionRegister() {
+  const ctx = window._TR_REG_CTX || {};
+  const tType = document.getElementById('selTrRegType').value;
+  const storageVal = document.getElementById('selTrRegStorage').value;
+  const revDate = document.getElementById('inpTrRegDate').value;
+  const titleVal = (document.getElementById('inpTrRegTitle').value || '').trim();
+  const memoVal = (document.getElementById('inpTrRegMemo').value || '').trim();
+
+  if (!titleVal) {
+    showToast('표시사항 제목을 입력해 주세요.', 2500);
+    return;
+  }
+
+  const splitRows = [];
+  document.querySelectorAll('#trSplitRowsContainer .tr-split-item').forEach(function(el) {
+    const sfx = (el.querySelector('.inp-tr-sfx').value || '').trim();
+    const subNm = (el.querySelector('.inp-tr-sub').value || '').trim();
+    const packNm = (el.querySelector('.inp-tr-pack').value || '').trim() || subNm;
+    if (subNm || packNm) {
+      splitRows.push({ label_suffix: sfx, sub_name: subNm || packNm, pack_name: packNm || subNm });
+    }
+  });
+
+  if (!splitRows.length) {
+    showToast('매칭할 부자재명 또는 포장일보 품목명을 최소 1개 입력해 주세요.', 2800);
+    return;
+  }
+
+  try {
+    const res = await apiPost('/api/label-transition', {
+      action: 'register',
+      doc_no: ctx.doc_no || '',
+      track_type: tType,
+      title: titleVal,
+      dept: ctx.dept || '-',
+      storage: storageVal,
+      pkg_type: ctx.pkg_type || '-',
+      review_date: revDate,
+      memo: memoVal,
+      split_items: splitRows
+    });
+    if (res.label_transition) BUNDLE.label_transition = res.label_transition;
+    closeModal();
+    renderActiveView();
+    showToast(res.message);
+  } catch (e) {
+    showToast(e.message, 3200);
+  }
+}
+
+async function excludeLabelCandidate(docNo, idx) {
+  const cands = window._CUR_LBL_CANDS || [];
+  const item = cands[idx] || {};
+  try {
+    const res = await apiPost('/api/label-transition', {
+      action: 'exclude',
+      doc_no: docNo,
+      title: item.clean_title || item.제목 || docNo,
+      dept: item.요청부서 || '-',
+      storage: item.보관구분 || '-',
+      pkg_type: item.포장재유형 || '-',
+      review_date: item.심의완료일 || ''
+    });
+    if (res.label_transition) BUNDLE.label_transition = res.label_transition;
+    renderActiveView();
+    showToast('외주/비대상으로 제외 처리되었습니다.');
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
+}
+
+async function restoreExcludedLabel(trackId) {
+  try {
+    const res = await apiPost('/api/label-transition', { action: 'restore', track_id: trackId, doc_no: trackId });
+    if (res.label_transition) BUNDLE.label_transition = res.label_transition;
+    renderActiveView();
+    showToast(res.message);
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
+}
+
+// --- [5] 부자재 관리 (renderSubMatView 전면 확장: 전환 추적 보드 + 원부자재 DB 10·11월~ 실데이터 연동) ---
+function renderActiveTransitionTableHtml(list) {
+  if (!list || !list.length) {
+    return '<div class="tbl-wrap"><table class="data-tbl"><tbody><tr><td class="cell-gray" style="padding:22px;">해당 단계에 진행 중인 전환 추적 품목이 없습니다.</td></tr></tbody></table></div>';
+  }
+
+  return '<div class="tbl-wrap"><table class="data-tbl">' +
+    '<thead><tr>' +
+      '<th>구분</th><th>현재 단계</th><th>보관</th><th>표시사항 심의 제목 (심의완료일)</th>' +
+      '<th>연결 품목명 (부자재 / 포장일보)</th><th>원부자재 DB · 포장일보 자동 감지 및 이력</th><th style="width:190px;">단계 확정 · 관리</th>' +
+    '</tr></thead><tbody>' +
+    list.map(function(it) {
+      const isNew = it['구분'] === '신규';
+      const st = it['진행단계'] || '입고대기';
+      const stBadgeCls = st === '입고대기' ? 'badge-warn' : (st === '포장대기' ? 'badge-info' : 'badge-ok');
+      const detIn = it.detected_inbounds || [];
+      const detPk = it.detected_packs || [];
+
+      let detectHtml = '-';
+      if (st === '입고대기') {
+        if (detIn.length) {
+          const topIn = detIn[0];
+          detectHtml = '<div class="tr-detect-box">' +
+            '🔔 <b>입고 감지 (' + esc(topIn.검수일자) + ') :</b> ' + esc(topIn.부자재명) + ' · ' + esc(topIn.입고수량) +
+            (topIn.특이사항 && topIn.특이사항 !== '-' ? ' <span style="color:#B91C1C;">[' + esc(topIn.특이사항) + ']</span>' : '') +
+          '</div>';
+        } else {
+          detectHtml = '<span style="font-size:12px; color:#64748B;">심의완료(' + esc(it['심의완료일']) + ') 이후 입고 대기중</span>';
+        }
+      } else if (st === '포장대기') {
+        const inInfo = '<div style="font-size:11.5px; color:#334155;">✓ 입고확정(' + esc(it['부자재입고일']) + ') : ' + esc(it['부자재입고내역']) + '</div>';
+        if (detPk.length) {
+          const topPk = detPk[0];
+          detectHtml = inInfo + '<div class="tr-detect-box pack">' +
+            '🏭 <b>생산 감지 (' + esc(topPk.생산일자) + ') :</b> ' + esc(topPk.라인_호기) + ' · 소비기한 ' + esc(topPk.소비기한) +
+            (topPk.특이사항 && topPk.특이사항 !== '이상없음' && topPk.특이사항 !== '-' ? ' [' + esc(topPk.특이사항) + ']' : '') +
+          '</div>';
+        } else {
+          detectHtml = inInfo + '<div style="font-size:11.5px; color:#047857; margin-top:2px;">현장 첫 전환포장 가동 대기중</div>';
+        }
+      } else {
+        detectHtml =
+          '<div style="font-size:11.5px; color:#334155;">• 입고 : ' + esc(it['부자재입고일'] || '-') + ' (' + esc(it['부자재입고내역'] || '-') + ')</div>' +
+          '<div style="font-size:11.5px; color:#047857; font-weight:800;">• 포장완료 : ' + esc(it['전환포장일'] || '-') + ' (' + esc(it['전환포장내역'] || '-') + ')</div>';
+      }
+
+      const itemJsonAttr = encodeURIComponent(JSON.stringify(it));
+      let actionBtns = '';
+      if (st === '입고대기') {
+        actionBtns =
+          '<button class="btn btn-primary btn-sm" onclick="openConfirmInboundModal(\'' + itemJsonAttr + '\')">📦 입고 확정 ›</button> ' +
+          '<button class="btn btn-sm" style="color:var(--err-fg);" onclick="deleteTransitionItem(\'' + esc(it['추적ID']) + '\')">삭제</button>';
+      } else if (st === '포장대기') {
+        actionBtns =
+          '<button class="btn btn-primary btn-sm" style="background:#047857; border-color:#047857;" onclick="openConfirmPackModal(\'' + itemJsonAttr + '\')">✅ 전환포장 확인</button> ' +
+          '<button class="btn btn-sm" onclick="revertTransitionStage(\'' + esc(it['추적ID']) + '\', \'입고대기\')" title="입고대기로 되돌리기">↺</button>';
+      } else {
+        actionBtns =
+          '<span class="badge badge-ok">종결 완료</span> ' +
+          '<button class="btn btn-sm" onclick="revertTransitionStage(\'' + esc(it['추적ID']) + '\', \'포장대기\')" title="포장대기로 되돌리기">↺</button>';
+      }
+
+      return '<tr>' +
+        '<td><span class="badge ' + (isNew ? 'badge-purple' : 'badge-info') + '">' + esc(it['구분']) + '</span></td>' +
+        '<td><span class="badge ' + stBadgeCls + '">' + esc(st) + '</span></td>' +
+        '<td>' + esc(it['보관구분']) + '</td>' +
+        '<td class="td-left"><strong>' + esc(it['표시사항제목']) + '</strong><div style="font-size:11px; color:#64748B;">심의완료 : ' + esc(it['심의완료일']) + (it['메모'] ? (' · 메모: ' + esc(it['메모'])) : '') + '</div></td>' +
+        '<td class="td-left" style="font-size:12px;">' +
+          '<div><b>부자재 :</b> ' + esc(it['매칭_부자재명'] || '-') + '</div>' +
+          '<div style="color:#475569;"><b>포장일보 :</b> ' + esc(it['매칭_포장품목명'] || '-') + '</div>' +
+        '</td>' +
+        '<td class="td-left">' + detectHtml + '</td>' +
+        '<td style="white-space:nowrap;">' + actionBtns + '</td>' +
+      '</tr>';
+    }).join('') +
+    '</tbody></table></div>';
+}
+
+function openConfirmInboundModal(encodedJson) {
+  const it = JSON.parse(decodeURIComponent(encodedJson));
+  const dets = it.detected_inbounds || [];
+  const todayIso = (BUNDLE && BUNDLE.loaded_date) || '2026-11-26';
+  const defDt = dets.length ? dets[0].검수일자 : todayIso;
+  const defDetail = dets.length
+    ? (dets[0].구분 + ' ' + dets[0].입고수량 + (dets[0].생산일_LOT !== '-' ? (' (LOT: ' + dets[0].생산일_LOT + ')') : '') + (dets[0].특이사항 !== '-' ? (' · ' + dets[0].특이사항) : ''))
+    : '';
+  const defSubNm = dets.length ? dets[0].부자재명.split(' (')[0] : (it['매칭_부자재명'] || '');
+
+  const detRadioHtml = dets.length
+    ? '<div style="margin-bottom:10px;">' +
+        '<label class="form-lbl">🔔 원부자재 DB 자동 감지 내역 (클릭 시 아래 입력란에 자동 채움)</label>' +
+        '<div style="display:flex; flex-direction:column; gap:5px;">' +
+          dets.map(function(d) {
+            const dStr = d.구분 + ' ' + d.입고수량 + (d.생산일_LOT !== '-' ? (' (LOT: ' + d.생산일_LOT + ')') : '') + (d.특이사항 !== '-' ? (' · ' + d.특이사항) : '');
+            return '<div class="mini-item" onclick="fillInboundFromDetect(\'' + esc(d.검수일자) + '\', \'' + esc(dStr) + '\', \'' + esc(d.부자재명.split(' (')[0]) + '\')">' +
+              '<b>' + esc(d.검수일자) + '</b> | <strong>' + esc(d.부자재명) + '</strong> · ' + esc(d.입고수량) + ' (' + esc(d.공급업체) + ') ' +
+              (d.특이사항 !== '-' ? '<span class="badge badge-warn">' + esc(d.특이사항) + '</span>' : '') +
+            '</div>';
+          }).join('') +
+        '</div>' +
+      '</div>'
+    : '<div style="padding:9px 12px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:7px; margin-bottom:10px; font-size:12px; color:#475569;">' +
+        '원부자재 DB에 아직 자동 일치 내역이 없어도 실제 입고 확인 시 아래에 입고일·내역을 직접 기입해 [포장대기]로 넘길 수 있습니다.' +
+      '</div>';
+
+  openModal(
+    '📦 신규·리뉴얼 부자재 입고 확정 (' + esc(it['표시사항제목']) + ')',
+    detRadioHtml +
+    '<div style="display:grid; grid-template-columns:1fr 1.4fr; gap:8px;">' +
+      '<div class="form-row"><label class="form-lbl">부자재 입고·검수일</label>' +
+        '<input type="date" id="inpConfInDate" class="form-ctrl" value="' + esc(defDt) + '" />' +
+      '</div>' +
+      '<div class="form-row"><label class="form-lbl">실제 입고 부자재명 (필요시 보정)</label>' +
+        '<input type="text" id="inpConfInSubNm" class="form-ctrl" value="' + esc(defSubNm) + '" />' +
+      '</div>' +
+    '</div>' +
+    '<div class="form-row"><label class="form-lbl">입고 수량 · LOT · 표시대조 결과 요약</label>' +
+      '<input type="text" id="inpConfInDetail" class="form-ctrl" value="' + esc(defDetail) + '" placeholder="예: 테트라팩 52,000매 입고 · 샘플 표시사항 대조 적합" />' +
+    '</div>',
+    '<button class="btn" onclick="closeModal()">취소</button>' +
+    '<button class="btn btn-primary" onclick="submitConfirmInbound(\'' + esc(it['추적ID']) + '\')">✓ 입고 확정 (→ 포장대기 단계로 이동)</button>'
+  );
+}
+
+function fillInboundFromDetect(dt, detail, subNm) {
+  document.getElementById('inpConfInDate').value = dt;
+  document.getElementById('inpConfInDetail').value = detail;
+  if (subNm) document.getElementById('inpConfInSubNm').value = subNm;
+}
+
+async function submitConfirmInbound(trackId) {
+  try {
+    const res = await apiPost('/api/label-transition', {
+      action: 'confirm_inbound',
+      track_id: trackId,
+      inbound_date: document.getElementById('inpConfInDate').value,
+      matched_sub_name: document.getElementById('inpConfInSubNm').value,
+      inbound_detail: document.getElementById('inpConfInDetail').value
+    });
+    if (res.label_transition) BUNDLE.label_transition = res.label_transition;
+    closeModal();
+    renderActiveView();
+    showToast(res.message);
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
+}
+
+function openConfirmPackModal(encodedJson) {
+  const it = JSON.parse(decodeURIComponent(encodedJson));
+  const dets = it.detected_packs || [];
+  const todayIso = (BUNDLE && BUNDLE.loaded_date) || '2026-11-26';
+  const defDt = dets.length ? dets[0].생산일자 : todayIso;
+  const defDetail = dets.length
+    ? (dets[0].라인_호기 + ' · 적용 소비기한 ' + dets[0].소비기한 + ' (' + it['구분'] + ' 팩 전환 확인)')
+    : (it['구분'] + ' 팩 현장 전환포장 확인 완료');
+
+  const detHtml = dets.length
+    ? '<div style="margin-bottom:10px;">' +
+        '<label class="form-lbl">🏭 포장일보 가동 감지 내역 (클릭 시 아래 입력란에 자동 채움)</label>' +
+        '<div style="display:flex; flex-direction:column; gap:5px;">' +
+          dets.map(function(p) {
+            const pStr = p.라인_호기 + ' · 적용 소비기한 ' + p.소비기한 + ' (' + it['구분'] + ' 팩 전환 확인)';
+            return '<div class="mini-item" onclick="document.getElementById(\'inpConfPkDate\').value=\'' + esc(p.생산일자) + '\'; document.getElementById(\'inpConfPkDetail\').value=\'' + esc(pStr) + '\';">' +
+              '<b>' + esc(p.생산일자) + '</b> | <strong>' + esc(p.제품명) + '</strong> (' + esc(p.라인_호기) + ') · 소비기한 <b>' + esc(p.소비기한) + '</b>' +
+            '</div>';
+          }).join('') +
+        '</div>' +
+      '</div>'
+    : '';
+
+  openModal(
+    '✅ 신규·리뉴얼 팩 현장 전환포장 최종 확인 (' + esc(it['표시사항제목']) + ')',
+    detHtml +
+    '<div class="form-row"><label class="form-lbl">전환포장 적용 생산일</label>' +
+      '<input type="date" id="inpConfPkDate" class="form-ctrl" value="' + esc(defDt) + '" />' +
+    '</div>' +
+    '<div class="form-row"><label class="form-lbl">적용 호기 · 최초 소비기한(LOT) · 확인 내역</label>' +
+      '<input type="text" id="inpConfPkDetail" class="form-ctrl" value="' + esc(defDetail) + '" placeholder="예: B호기 소비기한 2027.06.25 신규팩 전환 투입 확인" />' +
+    '</div>',
+    '<button class="btn" onclick="closeModal()">취소</button>' +
+    '<button class="btn btn-primary" style="background:#047857; border-color:#047857;" onclick="submitConfirmPack(\'' + esc(it['추적ID']) + '\')">✅ 전환포장 완료 (대기 카운트 종결)</button>'
+  );
+}
+
+async function submitConfirmPack(trackId) {
+  try {
+    const res = await apiPost('/api/label-transition', {
+      action: 'confirm_pack',
+      track_id: trackId,
+      pack_date: document.getElementById('inpConfPkDate').value,
+      pack_detail: document.getElementById('inpConfPkDetail').value
+    });
+    if (res.label_transition) BUNDLE.label_transition = res.label_transition;
+    closeModal();
+    renderActiveView();
+    showToast(res.message);
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
+}
+
+async function revertTransitionStage(trackId, targetStage) {
+  if (!confirm('해당 품목을 [' + targetStage + '] 단계로 되돌리시겠습니까?')) return;
+  try {
+    const res = await apiPost('/api/label-transition', { action: 'revert_stage', track_id: trackId, stage: targetStage });
+    if (res.label_transition) BUNDLE.label_transition = res.label_transition;
+    renderActiveView();
+    showToast(res.message);
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
+}
+
+async function deleteTransitionItem(trackId) {
+  if (!confirm('이 추적 항목을 삭제하고 미분류 후보로 되돌리시겠습니까?')) return;
+  try {
+    const res = await apiPost('/api/label-transition', { action: 'delete', track_id: trackId });
+    if (res.label_transition) BUNDLE.label_transition = res.label_transition;
+    renderActiveView();
+    showToast(res.message);
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
+}
+
+window.renderSubMatView = function() {
+  const mk = BUNDLE.manual_kpis || {};
+  const k10 = mk['kpi_10'] || { title: '5. 부자재 관리 고도화', target_text: '부자재폐기 0건', actual_text: '0건', notes_title: '부자재 폐기 Zero화 관리 내역', notes: [] };
+  const lb = BUNDLE.label_status || {};
+  const tr = BUNDLE.label_transition || { counts: {}, waiting_in_list: [], waiting_pack_list: [], completed_list: [], unclassified_candidates: [] };
+  const trCnts = tr.counts || {};
+
+  if (['kpi', 'transition', 'today', 'hist'].indexOf(SUB_MAT_TAB) === -1) {
+    SUB_MAT_TAB = 'kpi';
+  }
+
+  const sm = BUNDLE.sub_material || {
+    has_sheet: false,
+    today_date: BUNDLE.loaded_date || '-',
+    today_rows: [],
+    hist_rows: [],
+    type_list: [],
+    months: [],
+    total_cnt: 0,
+    pass_cnt: 0,
+    hold_cnt: 0,
+    change_note_cnt: 0
+  };
+  const todayRows = sm.today_rows || [];
+  const histRows = sm.hist_rows || [];
+  const activePipeCnt = (trCnts.waiting_in_cnt || 0) + (trCnts.waiting_pack_cnt || 0);
+
+  document.getElementById('view-sub_mat').innerHTML =
+    '<div class="page-hdr">' +
+      '<div>' +
+        '<h2 class="page-h2">5. 부자재 관리 고도화 · 전환포장 추적 및 원부자재 DB 검수 관제</h2>' +
+        '<div class="page-desc">\'원부자재 DB > [부자재]\' 시트와 실시간 연동하여 입고 검수 이력을 조회하고, 표시사항 심의 완료분의 입고 → 현장 전환포장까지 크로스체크합니다.</div>' +
+      '</div>' +
+      '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+        '<button class="btn" style="border-color:#0052B4; color:#003378;" onclick="LABEL_TAB=\'transition\'; switchView(\'label\', \'transition\')">📑 표시사항 신규/리뉴얼 분류하기 (미분류 ' + (trCnts.unclassified_cnt || 0) + '건) ›</button>' +
+        '<button class="btn btn-primary" onclick="openManualKpiModal(\'kpi_10\')">⚙️ 폐기 건수 · KPI 편집</button>' +
+        '<button class="btn" onclick="switchView(\'home\')">← 통합 대시보드</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="kpi-grid-4">' +
+      '<div class="stat-card" style="background:#F0FDF4; border-color:#86EFAC; cursor:pointer;" onclick="SUB_MAT_TAB=\'kpi\'; renderSubMatView()">' +
+        '<div class="stat-lbl" style="color:#166534;">부자재 불용 · 폐기 실적 (목표 ' + esc(k10.target_text) + ')</div>' +
+        '<div class="stat-val" style="color:var(--ok-fg);">' + esc(k10.actual_text) + '</div>' +
+        '<div class="stat-sub" style="color:#15803D; font-weight:700;">' + esc(k10.sub_badge || '오인쇄·구형팩 오투입 Zero 유지') + '</div>' +
+      '</div>' +
+      '<div class="stat-card" style="background:#FFFBEB; border-color:#FDE68A; cursor:pointer;" onclick="SUB_MAT_TAB=\'transition\'; TRANS_STAGE_FILTER=\'waiting_in\'; renderSubMatView()">' +
+        '<div class="stat-lbl" style="color:#92400E;">심의완료 · 부자재 입고대기</div>' +
+        '<div class="stat-val" style="color:#B45309;">' + (trCnts.waiting_in_cnt || 0) + '건</div>' +
+        '<div class="stat-sub" style="color:#78350F; font-weight:700;">원부자재DB 입고감지 ' + (trCnts.inbound_detected_cnt || 0) + '건 · 미분류 ' + (trCnts.unclassified_cnt || 0) + '건</div>' +
+      '</div>' +
+      '<div class="stat-card" style="background:#ECFDF5; border-color:#6EE7B7; cursor:pointer;" onclick="SUB_MAT_TAB=\'transition\'; TRANS_STAGE_FILTER=\'waiting_pack\'; renderSubMatView()">' +
+        '<div class="stat-lbl" style="color:#065F46;">입고완료 · 현장 전환포장 대기</div>' +
+        '<div class="stat-val" style="color:#047857;">' + (trCnts.waiting_pack_cnt || 0) + '건</div>' +
+        '<div class="stat-sub" style="color:#065F46; font-weight:700;">포장일보 가동감지 ' + (trCnts.pack_detected_cnt || 0) + '건 · 완료 누적 ' + (trCnts.completed_cnt || 0) + '건</div>' +
+      '</div>' +
+      '<div class="stat-card" style="cursor:pointer;" onclick="SUB_MAT_TAB=\'hist\'; renderSubMatView()">' +
+        '<div class="stat-lbl">원부자재 DB [부자재] 누적 검수</div>' +
+        '<div class="stat-val">' + (sm.total_cnt || histRows.length).toLocaleString() + '건</div>' +
+        '<div class="stat-sub">최근 검수일 ' + esc(sm.today_date) + ' (' + todayRows.length + '건) · 변경/신규비고 ' + (sm.change_note_cnt || 0) + '건</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="tab-bar">' +
+      '<button class="tab-btn ' + (SUB_MAT_TAB === 'kpi' ? 'active' : '') + '" onclick="SUB_MAT_TAB=\'kpi\'; renderSubMatView()">🛡️ 부자재 폐기 Zero 관리 (KPI 연동)</button>' +
+      '<button class="tab-btn ' + (SUB_MAT_TAB === 'transition' ? 'active' : '') + '" onclick="SUB_MAT_TAB=\'transition\'; renderSubMatView()">🔄 표시사항 · 부자재 · 포장 전환 추적 (' + activePipeCnt + '건)</button>' +
+      '<button class="tab-btn ' + (SUB_MAT_TAB === 'today' ? 'active' : '') + '" onclick="SUB_MAT_TAB=\'today\'; renderSubMatView()">📋 최근 입고 검수 (' + esc(sm.today_date.slice(5)) + ' · ' + todayRows.length + '건)</button>' +
+      '<button class="tab-btn ' + (SUB_MAT_TAB === 'hist' ? 'active' : '') + '" onclick="SUB_MAT_TAB=\'hist\'; renderSubMatView()">📚 원부자재 DB 전체 검수 내역 (' + histRows.length.toLocaleString() + '건)</button>' +
+    '</div>' +
+    '<div id="subMatTabBox"></div>';
+
+  const box = document.getElementById('subMatTabBox');
+
+  if (SUB_MAT_TAB === 'kpi') {
+    box.innerHTML =
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>' + esc(k10.notes_title || '부자재 폐기 Zero화 관리 내역') + '</span>' +
+          '<button class="btn btn-primary btn-sm" onclick="openManualKpiModal(\'kpi_10\')">수치 · 내역 편집</button>' +
+        '</div>' +
+        '<ul style="padding-left:18px; line-height:1.8; font-size:13.5px; color:#1E293B;">' +
+          (k10.notes || []).map(function(n) { return '<li>' + esc(n) + '</li>'; }).join('') +
+        '</ul>' +
+      '</div>' +
+      '<div class="panel-card">' +
+        '<div class="panel-title"><span>2026년 검토 포장재 유형별 사전 표시사항 심의 건수 TOP 10</span><button class="btn btn-sm" onclick="switchView(\'label\')">표시사항 현황 ›</button></div>' +
+        '<div class="tbl-wrap"><table class="data-tbl">' +
+          '<thead><tr><th>검토 포장재 유형</th><th>2026년 사전 심의 건수</th></tr></thead><tbody>' +
+          ((lb.top_pkgs && lb.top_pkgs.length) ? lb.top_pkgs.map(function(p) {
+            return '<tr><td><b>' + esc(p['포장재유형']) + '</b></td><td><b>' + p['2026년_검토건수'] + '건</b></td></tr>';
+          }).join('') : '<tr><td colspan="2" class="cell-gray">데이터가 없습니다.</td></tr>') +
+        '</tbody></table></div>' +
+      '</div>';
+    return;
+  }
+
+  if (SUB_MAT_TAB === 'transition') {
+    const targetList = TRANS_STAGE_FILTER === 'waiting_in'
+      ? (tr.waiting_in_list || [])
+      : (TRANS_STAGE_FILTER === 'waiting_pack'
+        ? (tr.waiting_pack_list || [])
+        : (tr.completed_list || []));
+
+    box.innerHTML =
+      '<div class="panel-card" style="padding:11px 15px; background:#F8FAFC;">' +
+        '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
+          '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+            '<button class="btn btn-sm ' + (TRANS_STAGE_FILTER === 'waiting_in' ? 'btn-primary' : '') + '" onclick="TRANS_STAGE_FILTER=\'waiting_in\'; renderSubMatView()">② 심의완료 · 입고대기 (' + (trCnts.waiting_in_cnt || 0) + '건)</button>' +
+            '<button class="btn btn-sm ' + (TRANS_STAGE_FILTER === 'waiting_pack' ? 'btn-primary' : '') + '" onclick="TRANS_STAGE_FILTER=\'waiting_pack\'; renderSubMatView()">③ 입고완료 · 포장대기 (' + (trCnts.waiting_pack_cnt || 0) + '건)</button>' +
+            '<button class="btn btn-sm ' + (TRANS_STAGE_FILTER === 'completed' ? 'btn-primary' : '') + '" onclick="TRANS_STAGE_FILTER=\'completed\'; renderSubMatView()">✅ 전환포장 완료 이력 (' + (trCnts.completed_cnt || 0) + '건)</button>' +
+          '</div>' +
+          '<div style="display:flex; gap:6px;">' +
+            '<button class="btn btn-sm" onclick="LABEL_TAB=\'transition\'; switchView(\'label\', \'transition\')">📑 미분류 심의완료 건 가져오기 (' + (trCnts.unclassified_cnt || 0) + '건)</button>' +
+            '<button class="btn btn-primary btn-sm" onclick="openTransitionRegisterModal(null, \'신규\')">+ 직접 추적 품목 등록</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="panel-card">' +
+        renderActiveTransitionTableHtml(targetList) +
+      '</div>';
+    return;
+  }
+
+  if (SUB_MAT_TAB === 'today') {
+    box.innerHTML =
+      '<div class="panel-card">' +
+        '<div class="panel-title">' +
+          '<span>최근 검수일(' + esc(sm.today_date) + ') 부자재 입고 · 표시사항 검수 목록 (\'원부자재 DB\' 연동)</span>' +
+          '<input type="text" class="form-ctrl" style="width:240px; padding:4px 9px;" placeholder="제품명 · 타입 · 업체 · 비고 검색" oninput="filterSimpleTable(this.value, \'subMatTodayTbl\')" />' +
+        '</div>' +
+        renderSubMatDbTableHtml(todayRows, 'subMatTodayTbl') +
+      '</div>';
+    return;
+  }
+
+  // SUB_MAT_TAB === 'hist' (전체 월별·타입별 검수 DB)
+  const months = sm.months || [];
+  const types = sm.type_list || [];
+  const filteredHist = histRows.filter(function(r) {
+    if (SUB_DB_MONTH_FILTER !== 'ALL' && r['연월'] !== SUB_DB_MONTH_FILTER) return false;
+    if (SUB_DB_TYPE_FILTER !== 'ALL' && r['구분'] !== SUB_DB_TYPE_FILTER) return false;
+    if (SUB_DB_CHG_ONLY && !r._is_change_signal) return false;
+    return true;
+  });
+
+  box.innerHTML =
+    '<div class="panel-card">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">' +
+        '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' +
+          '<select class="form-ctrl" style="width:140px; padding:4px 8px;" onchange="SUB_DB_MONTH_FILTER=this.value; renderSubMatView()">' +
+            '<option value="ALL">전체 연월 (' + months.length + '개월)</option>' +
+            months.map(function(m) { return '<option value="' + esc(m) + '" ' + (SUB_DB_MONTH_FILTER === m ? 'selected' : '') + '>' + esc(m) + '</option>'; }).join('') +
+          '</select>' +
+          '<select class="form-ctrl" style="width:150px; padding:4px 8px;" onchange="SUB_DB_TYPE_FILTER=this.value; renderSubMatView()">' +
+            '<option value="ALL">전체 포장재 타입</option>' +
+            types.map(function(t) { return '<option value="' + esc(t) + '" ' + (SUB_DB_TYPE_FILTER === t ? 'selected' : '') + '>' + esc(t) + '</option>'; }).join('') +
+          '</select>' +
+          '<label style="font-size:12.5px; font-weight:800; color:#92400E; cursor:pointer; display:inline-flex; align-items:center; gap:4px; margin-left:4px;">' +
+            '<input type="checkbox" ' + (SUB_DB_CHG_ONLY ? 'checked' : '') + ' onchange="SUB_DB_CHG_ONLY=this.checked; renderSubMatView()" /> ★ 표시변경·신규 비고 건만 보기' +
+          '</label>' +
+        '</div>' +
+        '<div style="display:flex; gap:8px; align-items:center;">' +
+          '<input type="text" class="form-ctrl" style="width:240px; padding:5px 10px;" placeholder="부자재명 · 공급업체 · LOT · 비고 검색" oninput="filterSimpleTable(this.value, \'subMatHistTbl\')" />' +
+          '<span class="badge badge-info">조회 ' + filteredHist.length.toLocaleString() + '건</span>' +
+        '</div>' +
+      '</div>' +
+      renderSubMatDbTableHtml(filteredHist.slice(0, 400), 'subMatHistTbl') +
+    '</div>';
+};
+
+function renderSubMatDbTableHtml(rows, tblId) {
+  return '<div class="tbl-wrap"><table class="data-tbl" id="' + esc(tblId) + '">' +
+    '<thead><tr><th>검수일자</th><th>타입</th><th>부자재명 (용량)</th><th>공급업체</th><th>입고수량 (생산일/LOT)</th><th>표기·색상</th><th>중량/성적서</th><th>검수자</th><th>판정</th><th>비고</th></tr></thead>' +
+    '<tbody>' +
+    (rows.length ? rows.map(function(r) {
+      const pCls = String(r['판정'] || '').indexOf('부적합') !== -1 ? 'cell-red' : 'cell-green';
+      const noteCls = r._is_change_signal ? 'cell-yellow' : '';
+      return '<tr>' +
+        '<td><b>' + esc(r['검수일자'] || '-') + '</b></td>' +
+        '<td><span class="badge badge-neutral">' + esc(r['구분'] || '-') + '</span></td>' +
+        '<td class="td-left"><strong>' + esc(r['부자재명'] || '-') + '</strong></td>' +
+        '<td>' + esc(r['공급업체'] || '-') + '</td>' +
+        '<td>' + esc(r['입고수량_LOT'] || '-') + '</td>' +
+        '<td>' + esc(r['표시사항'] || '-') + '</td>' +
+        '<td>' + esc(r['외관규격'] || '-') + '</td>' +
+        '<td>' + esc(r['검수자'] || '-') + '</td>' +
+        '<td class="' + pCls + '">' + esc(r['판정'] || '적합') + '</td>' +
+        '<td class="td-left ' + noteCls + '">' + esc(r['특이사항'] || '-') + '</td>' +
+      '</tr>';
+    }).join('') : '<tr><td colspan="10" class="cell-gray" style="padding:26px;">조회 조건에 해당하는 부자재 검수 내역이 없습니다.</td></tr>') +
+    '</tbody></table></div>';
+}
 </script>
 </body>
 </html>

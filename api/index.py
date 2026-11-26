@@ -5800,10 +5800,15 @@ def fetch_law_info_sheet(sheet_urls_map: dict):
         t_sdb = next((t for t in ws_titles if t.strip() == LAW_SUMMARY_DB_TAB), None)
         t_weekly = next((t for t in ws_titles if re.sub(r"\s+", "", t) == "주간식품안전"), None)
 
-        exclude_sys = {t for t in [t_dash, t_sdb, t_weekly] if t}
-        target_tabs = [t for t in ws_titles if t not in exclude_sys and any(yr in t for yr in ["2026", "2025", "2027"])]
+        exclude_sys = {t for t in [t_dash, t_sdb, t_weekly] if t and not t.strip().startswith("_")}
+        target_tabs = [
+            t for t in ws_titles
+            if t not in exclude_sys
+            and not t.strip().startswith("_")
+            and any(yr in t for yr in ["2026", "2025", "2027", "공문", "지침"])
+        ]
         if not target_tabs:
-            target_tabs = [t for t in ws_titles if t not in exclude_sys][:4]
+            target_tabs = [t for t in ws_titles if t not in exclude_sys and not t.strip().startswith("_")][:4]
 
         fetch_list = target_tabs + ([t_dash] if t_dash else []) + ([t_sdb] if t_sdb else []) + ([t_weekly] if t_weekly else [])
         batch_map = batch_fetch_tabs(sh, fetch_list, "FORMATTED_VALUE")
@@ -5825,7 +5830,7 @@ def fetch_law_info_sheet(sheet_urls_map: dict):
         raw_parsed_items = []
         for t_name in target_tabs:
             rows = batch_map.get(t_name, [])
-            if len(rows) < 3:
+            if len(rows) < 2:
                 continue
             tab_has_notice = "예고" in t_name
 
@@ -5914,8 +5919,9 @@ def fetch_law_info_sheet(sheet_urls_map: dict):
                     summary_db_map[lid] = {"summary": short_sum, "method": "auto_2line", "updated_at": now_s}
                 sdb_dirty = True
 
-            is_notice_item = tab_has_notice or any(k in law_nm for k in ["예고", "개정안", "개정령(안)", "고시(안)"])
-            stage_type = "예고" if is_notice_item else "고시"
+            is_guide_item = ("공문" in t_name) or ("지침" in t_name)
+            is_notice_item = (not is_guide_item) and (tab_has_notice or any(k in law_nm for k in ["예고", "개정안", "개정령(안)", "고시(안)"]))
+            stage_type = "공문·지침" if is_guide_item else ("예고" if is_notice_item else "고시")
 
             enf_d = parse_date_obj(enf_raw)
             d_day = (enf_d - today_d).days if enf_d else None
@@ -10519,4 +10525,133 @@ def api_manage_label_transition(body: LabelTransitionActionPayload, _u: dict = D
             b_cur["label_transition"] = new_tr_data
 
     return {"ok": True, "message": msg, "label_transition": new_tr_data}
+# ============================================================================
+# [Q-Safety 확장 모듈 3] 식약처 · 협회 공문/지침 원문 등록 및 대시보드 직결 API
+# - 저장 위치: '법규정보' 시트 내 [공문·지침] 탭 + [_법규요약DB] + [대시보드] 동시 반영
+# ============================================================================
+LAW_GUIDELINE_TAB = "공문·지침"
+LAW_GUIDELINE_COLS = ["주무부처", "법규명", "내용", "고시일", "시행일", "당사관련사항"]
+
+
+class LawGuidelineSavePayload(BaseModel):
+    action: str = "save"  # save | delete
+    law_id: Optional[str] = ""
+    ministry: Optional[str] = "식품의약품안전처"
+    law_name: Optional[str] = ""
+    content: Optional[str] = ""
+    summary: Optional[str] = ""
+    notice_date: Optional[str] = ""
+    enf_date: Optional[str] = ""
+    rel_dept: Optional[str] = "품질안전부문, 마케팅팀, 중앙연구소"
+    show_on_dashboard: bool = True
+
+
+@app.post("/api/law-guideline")
+def api_save_law_guideline(body: LawGuidelineSavePayload, _u: dict = Depends(require_auth_user)):
+    sheet_urls_map = get_sheet_urls_map()
+    sh_law, err_law = open_sheet_isolated(sheet_urls_map, "law_info")
+    if sh_law is None:
+        raise HTTPException(status_code=500, detail=f"'법규정보' 시트를 열 수 없습니다: {err_law}")
+
+    ws_all = api_call_with_retry(sh_law.worksheets)
+    ws_guide = next((w for w in ws_all if re.sub(r"\s+", "", w.title) in ("공문·지침", "공문지침")), None)
+    if ws_guide is None:
+        ws_guide = api_call_with_retry(sh_law.add_worksheet, title=LAW_GUIDELINE_TAB, rows=200, cols=8)
+        safe_ws_update(ws_guide, [LAW_GUIDELINE_COLS])
+
+    existing_rows = get_values_formatted(ws_guide)
+    hdr = existing_rows[0] if existing_rows else LAW_GUIDELINE_COLS
+    data_rows = []
+    for r in (existing_rows[1:] if len(existing_rows) >= 2 else []):
+        if not any(str(x).strip() for x in r):
+            continue
+        r_pad = [str(x).strip() for x in r] + [""] * max(0, 6 - len(r))
+        data_rows.append(r_pad[:6])
+
+    today_s = now_kst().strftime("%Y-%m-%d")
+    now_s = now_kst().strftime("%Y-%m-%d %H:%M:%S")
+    act = (body.action or "save").strip()
+
+    if act == "delete":
+        target_lid = (body.law_id or "").strip()
+        if not target_lid:
+            raise HTTPException(status_code=400, detail="삭제할 항목 ID가 없습니다.")
+        kept = []
+        for r in data_rows:
+            rid = make_law_id(ws_guide.title, r[1], r[4], r[3])
+            if rid != target_lid:
+                kept.append(r)
+        data_rows = kept
+        api_call_with_retry(ws_guide.clear)
+        safe_ws_update(ws_guide, [LAW_GUIDELINE_COLS] + data_rows)
+
+        # 대시보드 탭에서도 제거 후 전체 재로드
+        raw_laws_cur, dash_init_cur, dash_map_cur, sdb_map_cur, _ = fetch_law_info_sheet(sheet_urls_map)
+        dash_map_cur = dict(dash_map_cur or {})
+        dash_map_cur.pop(target_lid, None)
+        new_law_bundle = apply_law_preferences(raw_laws_cur, True, dash_map_cur, {})
+        sync_law_dashboard_worksheet(sh_law, new_law_bundle["all_laws"])
+        _LAST_GOOD_SHEETS["law"] = (raw_laws_cur, True, dash_map_cur, sdb_map_cur, None)
+        if _BUNDLE_CACHE["data"] is not None:
+            _BUNDLE_CACHE["data"]["law"] = new_law_bundle
+        return {"ok": True, "message": "[공문·지침] 탭에서 삭제되었습니다.", "law": new_law_bundle}
+
+    # 신규 등록 / 덮어쓰기 저장
+    law_nm = (body.law_name or "").strip()
+    if not law_nm:
+        raise HTTPException(status_code=400, detail="공문·지침 제목을 입력해 주세요.")
+
+    min_s = (body.ministry or "식품의약품안전처").strip()
+    cnt_s = (body.content or "").strip() or "-"
+    nt_dt = (body.notice_date or today_s).strip()
+    ef_dt = (body.enf_date or "").strip() or "미정"
+    rel_s = (body.rel_dept or "품질안전부문, 마케팅팀").strip()
+
+    new_lid = make_law_id(ws_guide.title, law_nm, ef_dt, nt_dt)
+    clean_sum = (body.summary or "").strip()
+    if not clean_sum:
+        ai_try = generate_gemini_law_summary_single(law_nm, cnt_s)
+        clean_sum = ai_try if ai_try else extract_concise_law_summary(law_nm, cnt_s, max_len=110)
+
+    # 동일 ID 중복 방지 후 최상단 추가
+    filtered_rows = [r for r in data_rows if make_law_id(ws_guide.title, r[1], r[4], r[3]) != new_lid]
+    filtered_rows.insert(0, [min_s, law_nm, cnt_s, nt_dt, ef_dt, rel_s])
+    api_call_with_retry(ws_guide.clear)
+    safe_ws_update(ws_guide, [LAW_GUIDELINE_COLS] + filtered_rows)
+
+    # 법규정보 전체 재조회 후 [_법규요약DB] 및 [대시보드] 동시 반영
+    raw_laws_cur, dash_init_cur, dash_map_cur, sdb_map_cur, _ = fetch_law_info_sheet(sheet_urls_map)
+    dash_map_cur = dict(dash_map_cur or {})
+    sdb_map_cur = dict(sdb_map_cur or {})
+
+    sdb_map_cur[new_lid] = {"summary": clean_sum, "method": "manual", "updated_at": now_s}
+    for lw in raw_laws_cur:
+        if lw["law_id"] == new_lid:
+            lw["자동조치요약"] = clean_sum
+
+    if body.show_on_dashboard:
+        dash_map_cur[new_lid] = {
+            "prep": "검토전",
+            "summary": clean_sum,
+            "law_name": law_nm
+        }
+
+    try:
+        sync_law_summary_db_worksheet(sh_law, raw_laws_cur, sdb_map_cur)
+    except Exception:
+        pass
+
+    new_law_bundle = apply_law_preferences(raw_laws_cur, True, dash_map_cur, {})
+    sync_law_dashboard_worksheet(sh_law, new_law_bundle["all_laws"])
+
+    _LAST_GOOD_SHEETS["law"] = (raw_laws_cur, True, dash_map_cur, sdb_map_cur, None)
+    _SLOW_SHEET_TS["law"] = time.time()
+    if _BUNDLE_CACHE["data"] is not None:
+        _BUNDLE_CACHE["data"]["law"] = new_law_bundle
+
+    return {
+        "ok": True,
+        "message": "'법규정보 > [공문·지침]' 탭에 저장되었으며 통합 대시보드에 즉시 반영되었습니다.",
+        "law": new_law_bundle
+    }
 # ============================ [api/index.py - PART 4 / 4 끝] ============================

@@ -2379,19 +2379,14 @@
           <div class="bottom-notes-3line q1-ok" id="q1NotesBox">시트 데이터를 불러오는 중입니다...</div>
         </div>
 
-        <!-- Q2: 법규 개정 핵심(와이드 1줄) + 표시사항·부자재·포장 3단 파이프라인 + 특이사항 메모 -->
+        <!-- Q2: 법규 개정 핵심 + 표시사항·부자재·포장 3단 파이프라인 + 특이사항 메모 -->
         <div class="quad-card">
           <div class="quad-hdr">
             <div class="quad-title">
               <span>● 표시사항 · 부자재 전환 & 법규 현황</span>
-              <span class="badge badge-info" id="q2RevBadge" style="cursor:pointer;" onclick="LABEL_TAB='reviewing'; switchView('label')" title="현재 식품안전팀 검토중 목록 보기">검토중 0건</span>
               <span class="badge badge-neutral" id="q2CumBadge" style="cursor:pointer;" onclick="LABEL_TAB='analytics'; switchView('label')" title="표시사항 월별 통계 보기">당월 0건</span>
             </div>
-            <div class="quad-actions">
-              <span class="badge badge-warn" id="q2UnclassBadge" style="display:none; cursor:pointer;" onclick="LABEL_TAB='transition'; switchView('label')" title="신규/리뉴얼 분류 대기 건수">분류대기 0건</span>
-              <button class="link-chip" onclick="SUB_MAT_TAB='transition'; switchView('sub_mat', 'transition')">부자재 전환추적 ›</button>
-              <button class="link-chip" onclick="switchView('law')">법규 선별 ›</button>
-            </div>
+            <div class="quad-actions"></div>
           </div>
 
           <div class="q2-v2-body">
@@ -9029,6 +9024,117 @@ function renderSubMatDbTableHtml(rows, tblId) {
     }).join('') : '<tr><td colspan="10" class="cell-gray" style="padding:26px;">조회 조건에 해당하는 부자재 검수 내역이 없습니다.</td></tr>') +
     '</tbody></table></div>';
 }
+/* ============================================================================
+ * [통합 대시보드 중복 UI 클린업 모듈]
+ * - 최상단 LOT 검색창: 대시보드(home) 탭에서 숨김
+ * - 우하단(Q4) 1초 역추적 검색줄 숨김 -> [냉장 LOT 역추적] / [상온 LOT 역추적] 버튼만 유지
+ * - 4분면 우측 상단 링크 제거 -> 하단(Q3·Q4) 등록 버튼만 유지 및 카드 클릭 상세이동 보장
+ * ============================================================================ */
+function applyCleanHomeDashboardUI() {
+  const isHome = (typeof CURRENT_VIEW === 'undefined') || (CURRENT_VIEW === 'home');
+
+  // 1) 최상단 헤더 LOT 검색 입력창: 대시보드 탭에서는 숨기고 상세 탭에서만 노출
+  document.querySelectorAll('input[type="text"], input:not([type])').forEach(function(inp) {
+    if (inp.closest('#view-home')) return;
+    const ph = String(inp.getAttribute('placeholder') || '');
+    if (ph.indexOf('LOT') !== -1 || ph.indexOf('소비기한') !== -1) {
+      const parent = inp.parentElement;
+      const isDedicatedBox = parent && parent.children.length <= 2 &&
+        parent.textContent.indexOf('AI 요약') === -1 &&
+        parent.textContent.indexOf('화면배율') === -1;
+      const targetEl = isDedicatedBox ? parent : inp;
+      targetEl.style.display = isHome ? 'none' : '';
+    }
+  });
+
+  const homeSec = document.getElementById('view-home');
+  if (!homeSec) return;
+
+  const quads = homeSec.querySelectorAll('.quad-card');
+
+  // 2) Q1(좌상단) & Q2(우상단) 우측 상단 이동 링크 전체 숨김 + Q2 중복 '검토중' 배지 숨김
+  if (quads[0]) {
+    const q1Act = quads[0].querySelector('.quad-actions');
+    if (q1Act) q1Act.style.display = 'none';
+  }
+  if (quads[1]) {
+    const revDup = document.getElementById('q2RevBadge');
+    if (revDup) revDup.style.display = 'none';
+    const q2Act = quads[1].querySelector('.quad-actions');
+    if (q2Act) q2Act.style.display = 'none';
+  }
+
+  // 3) Q3(좌하단): 우측 상단은 '+ 일정 등록' 버튼만 남기고, 노란 배너 안 중복 '일정 관리 ›' 숨김
+  if (quads[2]) {
+    const q3Act = quads[2].querySelector('.quad-actions');
+    if (q3Act) {
+      q3Act.querySelectorAll('button, a').forEach(function(btn) {
+        const txt = (btn.textContent || '').trim();
+        if (txt.indexOf('등록') !== -1 || txt.indexOf('일정') !== -1) {
+          btn.textContent = '+ 일정 등록';
+        } else {
+          btn.style.display = 'none';
+        }
+      });
+    }
+    quads[2].querySelectorAll('button.link-chip, a.link-chip').forEach(function(btn) {
+      if (!btn.closest('.quad-hdr')) {
+        btn.style.display = 'none';
+      }
+    });
+  }
+
+  // 4) Q4(우하단): 우측 상단 '+ 신규 등록'만 유지('이력·LOT추적 ›' 제거) + 하단 검색입력줄 숨김 + 0건 카드 클릭 시 상세 이동
+  if (quads[3]) {
+    const q4Act = quads[3].querySelector('.quad-actions');
+    if (q4Act) {
+      q4Act.querySelectorAll('button, a').forEach(function(btn) {
+        const txt = (btn.textContent || '').trim();
+        if (txt.indexOf('신규') === -1 && txt.indexOf('등록') === -1) {
+          btn.style.display = 'none';
+        }
+      });
+    }
+
+    // Q4 내부 '1초 역추적' 검색 입력줄 전체 숨김 (냉장/상온 LOT 역추적 버튼 2개만 남김)
+    quads[3].querySelectorAll('input').forEach(function(inp) {
+      const rowBox = inp.parentElement;
+      if (rowBox && !rowBox.querySelector('[onclick*="DAIRY"]')) {
+        rowBox.style.display = 'none';
+      } else {
+        inp.style.display = 'none';
+      }
+    });
+
+    // '이력·LOT추적 ›' 링크 없이도 시트 누적/클레임/부적합 건수 박스를 누르면 바로 상세 탭으로 이동
+    quads[3].querySelectorAll('div').forEach(function(divEl) {
+      const t = (divEl.textContent || '').trim();
+      if ((t.indexOf('시트 누적 전체 이력') !== -1 || t.indexOf('주요 클레임 기록') !== -1 || t.indexOf('공정 부적합 기록') !== -1) && divEl.children.length <= 3) {
+        divEl.style.cursor = 'pointer';
+        divEl.title = '클릭 시 클레임 · 부적합 상세 내역으로 이동';
+        divEl.onclick = function() { switchView('defect_sub'); };
+      }
+    });
+  }
+}
+
+(function hookCleanHomeDashboardUI() {
+  const _origSwitchView = window.switchView;
+  if (typeof _origSwitchView === 'function') {
+    window.switchView = function(viewKey, subOpt) {
+      _origSwitchView.apply(this, arguments);
+      applyCleanHomeDashboardUI();
+    };
+  }
+  const _origRenderHome = window.renderHome;
+  if (typeof _origRenderHome === 'function') {
+    window.renderHome = function() {
+      _origRenderHome.apply(this, arguments);
+      applyCleanHomeDashboardUI();
+    };
+  }
+  setTimeout(applyCleanHomeDashboardUI, 80);
+})();
 </script>
 </body>
 </html>

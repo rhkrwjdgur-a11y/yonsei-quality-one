@@ -564,7 +564,7 @@ def open_sheet_isolated(sheet_urls_map: dict, key_or_title: str):
 
     client = gspread.authorize(creds)
     try:
-        client.set_timeout(15)
+        client.set_timeout(35)
     except Exception:
         pass
     errors = []
@@ -7384,16 +7384,15 @@ _BUNDLE_CACHE: Dict[str, Any] = {
     "ts": 0.0,
     "last_force_ts": 0.0,
     "date_key": "",
-    "data": None,
-    "bg_refreshing": False
+    "data": None
 }
 _LAST_GOOD_SHEETS: Dict[str, Any] = {}
 _SLOW_SHEET_TS: Dict[str, float] = {}
 _BUNDLE_LOCK = threading.Lock()
 
-CACHE_TTL_SEC = 180.0          # 실시간 공정·미생물·표시사항 기본 주기 (3분)
-SLOW_SHEET_TTL_SEC = 1800.0    # 월별 KPI·법규·원부자재 마스터 캐시 주기 (30분)
-FORCE_COOLDOWN_SEC = 45.0      # 여러 사람이 동시에 '실시간 갱신' 연타 시 API 폭주 방지 (45초)
+CACHE_TTL_SEC = 180.0          # 실시간 공정·미생물·표시사항·부자재 주기 (3분)
+SLOW_SHEET_TTL_SEC = 1800.0    # 심사점수·협력업체·원가·클레임·법규 마스터 주기 (30분)
+FORCE_COOLDOWN_SEC = 25.0      # 수동 '실시간 갱신' 연속 클릭 보호 (25초)
 
 
 def resolve_with_last_good(sheet_key: str, result_tuple: tuple, err_idx: int) -> tuple:
@@ -7407,48 +7406,21 @@ def resolve_with_last_good(sheet_key: str, result_tuple: tuple, err_idx: int) ->
     return result_tuple
 
 
-def _fetch_slow_or_cached(ex: ThreadPoolExecutor, sheet_key: str, fn, sheet_urls_map: dict, force_all: bool):
-    """저빈도 변경 시트는 30분 이내 캐시가 있으면 구글 API 호출을 생략하여 분당 60회 쿼터를 보호함"""
-    now_t = time.time()
-    if (
-        not force_all
-        and sheet_key in _LAST_GOOD_SHEETS
-        and (now_t - _SLOW_SHEET_TS.get(sheet_key, 0.0)) < SLOW_SHEET_TTL_SEC
-    ):
-        return None
-    return ex.submit(fn, sheet_urls_map)
-
-
-def _trigger_bg_bundle_refresh():
-    if _BUNDLE_CACHE.get("bg_refreshing"):
-        return
-    _BUNDLE_CACHE["bg_refreshing"] = True
-
-    def _worker():
-        try:
-            _sync_build_bundle_core(force_all_sheets=False)
-        except Exception:
-            pass
-        finally:
-            _BUNDLE_CACHE["bg_refreshing"] = False
-
-    threading.Thread(target=_worker, daemon=True).start()
-
-
 def build_full_dashboard_bundle(force_refresh: bool = False) -> dict:
     cur_kst = now_kst()
     today_str = cur_kst.strftime("%Y-%m-%d")
     now_ts = time.time()
-    has_cached = (_BUNDLE_CACHE["data"] is not None and _BUNDLE_CACHE["date_key"] == today_str)
 
-    # 1) 일반 조회(자동갱신·화면진입): 캐시가 유효하면 즉시 반환, 3분이 지났어도 기존 화면을 0.01초 만에 먼저 주고 백그라운드 갱신!
-    if not force_refresh and has_cached:
-        if (now_ts - _BUNDLE_CACHE["ts"]) >= CACHE_TTL_SEC:
-            _trigger_bg_bundle_refresh()
+    REQUIRED_KEYS = ("rt", "milk", "soy", "micro", "lbl", "cnh", "sak", "cost", "claim", "sup", "audit", "raw", "sub_mat", "law")
+    has_missing = any(k not in _LAST_GOOD_SHEETS for k in REQUIRED_KEYS)
+    has_valid_cache = (_BUNDLE_CACHE["data"] is not None and _BUNDLE_CACHE["date_key"] == today_str)
+
+    # 1) 일반 조회: 누락된 시트가 없고 3분 이내면 메모리에서 0.01초 즉시 반환
+    if not force_refresh and has_valid_cache and (not has_missing) and (now_ts - _BUNDLE_CACHE["ts"]) < CACHE_TTL_SEC:
         return _BUNDLE_CACHE["data"]
 
-    # 2) 수동 '시트 실시간 갱신(force=1)' 클릭 시: 다른 사람이 45초 이내에 이미 갱신했다면 중복 API 호출 없이 최신 캐시 즉시 반환!
-    if force_refresh and has_cached and (now_ts - _BUNDLE_CACHE.get("last_force_ts", 0.0)) < FORCE_COOLDOWN_SEC:
+    # 2) 수동 '시트 실시간 갱신' 연속 클릭 시: 모든 시트가 정상 로드된 상태에서 25초 이내 재클릭이면 즉시 반환
+    if force_refresh and has_valid_cache and (not has_missing) and (now_ts - _BUNDLE_CACHE.get("last_force_ts", 0.0)) < FORCE_COOLDOWN_SEC:
         return _BUNDLE_CACHE["data"]
 
     return _sync_build_bundle_core(force_all_sheets=force_refresh)
@@ -7459,21 +7431,18 @@ def _sync_build_bundle_core(force_all_sheets: bool = False) -> dict:
     today_str = cur_kst.strftime("%Y-%m-%d")
     yest_dt = cur_kst - timedelta(days=1)
 
-    # 다른 스레드가 이미 시트를 갱신 중이고 기존 캐시가 있으면 줄 서서 기다리지 않고 즉시 기존 캐시 반환
-    acquired = _BUNDLE_LOCK.acquire(blocking=not (_BUNDLE_CACHE["data"] is not None and not force_all_sheets))
+    # 다른 사용자가 이미 갱신 중이고 정상 캐시가 있으면 대기하지 않고 즉시 기존 캐시 반환
+    can_skip_wait = (
+        not force_all_sheets
+        and _BUNDLE_CACHE["data"] is not None
+        and _BUNDLE_CACHE["date_key"] == today_str
+        and ("sak" in _LAST_GOOD_SHEETS)
+    )
+    acquired = _BUNDLE_LOCK.acquire(blocking=not can_skip_wait)
     if not acquired:
         return _BUNDLE_CACHE["data"]
 
     try:
-        now_in_lock = time.time()
-        if (
-            force_all_sheets
-            and _BUNDLE_CACHE["data"] is not None
-            and _BUNDLE_CACHE["date_key"] == today_str
-            and (now_in_lock - _BUNDLE_CACHE.get("last_force_ts", 0.0)) < FORCE_COOLDOWN_SEC
-        ):
-            return _BUNDLE_CACHE["data"]
-
         test_creds, auth_err = create_thread_local_credentials()
         if test_creds is None:
             if _BUNDLE_CACHE["data"] is not None:
@@ -7486,41 +7455,71 @@ def _sync_build_bundle_core(force_all_sheets: bool = False) -> dict:
             }
 
         sheet_urls_map = get_sheet_urls_map()
+        now_t = time.time()
 
-        with ThreadPoolExecutor(max_workers=4) as ex:
-            # [빠른 그룹] 현장 실시간 일보 4종 + 표시사항 + 클레임이력은 매 주기 최신 조회
-            f_rt = ex.submit(fetch_process_rt_sheet, sheet_urls_map)
-            f_milk = ex.submit(fetch_process_milk_sheet, sheet_urls_map)
-            f_soy = ex.submit(fetch_process_soy_sheet, sheet_urls_map)
-            f_micro = ex.submit(fetch_process_micro_sheet, sheet_urls_map)
-            f_lbl = ex.submit(fetch_label_status_sheet, sheet_urls_map)
-            f_cnh = ex.submit(fetch_claim_nc_history_sheet, sheet_urls_map)
-            f_sak = ex.submit(fetch_sup_and_audit_kpi_sheet, sheet_urls_map)
+        # 시트별 (조회함수, 에러인덱스, 캐시유지초) 정의 — 한 번도 성공 못한 시트는 무조건 즉시 재조회!
+        sheet_specs = [
+            ("sak",     fetch_sup_and_audit_kpi_sheet, 3, SLOW_SHEET_TTL_SEC),
+            ("sup",     fetch_supplier_sheet,          4, SLOW_SHEET_TTL_SEC),
+            ("audit",   fetch_audit_and_manual_db,     6, SLOW_SHEET_TTL_SEC),
+            ("cost",    fetch_cost_sheet,              2, SLOW_SHEET_TTL_SEC),
+            ("claim",   fetch_claim_sheet,             2, SLOW_SHEET_TTL_SEC),
+            ("law",     fetch_law_info_sheet,          4, SLOW_SHEET_TTL_SEC),
+            ("raw",     fetch_raw_material_db_sheet,   2, SLOW_SHEET_TTL_SEC),
+            ("rt",      fetch_process_rt_sheet,        5, CACHE_TTL_SEC),
+            ("milk",    fetch_process_milk_sheet,      9, CACHE_TTL_SEC),
+            ("soy",     fetch_process_soy_sheet,       5, CACHE_TTL_SEC),
+            ("micro",   fetch_process_micro_sheet,     1, CACHE_TTL_SEC),
+            ("lbl",     fetch_label_status_sheet,      2, CACHE_TTL_SEC),
+            ("sub_mat", fetch_sub_material_db_sheet,   1, CACHE_TTL_SEC),
+            ("cnh",     fetch_claim_nc_history_sheet,  1, CACHE_TTL_SEC),
+        ]
 
-            # [느린 그룹] 월별 집계·마스터 DB는 30분 캐시 재사용 (수동 실시간 갱신 클릭 시에만 강제 재조회)
-            f_cost = _fetch_slow_or_cached(ex, "cost", fetch_cost_sheet, sheet_urls_map, force_all_sheets)
-            f_claim = _fetch_slow_or_cached(ex, "claim", fetch_claim_sheet, sheet_urls_map, force_all_sheets)
-            f_sup = _fetch_slow_or_cached(ex, "sup", fetch_supplier_sheet, sheet_urls_map, force_all_sheets)
-            f_audit = _fetch_slow_or_cached(ex, "audit", fetch_audit_and_manual_db, sheet_urls_map, force_all_sheets)
-            f_raw = _fetch_slow_or_cached(ex, "raw", fetch_raw_material_db_sheet, sheet_urls_map, force_all_sheets)
-            f_sub_mat = ex.submit(fetch_sub_material_db_sheet, sheet_urls_map)
-            f_law = _fetch_slow_or_cached(ex, "law", fetch_law_info_sheet, sheet_urls_map, force_all_sheets)
+        results_map: Dict[str, tuple] = {}
+        futures_map: Dict[str, tuple] = {}
 
-            rt_today, rt_yest, rt_hp, rt_hc, fsk_prods, err_rt = resolve_with_last_good("rt", f_rt.result(), 5)
-            milk_pack, ferm_pack, milk_times, ferm_times, milk_dt, ferm_dt, dy_hp, dy_hc, dairy_prods, err_milk = resolve_with_last_good("milk", f_milk.result(), 9)
-            soy_def_tab, soy_map, soy_b, soy_h, soy_hist, err_soy = resolve_with_last_good("soy", f_soy.result(), 5)
-            micro_data, err_micro = resolve_with_last_good("micro", f_micro.result(), 1)
-            lbl_rows, lbl_sp_memo, err_lbl = resolve_with_last_good("lbl", f_lbl.result(), 2)
-            claim_nc_data, err_cnh = resolve_with_last_good("cnh", f_cnh.result(), 1)
-            sup_kpi_sheet, aud_kpi_sheet, sak_sched, err_sak = resolve_with_last_good("sak", f_sak.result(), 3)
+        # 동시 스레드를 3개로 제한하여 구글 API 순간 호출 폭주(429) 방지
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            for s_key, fn, err_i, ttl_s in sheet_specs:
+                need_fetch = (
+                    force_all_sheets
+                    or (s_key not in _LAST_GOOD_SHEETS)
+                    or ((now_t - _SLOW_SHEET_TS.get(s_key, 0.0)) >= ttl_s)
+                )
+                if need_fetch:
+                    futures_map[s_key] = (ex.submit(fn, sheet_urls_map), fn, err_i)
+                else:
+                    results_map[s_key] = _LAST_GOOD_SHEETS[s_key]
 
-            cost_rows, cost_targets, err_cost = resolve_with_last_good("cost", f_cost.result(), 2) if f_cost else _LAST_GOOD_SHEETS["cost"]
-            claim_trend, claim_cat, err_claim = resolve_with_last_good("claim", f_claim.result(), 2) if f_claim else _LAST_GOOD_SHEETS["claim"]
-            sup_m, sup_g, sup_uc, sup_ud, err_sup = resolve_with_last_good("sup", f_sup.result(), 4) if f_sup else _LAST_GOOD_SHEETS["sup"]
-            legacy_sched, saved_manual_kpis, saved_lbl_memo_fb, saved_micro, saved_law_prefs, saved_lbl_pins, err_audit = resolve_with_last_good("audit", f_audit.result(), 6) if f_audit else _LAST_GOOD_SHEETS["audit"]
-            raw_sub, raw_m_cnt, err_raw = resolve_with_last_good("raw", f_raw.result(), 2) if f_raw else _LAST_GOOD_SHEETS["raw"]
-            sub_mat_data, err_sub_mat = resolve_with_last_good("sub_mat", f_sub_mat.result(), 1) if f_sub_mat else _LAST_GOOD_SHEETS["sub_mat"]
-            raw_laws, dash_init_flag, dash_tab_map, law_sdb_map, err_law = resolve_with_last_good("law", f_law.result(), 4) if f_law else _LAST_GOOD_SHEETS["law"]
+            failed_specs = []
+            for s_key, (fut, fn, err_i) in futures_map.items():
+                res_tup = fut.result()
+                resolved = resolve_with_last_good(s_key, res_tup, err_i)
+                results_map[s_key] = resolved
+                if s_key not in _LAST_GOOD_SHEETS:
+                    failed_specs.append((s_key, fn, err_i))
+
+        # [핵심 복구] 일시적 API 한도로 실패한 시트가 있으면, 성공한 시트는 두고 실패한 시트만 1.5초 후 단독 재조회!
+        if failed_specs:
+            time.sleep(1.5)
+            for s_key, fn, err_i in failed_specs:
+                retry_tup = fn(sheet_urls_map)
+                results_map[s_key] = resolve_with_last_good(s_key, retry_tup, err_i)
+
+        rt_today, rt_yest, rt_hp, rt_hc, fsk_prods, err_rt = results_map["rt"]
+        milk_pack, ferm_pack, milk_times, ferm_times, milk_dt, ferm_dt, dy_hp, dy_hc, dairy_prods, err_milk = results_map["milk"]
+        soy_def_tab, soy_map, soy_b, soy_h, soy_hist, err_soy = results_map["soy"]
+        micro_data, err_micro = results_map["micro"]
+        lbl_rows, lbl_sp_memo, err_lbl = results_map["lbl"]
+        claim_nc_data, err_cnh = results_map["cnh"]
+        sup_kpi_sheet, aud_kpi_sheet, sak_sched, err_sak = results_map["sak"]
+        cost_rows, cost_targets, err_cost = results_map["cost"]
+        claim_trend, claim_cat, err_claim = results_map["claim"]
+        sup_m, sup_g, sup_uc, sup_ud, err_sup = results_map["sup"]
+        legacy_sched, saved_manual_kpis, saved_lbl_memo_fb, saved_micro, saved_law_prefs, saved_lbl_pins, err_audit = results_map["audit"]
+        raw_sub, raw_m_cnt, err_raw = results_map["raw"]
+        sub_mat_data, err_sub_mat = results_map["sub_mat"]
+        raw_laws, dash_init_flag, dash_tab_map, law_sdb_map, err_law = results_map["law"]
 
         audit_sched = sak_sched if (sak_sched is not None and len(sak_sched) > 0) else (legacy_sched if legacy_sched else [])
         if not audit_sched:

@@ -2061,10 +2061,10 @@
       overflow: hidden;
     }
 
-    /* [상단] 법규 개정 핵심 보드 (확대 · 법규명 숨김 · D-Day + 요약 전문 줄바꿈 노출) */
+    /* [상단] 법규 개정 핵심 보드 (내용 높이만큼만 컴팩트하게 감싸서 아래 빈 여백 제거) */
     .q2-law-wide-bar {
-      flex: 1.2;
-      min-height: 0;
+      flex: 0 0 auto;
+      max-height: 44%;
       background: #F8FAFC;
       border: 1px solid #BFDBFE;
       border-radius: 9px;
@@ -2082,7 +2082,7 @@
       border: 1px solid #DBEAFE;
       border-left: 3.5px solid var(--yonsei-blue);
       border-radius: 7px;
-      padding: 7px 10px;
+      padding: 6px 10px;
       cursor: pointer;
       transition: border-color 0.12s ease, background 0.12s ease;
     }
@@ -2098,7 +2098,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 6px;
-      margin-bottom: 4px;
+      margin-bottom: 3px;
     }
     .q2-law-item-left {
       display: flex;
@@ -2110,94 +2110,95 @@
       font-size: var(--fs-sm);
       font-weight: 800;
       color: #0F172A;
-      line-height: 1.42;
+      line-height: 1.4;
       white-space: normal;
       word-break: keep-all;
       overflow: visible;
     }
 
-    /* [중단] 표시사항 검토중 -> 입고대기 -> 포장대기 3단계 파이프라인 (알찬 높이 압축) */
+    /* [중단] 표시사항 검토중 -> 입고대기 -> 포장대기 3단계 파이프라인 (중앙 공간 꽉 채우도록 확대) */
     .q2-pipe-grid {
-      flex: 0 0 auto;
+      flex: 1;
+      min-height: 0;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
       align-items: stretch;
-      gap: 5px;
+      gap: 7px;
     }
     .q2-pipe-arrow {
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #94A3B8;
-      font-size: calc(14px * var(--ui-scale));
+      color: #64748B;
+      font-size: calc(18px * var(--ui-scale));
       font-weight: 900;
       user-select: none;
-      padding: 0 1px;
+      padding: 0 2px;
     }
     .q2-pipe-card {
       border: 1.5px solid #CBD5E1;
       background: #F8FAFC;
-      border-radius: 10px;
-      padding: clamp(5px, 0.7vh, 8px) 10px;
+      border-radius: 11px;
+      padding: clamp(9px, 1.25vh, 16px) 13px;
       display: flex;
       flex-direction: column;
-      justify-content: center;
-      gap: 2px;
+      justify-content: space-between;
       cursor: pointer;
       min-width: 0;
       transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
     }
     .q2-pipe-card:hover {
-      transform: translateY(-1px);
+      transform: translateY(-2px);
       border-color: var(--yonsei-mid);
       background: #FFFFFF;
-      box-shadow: 0 4px 12px rgba(0, 51, 120, 0.09);
+      box-shadow: 0 6px 14px rgba(0, 51, 120, 0.1);
     }
     .q2-pipe-card.st-rev {
-      background: #EFF6FF;
+      background: linear-gradient(180deg, #EFF6FF 0%, #F8FAFC 100%);
       border-color: #93C5FD;
     }
     .q2-pipe-card.st-in {
-      background: #FFFBEB;
+      background: linear-gradient(180deg, #FFFBEB 0%, #FEFCE8 100%);
       border-color: #FCD34D;
     }
     .q2-pipe-card.st-pack {
-      background: #ECFDF5;
+      background: linear-gradient(180deg, #ECFDF5 0%, #F0FDF4 100%);
       border-color: #6EE7B7;
     }
     .q2-pipe-card.has-alert {
       border-width: 2px;
       border-color: #F59E0B;
-      box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.14);
+      box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.16);
     }
     .q2-pipe-top {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 4px;
+      gap: 6px;
     }
     .q2-pipe-step {
-      font-size: var(--fs-xs);
+      font-size: var(--fs-sm);
       font-weight: 900;
-      color: #334155;
+      color: #1E293B;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .q2-pipe-num {
-      font-size: calc(var(--fs-xl) * 1.02);
+      font-size: clamp(22px, calc(var(--fs-xl) * 1.38), 36px);
       font-weight: 900;
       color: var(--yonsei-blue);
-      line-height: 1.12;
-      margin: 1px 0;
+      line-height: 1.1;
+      margin: auto 0;
+      padding: 2px 0;
       white-space: nowrap;
     }
     .q2-pipe-card.st-in .q2-pipe-num { color: #B45309; }
     .q2-pipe-card.st-pack .q2-pipe-num { color: #047857; }
     .q2-pipe-sub {
-      font-size: var(--fs-xs);
+      font-size: calc(var(--fs-xs) * 1.08);
       font-weight: 700;
-      color: var(--text-sub);
+      color: #475569;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;

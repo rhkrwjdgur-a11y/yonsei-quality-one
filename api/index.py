@@ -6615,14 +6615,15 @@ SUB_INBOUND_SIGNAL_KEYWORDS = [
 
 PACK_TRANSITION_SIGNAL_KEYWORDS = [
     "첫생산", "첫 생산", "첫포장", "첫 포장", "초도",
-    "신규", "리뉴얼", "변경팩", "신규팩", "리뉴얼팩",
-    "표기변경", "표시변경", "도안변경", "전환포장"
+    "신규팩", "리뉴얼팩", "변경팩", "기존팩소진", "구형팩소진",
+    "신규", "리뉴얼", "표기변경", "표시변경", "도안변경", "전환포장"
 ]
 
 TRANSITION_STRIP_META = [
     "표기검수", "표시사항", "표기사항", "표시문안", "도안검토", "테트라팩전환", "테트라미드",
     "테트라팩", "콤비팩", "카톤팩", "멸균팩", "랩어라운드", "번들포장지", "선물상자",
     "슬리브", "트레이", "외박스", "케이스", "유통용", "자사생산",
+    "기존팩소진후", "기존팩소진", "구형팩소진", "신규팩사용", "리뉴얼팩사용",
     "리뉴얼팩", "신규팩", "변경팩", "전환포장", "첫생산", "첫포장", "초도", "리뉴얼", "신규",
     "npb", "pb", "wt", "일반우유", "일반"
 ]
@@ -6633,7 +6634,8 @@ TRANSITION_GENERIC_WORDS = {
     "요거트", "요구르트", "전용목장", "목장우유", "멸균", "살균", "일반우유", "일반",
     "카톤", "카톤팩", "병", "병포장", "호상", "테트라", "테트라팩", "테트라미드",
     "콤비", "콤비팩", "멸균팩", "슬리브", "트레이", "외박스", "박스", "케이스",
-    "표기검수", "표시사항", "표기사항", "유통용", "자사생산", "npb", "pb", "wt", "1a", "1a우유", "1등급"
+    "표기검수", "표시사항", "표기사항", "유통용", "자사생산", "npb", "pb", "wt", "1a", "1a우유", "1등급",
+    "1호기", "2호기", "3호기", "4호기", "5호기", "a호기", "b호기", "c호기", "d호기", "e호기", "f호기"
 }
 
 TRANSITION_STRICT_MODS = ["저지방", "무지방", "락토프리", "무가당", "고칼슘", "디카페인", "유기농", "무항생제"]
@@ -6657,7 +6659,18 @@ def _normalize_transition_core(s: str) -> str:
     t = str(s or "").strip()
     if not t or t == "-":
         return ""
-    t = re.sub(r"^\[[^\]]+\]\s*", " ", t)
+    # 부서 말머리([마케팅1팀], [이롬] 등)만 제거하고, [5호기·A호기 제품명] 대괄호 안의 품목명은 그대로 살림!
+    m_br = re.match(r"^\[([^\]]+)\]\s*(.+)$", t)
+    if m_br:
+        inner = m_br.group(1)
+        if ("호기" not in inner) and (
+            any(k in inner for k in ["팀", "부문", "본부", "사업부", "연구소"])
+            or re.sub(r"\s+", "", inner) in ("이롬", "연세", "자사", "외주")
+        ):
+            t = m_br.group(2).strip()
+        else:
+            t = f"{inner} {m_br.group(2)}"
+
     t = re.sub(r"day", "데이", t, flags=re.IGNORECASE)
     t = re.sub(r"purple", "퍼플", t, flags=re.IGNORECASE)
     t = re.sub(r"yellow", "옐로우", t, flags=re.IGNORECASE)
@@ -6678,7 +6691,7 @@ def _extract_transition_sig_tokens(s: str) -> List[str]:
     out = []
     for tok in raw_toks:
         low = tok.lower()
-        if low in TRANSITION_GENERIC_WORDS or low in ("신규", "리뉴얼", "첫생산", "초도"):
+        if low in TRANSITION_GENERIC_WORDS or low in ("신규", "리뉴얼", "첫생산", "초도", "사용", "소진", "소진후", "기존팩"):
             continue
         if len(low) >= 2 and low not in out:
             out.append(low)
@@ -6723,10 +6736,6 @@ def is_related_transition_product(registered_nm: str, target_nm: str) -> bool:
 
 
 def note_mentions_tracked_product(note_text: Any, target_prod_names: List[str]) -> bool:
-    """
-    공통 특이사항란(유제품 특이사항 / 상온 당일전달사항 / 다품목 가동 호기)에 적힌 문구가
-    해당 추적 품목의 첫생산·리뉴얼을 지칭하는지 문장 단위로 정밀 판별
-    """
     raw_s = str(note_text or "").strip()
     if not raw_s or raw_s in ("-", "이상없음", "없음"):
         return False
@@ -6827,11 +6836,8 @@ def _match_pack_logs_for_item(
     all_waiting_pack_items: Optional[List[dict]] = None
 ) -> List[dict]:
     """
-    상온·유제품 포장일보 가동 및 '첫생산/리뉴얼' 자동 인식:
-    1) 상온 상단 제품명 칸 또는 바로 옆 확인시간 칸('포장확인시간'/'확인시간')에 '첫생산' 기입 시 -> 즉시 인식
-    2) 상온 멸균기 호기별 특이사항 칸에 제품명 없이 '첫생산'만 기입 시 ->
-       해당 호기 가동 품목이 1개이거나, 해당 호기에서 가동된 '포장대기' 추적 품목이 이 품목 1개뿐이면 즉시 인식!
-    3) 우측 공통 전달사항 및 유제품 공통 특이사항 칸 -> 제품명 언급 시 인식 (당일 가동된 '포장대기' 품목이 1개뿐이면 단독 '첫생산'도 인식)
+    상온·유제품 포장일보 가동 및 '기존팩 소진후 신규팩사용 / 첫생산 / 리뉴얼' 정밀 매칭:
+    - _이력DB_상온CCP의 설비_호기('5호기 (A호기)') + 세부항목(품목명) + 특이사항을 (일자, 포장호기) 단위로 직결 복원!
     """
     pack_nm = str(tr_item.get("매칭_포장품목명") or tr_item.get("매칭_부자재명") or "").strip()
     if not pack_nm or pack_nm == "-":
@@ -6866,18 +6872,28 @@ def _match_pack_logs_for_item(
             if txt and txt not in ("-", "이상없음", "없음"):
                 dairy_notes_by_dt.setdefault(c_dt, []).append((str(cr.get("라인구분") or ""), txt))
 
-    # 상온 일자별 당일전달사항 & 실시간 탭 특이사항 인덱스
+    # 상온 (일자, 포장호기)별 멸균특이사항 복원 + 일자별 공통 전달사항 인덱스
+    rt_ho_rem_by_dt: Dict[Tuple[str, str], List[str]] = {}
     rt_shared_notes_by_dt: Dict[str, List[str]] = {}
+
     for rc in (rt_hist_c or []):
         c_dt = str(rc.get("생산일자") or "").strip()
         if not c_dt or c_dt < min_dt:
             continue
-        ccp_cat = str(rc.get("CCP구분") or rc.get("기록분류") or "")
         nt = str(rc.get("특이사항") or "").strip()
-        if nt and nt not in ("-", "이상없음", "없음", "적합"):
-            if "전달" in ccp_cat or has_pack_transition_signal(nt):
-                if nt not in rt_shared_notes_by_dt.setdefault(c_dt, []):
-                    rt_shared_notes_by_dt[c_dt].append(nt)
+        if not nt or nt in ("-", "이상없음", "없음", "적합"):
+            continue
+        eq_s = str(rc.get("설비_호기") or "")
+        sub_p = str(rc.get("세부항목") or "")
+        m_ho = re.search(r"([A-F]호기)", eq_s)
+        if m_ho:
+            ho_key = (c_dt, m_ho.group(1))
+            combined_ho_nt = f"[{eq_s} {sub_p}] {nt}" if sub_p and sub_p != "-" else nt
+            if combined_ho_nt not in rt_ho_rem_by_dt.setdefault(ho_key, []):
+                rt_ho_rem_by_dt[ho_key].append(combined_ho_nt)
+        else:
+            if nt not in rt_shared_notes_by_dt.setdefault(c_dt, []):
+                rt_shared_notes_by_dt[c_dt].append(nt)
 
     for live_rt in (rt_today_obj, rt_yest_obj):
         if live_rt and live_rt.get("prod_date"):
@@ -6885,8 +6901,10 @@ def _match_pack_logs_for_item(
             for sn in (live_rt.get("ster_special_notes") or []):
                 if sn and sn not in rt_shared_notes_by_dt.setdefault(l_dt, []):
                     rt_shared_notes_by_dt[l_dt].append(sn)
+                m_ho2 = re.search(r"([A-F]호기)", str(sn))
+                if m_ho2 and sn not in rt_ho_rem_by_dt.setdefault((l_dt, m_ho2.group(1)), []):
+                    rt_ho_rem_by_dt[(l_dt, m_ho2.group(1))].append(sn)
 
-    # 상온 날짜·호기별 전체 품목 수 & 다른 '포장대기' 품목 동시 가동 여부 계산
     rt_ho_prod_cnt: Dict[Tuple[str, str], int] = {}
     rt_ho_has_other_tracked: Dict[Tuple[str, str], bool] = {}
     rt_day_has_other_tracked: Dict[str, bool] = {}
@@ -6938,7 +6956,6 @@ def _match_pack_logs_for_item(
                     if n_txt not in matched_sig_notes:
                         matched_sig_notes.append(n_txt)
                 elif only_this_tracked_today and has_pack_transition_signal(n_txt) and not note_mentions_tracked_product(n_txt, other_pack_names):
-                    # 당일 가동된 포장대기 품목이 이 1건뿐이고 다른 제품 이름이 특정된 메모가 아닌 단독 '첫생산' 메모인 경우 허용
                     if len(_extract_transition_sig_tokens(n_txt)) == 0 and n_txt not in matched_sig_notes:
                         matched_sig_notes.append(n_txt)
 
@@ -6972,29 +6989,36 @@ def _match_pack_logs_for_item(
             ho_s = str(rr.get("포장호기") or "-").strip()
             chk_cell = str(rr.get("포장확인시간") or rr.get("확인시간") or "").strip()
             exp_cell = str(rr.get("표기소비기한_원문") or "").strip()
-            ho_rem = str(rr.get("멸균특이사항") or rr.get("특이사항") or "").strip()
+
+            ho_rems_list = list(rt_ho_rem_by_dt.get((p_dt, ho_s), []))
+            direct_ho_rem = str(rr.get("멸균특이사항") or rr.get("특이사항") or "").strip()
+            if direct_ho_rem and direct_ho_rem not in ("-", "이상없음", "없음") and direct_ho_rem not in ho_rems_list:
+                ho_rems_list.append(direct_ho_rem)
+            ho_rem_joined = " / ".join(ho_rems_list)
+
             daily_memo = str(rr.get("당일전달사항") or "").strip()
             extra_notes = rt_shared_notes_by_dt.get(p_dt, [])
 
-            # (A) 상단 포장표의 제품명 칸 / 바로 옆 확인시간 칸 / 소비기한 칸에 직접 '첫생산' 등을 적은 경우 -> 100% 해당 제품이므로 즉시 인정!
+            # (A) 상단 포장표의 제품명 / 확인시간 / 소비기한 칸 직접 표기
             slot_inline_sig = (
                 has_pack_transition_signal(r_nm)
                 or has_pack_transition_signal(chk_cell)
                 or has_pack_transition_signal(exp_cell)
             )
 
-            # (B) 하단 멸균기 호기별 특이사항 칸에 적은 경우 ->
-            #     단독 가동이거나, 그 호기에서 다른 '포장대기' 추적 품목이 동시에 가동되지 않았다면 제품명 없이 '첫생산'만 적어도 인정!
+            # (B) 해당 포장호기의 멸균기 특이사항 ('기존팩 소진후 신규팩사용', '첫생산' 등)
             ho_no_other_tracked = not rt_ho_has_other_tracked.get((p_dt, ho_s), False)
             ho_only_one = (rt_ho_prod_cnt.get((p_dt, ho_s), 1) <= 1)
-            ho_sig_ok = False
-            if has_pack_transition_signal(ho_rem):
-                if note_mentions_tracked_product(ho_rem, ref_names + [r_nm]):
-                    ho_sig_ok = True
-                elif ho_only_one or (ho_no_other_tracked and len(_extract_transition_sig_tokens(ho_rem)) == 0):
-                    ho_sig_ok = True
+            matched_ho_rems = []
+            for h_rem in ho_rems_list:
+                if not has_pack_transition_signal(h_rem):
+                    continue
+                if note_mentions_tracked_product(h_rem, ref_names + [r_nm]):
+                    matched_ho_rems.append(h_rem)
+                elif ho_only_one or (ho_no_other_tracked and not note_mentions_tracked_product(h_rem, other_pack_names)):
+                    matched_ho_rems.append(h_rem)
 
-            # (C) 우측 당일전달사항 및 실시간 탭 메모 검사
+            # (C) 우측 당일전달사항 및 실시간 탭 공통 메모
             only_this_rt_today = not rt_day_has_other_tracked.get(p_dt, False)
             shared_pool = [x for x in ([daily_memo] + extra_notes) if x and x not in ("-", "없음", "이상없음")]
             matched_shared = []
@@ -7006,15 +7030,15 @@ def _match_pack_logs_for_item(
                 elif only_this_rt_today and has_pack_transition_signal(sn) and len(_extract_transition_sig_tokens(sn)) == 0:
                     matched_shared.append(sn)
 
-            has_sig = slot_inline_sig or ho_sig_ok or (len(matched_shared) > 0)
+            has_sig = slot_inline_sig or (len(matched_ho_rems) > 0) or (len(matched_shared) > 0)
             if slot_inline_sig:
                 disp_note = chk_cell if has_pack_transition_signal(chk_cell) else r_nm
-            elif ho_sig_ok:
-                disp_note = ho_rem
+            elif matched_ho_rems:
+                disp_note = re.sub(r"^\[[^\]]+\]\s*", "", matched_ho_rems[0]).lstrip("- ").strip()
             elif matched_shared:
-                disp_note = " / ".join(matched_shared)
+                disp_note = re.sub(r"^\[[^\]]+\]\s*", "", matched_shared[0]).lstrip("- ").strip()
             else:
-                disp_note = ho_rem if ho_rem not in ("", "-", "이상없음") else "이상없음"
+                disp_note = ho_rem_joined if ho_rem_joined else "이상없음"
 
             hits.append({
                 "생산일자": p_dt,

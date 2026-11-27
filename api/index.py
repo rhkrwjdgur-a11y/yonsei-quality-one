@@ -7229,9 +7229,7 @@ def _match_sub_inbound_for_item(tr_item: dict, sub_rows_pool: List[dict]) -> Lis
         return []
 
     q_vol = extract_volume_ml_token(str(tr_item.get("매칭_부자재명") or ""))
-    is_new_type = (tr_item.get("구분") == "신규")
     rev_dt = str(tr_item.get("심의완료일") or SUB_TRANSITION_CUTOFF).strip()
-    # 부자재 DB가 2026-10-01부터 시작하므로 10월 입고분부터 빠짐없이 탐색!
     min_dt = max(SUB_TRANSITION_CUTOFF, rev_dt) if rev_dt.startswith("20") else SUB_TRANSITION_CUTOFF
 
     hits = []
@@ -7241,22 +7239,19 @@ def _match_sub_inbound_for_item(tr_item: dict, sub_rows_pool: List[dict]) -> Lis
         if sr.get("구분") == "빨대":
             continue
 
+        note_txt = str(sr.get("특이사항") or "")
+        sig_flag = bool(sr.get("_is_change_signal")) or has_sub_inbound_signal(note_txt)
+        # [핵심] 비고(특이사항)란에 첫입고·초도·신규·리뉴얼·표기/도안변경 등 변화 키워드가 없는 일반 구형 입고분은 제외!
+        if not sig_flag:
+            continue
+
         s_vol = extract_volume_ml_token(sr.get("용량", "")) or extract_volume_ml_token(sr.get("제품명", ""))
         if q_vol and s_vol and q_vol != s_vol:
             continue
 
-        note_txt = str(sr.get("특이사항") or "")
-        sig_flag = bool(sr.get("_is_change_signal")) or has_sub_inbound_signal(note_txt)
-
         related_ok = any(is_related_transition_product(q_nm, sr.get("제품명", "")) for q_nm in cand_queries)
         if not related_ok:
             continue
-
-        if is_new_type and not sig_flag:
-            s_c = clean_transition_match_key(sr.get("제품명", ""))
-            q_c = clean_transition_match_key(cand_queries[0])
-            if s_c != q_c:
-                continue
 
         hits.append({
             "검수일자": sr["검수일자"],
@@ -7266,10 +7261,10 @@ def _match_sub_inbound_for_item(tr_item: dict, sub_rows_pool: List[dict]) -> Lis
             "입고수량": sr["입고수량"],
             "생산일_LOT": sr["생산일_LOT"],
             "특이사항": note_txt or "-",
-            "has_signal": sig_flag
+            "has_signal": True
         })
 
-    hits.sort(key=lambda x: (1 if x["has_signal"] else 0, x["검수일자"]), reverse=True)
+    hits.sort(key=lambda x: x["검수일자"], reverse=True)
     return hits[:6]
 
 
@@ -7411,12 +7406,12 @@ def _match_pack_logs_for_item(
                         matched_sig_notes.append(n_txt)
 
             has_sig = inline_sig or (len(matched_sig_notes) > 0)
+            if not has_sig:
+                continue
             if inline_sig:
                 disp_note = f"제품/확인란 표기 ({chk_t if has_pack_transition_signal(chk_t) else r_nm})"
-            elif matched_sig_notes:
-                disp_note = " / ".join(matched_sig_notes)
             else:
-                disp_note = " / ".join(general_notes) if general_notes else "특이사항 미기입"
+                disp_note = " / ".join(matched_sig_notes)
 
             hits.append({
                 "생산일자": p_dt,
@@ -7481,14 +7476,14 @@ def _match_pack_logs_for_item(
                     matched_shared.append(sn)
 
             has_sig = slot_inline_sig or (len(matched_ho_rems) > 0) or (len(matched_shared) > 0)
+            if not has_sig:
+                continue
             if slot_inline_sig:
                 disp_note = chk_cell if has_pack_transition_signal(chk_cell) else r_nm
             elif matched_ho_rems:
                 disp_note = re.sub(r"^\[[^\]]+\]\s*", "", matched_ho_rems[0]).lstrip("- ").strip()
-            elif matched_shared:
-                disp_note = re.sub(r"^\[[^\]]+\]\s*", "", matched_shared[0]).lstrip("- ").strip()
             else:
-                disp_note = ho_rem_joined if ho_rem_joined else "이상없음"
+                disp_note = re.sub(r"^\[[^\]]+\]\s*", "", matched_shared[0]).lstrip("- ").strip()
 
             hits.append({
                 "생산일자": p_dt,

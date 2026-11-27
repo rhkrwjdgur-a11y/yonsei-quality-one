@@ -6026,6 +6026,346 @@ def sync_law_summary_db_worksheet(sh, all_laws: list, summary_db_map: Dict[str, 
 
 
 def parse_law_dashboard_tab(rows: list) -> Tuple[bool, Dict[str, dict]]:
+    if not rows or len(rows) < 2:
+        return False, {}
+
+    hdr_idx = -1
+    hdr_ns = []
+    for idx, r in enumerate(rows[:5]):
+        cand = [re.sub(r"\s+", "", str(x)) for x in r]
+        if any(k in "".join(cand) for k in ["법규ID", "법규명", "법령명"]):
+            hdr_idx = idx
+            hdr_ns = cand
+            break
+    if hdr_idx < 0:
+        return False, {}
+
+    c_id = next((i for i, h in enumerate(hdr_ns) if "ID" in h.upper()), -1)
+    c_nm = next((i for i, h in enumerate(hdr_ns) if "법규명" in h or "법령명" in h or "고시명" in h), -1)
+    c_prep = next((i for i, h in enumerate(hdr_ns) if "준비" in h or "상태" in h), -1)
+    c_sum = next((i for i, h in enumerate(hdr_ns) if "요약" in h or "내용" in h), -1)
+    c_cmt = next((i for i, h in enumerate(hdr_ns) if "코멘트" in h or "대응" in h), -1)
+
+    pinned_map: Dict[str, dict] = {}
+    for r in rows[hdr_idx + 1:]:
+        if not any(str(x).strip() for x in r):
+            continue
+        lid = str(r[c_id]).strip() if (0 <= c_id < len(r)) else ""
+        nm = str(r[c_nm]).strip() if (0 <= c_nm < len(r)) else ""
+        if not lid and not nm:
+            continue
+        prep = str(r[c_prep]).strip() if (0 <= c_prep < len(r)) else "검토전"
+        if prep not in LAW_PREP_LIST:
+            prep = "검토전"
+        summ = str(r[c_sum]).strip() if (0 <= c_sum < len(r)) else ""
+        cmt = str(r[c_cmt]).strip() if (0 <= c_cmt < len(r)) else ""
+        entry = {"prep": prep, "summary": summ, "comment": cmt, "law_name": nm}
+        if lid:
+            pinned_map[lid] = entry
+        norm_nm = re.sub(r"\s+", "", nm)
+        if norm_nm:
+            pinned_map[norm_nm] = entry
+
+    return (len(pinned_map) > 0), pinned_map
+
+
+def sync_law_dashboard_worksheet(sh, all_laws_enriched: list):
+    ws_all = api_call_with_retry(sh.worksheets)
+    ws_dash = next((w for w in ws_all if w.title.strip() == LAW_DASH_TAB), None)
+    if ws_dash is None:
+        ws_dash = api_call_with_retry(sh.add_worksheet, title=LAW_DASH_TAB, rows=100, cols=11)
+
+    now_s = now_kst().strftime("%Y-%m-%d %H:%M:%S")
+    dash_items = [x for x in all_laws_enriched if x.get("show_on_dashboard")]
+    dash_items.sort(key=lambda x: x.get("_sort_k", 99999))
+
+    payload = [LAW_DASH_COLS]
+    for it in dash_items:
+        payload.append([
+            str(it.get("law_id", "")),
+            str(it.get("법규단계", "고시")),
+            str(it.get("시행일", "-")),
+            str(it.get("법규명", "")),
+            str(it.get("prep_status", "검토전")),
+            str(it.get("실무조치요약", "")),
+            str(it.get("당사관련부서", "-")),
+            now_s,
+            str(it.get("action_comment", ""))
+        ])
+    api_call_with_retry(ws_dash.clear)
+    safe_ws_update(ws_dash, payload)
+
+
+def fetch_law_info_sheet(sheet_urls_map: dict):
+    sh, err = open_sheet_isolated(sheet_urls_map, "law_info")
+    if sh is None:
+        return [], False, {}, {}, f"[법규정보] {err}"
+
+    try:
+        ws_all = api_call_with_retry(sh.worksheets)
+        ws_titles = [w.title for w in ws_all]
+        t_dash = next((t for t in ws_titles if t.strip() == LAW_DASH_TAB), None)
+        t_sdb = next((t for t in ws_titles if t.strip() == LAW_SUMMARY_DB_TAB), None)
+        t_weekly = next((t for t in ws_titles if re.sub(r"\s+", "", t) == "주간식품안전"), None)
+
+        exclude_sys = {t for t in [t_dash, t_sdb, t_weekly] if t and not t.strip().startswith("_")}
+        target_tabs = [
+            t for t in ws_titles
+            if t not in exclude_sys
+            and not t.strip().startswith("_")
+            and any(yr in t for yr in ["2026", "2025", "2027", "공문", "지침"])
+        ]
+        if not target_tabs:
+            target_tabs = [t for t in ws_titles if t not in exclude_sys and not t.strip().startswith("_")][:4]
+
+        fetch_list = target_tabs + ([t_dash] if t_dash else []) + ([t_sdb] if t_sdb else []) + ([t_weekly] if t_weekly else [])
+        batch_map = batch_fetch_tabs(sh, fetch_list, "FORMATTED_VALUE")
+
+        if t_weekly is not None:
+            _WEEKLY_SAFETY_CACHE["data"] = parse_weekly_safety_tab_rows(batch_map.get(t_weekly, []))
+        else:
+            _WEEKLY_SAFETY_CACHE["data"] = {"active_week_id": "", "weeks": []}
+
+        dash_initialized, dash_tab_map = parse_law_dashboard_tab(batch_map.get(t_dash, [])) if t_dash else (False, {})
+        summary_db_map = parse_law_summary_db_tab(batch_map.get(t_sdb, [])) if t_sdb else {}
+
+        today_d = now_kst().date()
+        now_s = now_kst().strftime("%Y-%m-%d %H:%M:%S")
+        all_laws = []
+        sdb_dirty = (t_sdb is None)
+        missing_laws_count = 0
+
+        raw_parsed_items = []
+        for t_name in target_tabs:
+            rows = batch_map.get(t_name, [])
+            if len(rows) < 2:
+                continue
+            tab_has_notice = "예고" in t_name
+
+            hdr_idx = -1
+            col_ministry, col_law, col_content, col_notice_dt, col_enf_dt, col_rel = -1, -1, -1, -1, -1, -1
+            for r_i, r in enumerate(rows[:12]):
+                r_ns = [re.sub(r"\s+", "", str(x)) for x in r]
+                if any("법규명" in x or "법령명" in x for x in r_ns) and any("내용" in x or "시행" in x or "예고" in x for x in r_ns):
+                    hdr_idx = r_i
+                    for c_i, cell_txt in enumerate(r_ns):
+                        if ("부처" in cell_txt or "기관" in cell_txt) and col_ministry < 0:
+                            col_ministry = c_i
+                        elif ("법규명" in cell_txt or "법령명" in cell_txt or "고시명" in cell_txt) and col_law < 0:
+                            col_law = c_i
+                        elif "내용" in cell_txt and col_content < 0:
+                            col_content = c_i
+                        elif any(k in cell_txt for k in ["고시일", "공포일", "예고일", "입법예고"]) and col_notice_dt < 0:
+                            col_notice_dt = c_i
+                        elif ("시행일" in cell_txt or "시행예정" in cell_txt or "의견제출" in cell_txt) and col_enf_dt < 0:
+                            col_enf_dt = c_i
+                        elif ("관련" in cell_txt or "당사" in cell_txt or "부서" in cell_txt or "비고" in cell_txt) and col_rel < 0:
+                            col_rel = c_i
+                    break
+
+            if hdr_idx < 0 or col_law < 0:
+                continue
+
+            c_law_end = col_content if col_content > col_law else col_law + 1
+            next_after_content = min([c for c in [col_notice_dt, col_enf_dt, col_rel] if c > col_content] or [col_content + 1])
+
+            last_ministry = ""
+            for dr in rows[hdr_idx + 1:]:
+                if not any(str(x).strip() for x in dr):
+                    continue
+                min_v = str(dr[col_ministry]).strip() if (0 <= col_ministry < len(dr)) else ""
+                if min_v:
+                    last_ministry = min_v
+
+                law_parts = [str(x).strip() for x in dr[col_law : min(c_law_end, len(dr))] if str(x).strip()]
+                law_nm = re.sub(r"\s+", " ", " ".join(dict.fromkeys(law_parts))).strip()
+                if not law_nm or law_nm in ["법규명", "법령명"]:
+                    continue
+
+                cnt_parts = [str(x).strip() for x in dr[col_content : min(next_after_content, len(dr))] if str(x).strip()] if col_content >= 0 else []
+                content_full = "\n".join(dict.fromkeys(cnt_parts)).strip()
+
+                notice_raw = str(dr[col_notice_dt]).strip() if (0 <= col_notice_dt < len(dr)) else ""
+                enf_raw = str(dr[col_enf_dt]).strip() if (0 <= col_enf_dt < len(dr)) else ""
+                rel_raw = " ".join([str(x).strip() for x in dr[col_rel:] if str(x).strip()]) if (0 <= col_rel < len(dr)) else ""
+
+                lid = make_law_id(t_name, law_nm, enf_raw, notice_raw)
+                if lid not in summary_db_map:
+                    missing_laws_count += 1
+
+                raw_parsed_items.append((t_name, tab_has_notice, last_ministry, law_nm, content_full, notice_raw, enf_raw, rel_raw, lid))
+
+        ai_budget = 0
+        ai_used = 0
+
+        for (t_name, tab_has_notice, last_ministry, law_nm, content_full, notice_raw, enf_raw, rel_raw, lid) in raw_parsed_items:
+            cached_s_obj = summary_db_map.get(lid)
+            if cached_s_obj and cached_s_obj.get("summary"):
+                saved_s = cached_s_obj["summary"]
+                saved_m = cached_s_obj.get("method", "auto_2line")
+                if saved_m == "manual" or (not is_broken_or_overlong_summary(saved_s, content_full)):
+                    short_sum = saved_s
+                else:
+                    ai_txt = generate_gemini_law_summary_single(law_nm, content_full) if ai_used < ai_budget else None
+                    if ai_txt and not is_broken_or_overlong_summary(ai_txt):
+                        ai_used += 1
+                        short_sum = ai_txt
+                        summary_db_map[lid] = {"summary": short_sum, "method": "gemini", "updated_at": now_s}
+                    else:
+                        short_sum = extract_concise_law_summary(law_nm, content_full, max_len=105)
+                        summary_db_map[lid] = {"summary": short_sum, "method": "auto_2line", "updated_at": now_s}
+                    sdb_dirty = True
+            else:
+                ai_txt = generate_gemini_law_summary_single(law_nm, content_full) if ai_used < ai_budget else None
+                if ai_txt and not is_broken_or_overlong_summary(ai_txt):
+                    ai_used += 1
+                    short_sum = ai_txt
+                    summary_db_map[lid] = {"summary": short_sum, "method": "gemini", "updated_at": now_s}
+                else:
+                    short_sum = extract_concise_law_summary(law_nm, content_full, max_len=105)
+                    summary_db_map[lid] = {"summary": short_sum, "method": "auto_2line", "updated_at": now_s}
+                sdb_dirty = True
+
+            is_guide_item = ("공문" in t_name) or ("지침" in t_name)
+            is_notice_item = (not is_guide_item) and (tab_has_notice or any(k in law_nm for k in ["예고", "개정안", "개정령(안)", "고시(안)"]))
+            stage_type = "공문·지침" if is_guide_item else ("예고" if is_notice_item else "고시")
+
+            enf_d = parse_date_obj(enf_raw)
+            d_day = (enf_d - today_d).days if enf_d else None
+            enf_iso = enf_d.strftime("%Y-%m-%d") if enf_d else (enf_raw or "미정")
+
+            is_qs_dept = ("품질안전" in rel_raw) or ("식품안전" in rel_raw) or ("품질관리" in rel_raw) or ("전부문" in rel_raw) or ("전사" in rel_raw)
+            auto_default_show = (not tab_has_notice) and is_qs_dept and (d_day is not None and d_day >= -14)
+
+            all_laws.append({
+                "law_id": lid,
+                "탭구분": t_name.strip(),
+                "법규단계": stage_type,
+                "예고여부": is_notice_item,
+                "주무부처": last_ministry or "-",
+                "법규명": law_nm,
+                "자동조치요약": short_sum,
+                "원문내용": content_full or "-",
+                "고시_예고일": notice_raw or "-",
+                "시행일": enf_iso,
+                "시행일_원문": enf_raw or "-",
+                "d_day": d_day,
+                "당사관련부서": rel_raw or "-",
+                "품질안전해당": is_qs_dept,
+                "auto_default": auto_default_show
+            })
+
+        if sdb_dirty and all_laws:
+            try:
+                sync_law_summary_db_worksheet(sh, all_laws, summary_db_map)
+            except Exception:
+                pass
+
+        needs_dash_resync = (t_dash and not dash_initialized and bool(all_laws))
+        if dash_initialized and dash_tab_map:
+            for _, v_obj in dash_tab_map.items():
+                if is_broken_or_overlong_summary(v_obj.get("summary", "")):
+                    v_obj["summary"] = ""
+                    needs_dash_resync = True
+
+        if t_dash and needs_dash_resync and all_laws:
+            repaired_bundle = apply_law_preferences(all_laws, dash_initialized, dash_tab_map, {})
+            try:
+                sync_law_dashboard_worksheet(sh, repaired_bundle["all_laws"])
+                dash_initialized = True
+                dash_tab_map = {
+                    x["law_id"]: {
+                        "prep": x["prep_status"],
+                        "summary": x["실무조치요약"],
+                        "comment": x.get("action_comment", ""),
+                        "law_name": x["법규명"]
+                    }
+                    for x in repaired_bundle["dashboard_laws"]
+                }
+            except Exception:
+                pass
+
+        return all_laws, dash_initialized, dash_tab_map, summary_db_map, None
+    except Exception as e:
+        return [], False, {}, {}, f"[법규정보] {e}"
+
+
+def apply_law_preferences(raw_laws: list, dash_initialized: bool, dash_tab_map: dict, legacy_prefs: dict) -> dict:
+    enriched = []
+    for item in raw_laws:
+        lid = item["law_id"]
+        norm_title = re.sub(r"\s+", "", item["법규명"])
+        dash_entry = dash_tab_map.get(lid) or dash_tab_map.get(norm_title)
+        leg_entry = legacy_prefs.get(lid, {})
+
+        if dash_initialized:
+            show_dash = dash_entry is not None
+            prep = (dash_entry.get("prep") if dash_entry else None) or leg_entry.get("prep", "검토전")
+            custom_sum = (dash_entry.get("summary") if dash_entry else "") or leg_entry.get("summary", "")
+        else:
+            mode = leg_entry.get("mode", "auto")
+            show_dash = True if mode == "Pin" else (False if mode == "Hide" else bool(item.get("auto_default", False)))
+            prep = leg_entry.get("prep", "검토전")
+            custom_sum = leg_entry.get("summary", "")
+
+        act_cmt = str((dash_entry.get("comment") if dash_entry else "") or leg_entry.get("comment", "")).strip()
+
+        if prep not in LAW_PREP_LIST:
+            prep = "검토전"
+
+        if is_broken_or_overlong_summary(custom_sum):
+            clean_custom = ""
+        else:
+            clean_custom = str(custom_sum).strip()
+
+        d_val = item.get("d_day")
+        if d_val is None:
+            d_label, d_cls, sort_key = "일정미정", "badge-neutral", 99999
+        elif d_val == 0:
+            d_label, d_cls, sort_key = "D-Day", "badge-err", 0
+        elif d_val > 0:
+            d_label = f"D-{d_val}"
+            d_cls = "badge-err" if d_val <= 90 else ("badge-warn" if d_val <= 365 else "badge-info")
+            sort_key = d_val
+        else:
+            abs_d = abs(d_val)
+            d_label, d_cls, sort_key = f"시행+{abs_d}일", "badge-ok", 50000 + abs_d
+
+        prep_tag_txt, prep_tag_cls = compute_obsolescence_prep_tag(d_val, bool(item.get("예고여부")), prep)
+
+        cp = dict(item)
+        cp["prep_status"] = prep
+        cp["prep_timing_tag"] = prep_tag_txt
+        cp["prep_timing_cls"] = prep_tag_cls
+        cp["custom_summary"] = clean_custom
+        cp["실무조치요약"] = clean_custom if clean_custom else item["자동조치요약"]
+        cp["action_comment"] = act_cmt
+        cp["show_on_dashboard"] = show_dash
+        cp["d_day_label"] = d_label
+        cp["d_day_cls"] = d_cls
+        cp["_sort_k"] = sort_key
+        enriched.append(cp)
+
+    dashboard_list = [x for x in enriched if x["show_on_dashboard"]]
+    explicitly_hidden_all = bool(legacy_prefs) and all(v.get("mode") == "Hide" for v in legacy_prefs.values())
+    if not dashboard_list and enriched and not explicitly_hidden_all:
+        fallback_cands = [x for x in enriched if not x.get("예고여부") and (x.get("d_day") is None or x["d_day"] >= -30)]
+        if not fallback_cands:
+            fallback_cands = list(enriched)
+        fallback_cands.sort(key=lambda x: x["_sort_k"])
+        for fc in fallback_cands[:6]:
+            fc["show_on_dashboard"] = True
+        dashboard_list = [x for x in enriched if x["show_on_dashboard"]]
+
+    dashboard_list.sort(key=lambda x: x["_sort_k"])
+
+    all_sorted = sorted(enriched, key=lambda x: (0 if x["show_on_dashboard"] else 1, x["_sort_k"]))
+    return {
+        "dashboard_laws": dashboard_list,
+        "all_laws": all_sorted,
+        "active_cnt": len(dashboard_list),
+        "prep_1yr_cnt": sum(1 for x in dashboard_list if x["d_day"] is not None and 0 <= x["d_day"] <= 365 and x["prep_status"] != "반영완료")
+    }
 
 
 # ==============================================================================

@@ -900,18 +900,17 @@
       border: 1px solid #FCD34D;
     }
 
-    /* Q4: 1~5호기 5슬롯 무스크롤 그리드 + 혼합 블록 게이지 + 상단 빨간 전달사항 알림 버튼 */
+    /* Q4: 1~5호기 4열 세로 정렬 전광판 + 대형 블록 게이지 + 상단 전달사항 알림 */
     .q4-ex-pill {
       display: inline-flex;
       align-items: center;
-      padding: 2px 7px;
-      border-radius: 5px;
+      padding: 2px 8px;
+      border-radius: 99px;
       font-size: 11px;
       font-weight: 900;
-      background: #FEF3C7;
-      color: #92400E;
-      border: 1px solid #FCD34D;
-      line-height: 1.2;
+      background: #475569;
+      color: #FFFFFF;
+      line-height: 1.25;
     }
     @keyframes q4PulseRed {
       0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
@@ -921,21 +920,18 @@
       display: none;
       align-items: center;
       gap: 4px;
-      padding: 4px 10px;
+      padding: 4px 11px;
       border-radius: 99px;
       border: 1.5px solid #DC2626;
-      background: #FEF2F2;
-      color: #B91C1C;
+      background: #DC2626;
+      color: #FFFFFF;
       font-size: var(--fs-xs);
       font-weight: 900;
       cursor: pointer;
       animation: q4PulseRed 1.8s infinite;
       white-space: nowrap;
     }
-    .btn-ho-alert-red:hover {
-      background: #DC2626;
-      color: #FFFFFF;
-    }
+    .btn-ho-alert-red:hover { background: #B91C1C; }
 
     .q4-five-slots-wrap {
       flex: 1;
@@ -944,152 +940,119 @@
       grid-template-rows: repeat(5, minmax(0, 1fr));
       gap: 5px;
       overflow: hidden;
-      margin-bottom: 5px;
+      margin-bottom: 6px;
     }
-    .q4-slot-card {
+    .q4-slot-row {
       background: #FFFFFF;
       border: 1px solid #CBD5E1;
-      border-left: 4px solid #0284C7;
+      border-left: 4px solid #003378;
       border-radius: 8px;
-      padding: 4px 10px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      gap: 3px;
+      padding: 4px 11px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) 154px 176px 192px;
+      align-items: center;
+      gap: 10px;
       min-height: 0;
       overflow: hidden;
     }
-    .q4-slot-card.is-done { background: #F0FDF4; border-color: #86EFAC; border-left-color: #059669; }
-    .q4-slot-card.is-warn { background: #FFFBEB; border-color: #FCD34D; border-left-color: #D97706; }
-    .q4-slot-card.is-danger { background: #FEF2F2; border-color: #FCA5A5; border-left-color: #DC2626; }
-    .q4-slot-card.is-idle {
+    .q4-slot-row.is-ok     { border-left-color: #0284C7; background: #FFFFFF; }
+    .q4-slot-row.is-done   { border-left-color: #059669; background: #F8FAFC; }
+    .q4-slot-row.is-warn   { border-left-color: #D97706; background: #FFFBEB; border-color: #FCD34D; }
+    .q4-slot-row.is-danger { border-left-color: #DC2626; background: #FEF2F2; border-color: #FCA5A5; }
+    .q4-slot-row.is-closed { border-left-color: #94A3B8; background: #F8FAFC; opacity: 0.78; }
+    .q4-slot-row.is-idle {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       background: #F8FAFC;
       border: 1px dashed #CBD5E1;
-      border-left: 4px solid #94A3B8;
-      flex-direction: row;
-      align-items: center;
-      justify-content: space-between;
+      border-left: 4px solid #CBD5E1;
     }
 
-    .q4-slot-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 6px;
-      min-width: 0;
+    /* 1열: 호기 · 내용물명 · [외 N건] · 2차 품목 */
+    .q4-col-1 { min-width: 0; display: flex; flex-direction: column; gap: 1px; padding-right: 6px; border-right: 1px solid #E2E8F0; }
+    .q4-c1-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .q4-c1-ho { font-size: 12.5px; font-weight: 900; color: #003378; white-space: nowrap; }
+    .q4-c1-bot { display: flex; align-items: center; gap: 5px; min-width: 0; }
+    .q4-c1-prod { font-size: 13.5px; font-weight: 900; color: #0F172A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .q4-extra-pack { font-size: 11.5px; font-weight: 800; color: #64748B; white-space: nowrap; flex-shrink: 0; cursor: help; }
+    .q4-seq-pill {
+      font-size: 10.5px; font-weight: 800; padding: 1px 7px; border-radius: 99px;
+      background: #E2E8F0; color: #334155; border: 1px solid #CBD5E1; cursor: pointer; white-space: nowrap;
     }
-    .q4-slot-ho {
-      font-size: var(--fs-sm);
-      font-weight: 900;
-      color: var(--yonsei-blue);
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    .q4-slot-prod {
-      font-size: var(--fs-sm);
-      font-weight: 800;
-      color: #0F172A;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .q4-var-chip {
-      font-size: 10px;
-      font-weight: 800;
-      padding: 1px 5px;
-      border-radius: 4px;
-      background: #EEF2FF;
-      color: #3730A3;
-      border: 1px solid #C7D2FE;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    .q4-next-btn {
-      font-size: 10.5px;
-      font-weight: 800;
-      padding: 1px 6px;
-      border-radius: 4px;
-      background: #FEF3C7;
-      color: #92400E;
-      border: 1px solid #F59E0B;
-      cursor: pointer;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    .q4-next-btn:hover { background: #FDE68A; }
-    .q4-slot-eta {
-      font-size: 11px;
-      font-weight: 800;
-      color: #0F172A;
-      background: rgba(15, 23, 42, 0.06);
-      padding: 1.5px 7px;
-      border-radius: 4px;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
+    .q4-seq-pill:hover { background: #CBD5E1; color: #0F172A; }
 
-    .q4-slot-bot {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-      min-width: 0;
-      font-size: var(--fs-xs);
-    }
-    .q4-mix-gauge-wrap {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      flex-shrink: 0;
-    }
+    /* 2열: 대형 혼합 블록 게이지 + 큰 배치 숫자 */
+    .q4-col-2 { display: flex; flex-direction: column; gap: 2px; padding-right: 8px; border-right: 1px solid #E2E8F0; }
+    .q4-c2-top { display: flex; align-items: center; gap: 6px; }
     .q4-mix-blocks {
-      display: inline-grid;
+      flex: 1;
+      display: grid;
       grid-auto-flow: column;
-      gap: 2px;
-      width: 78px;
-      height: 9px;
+      gap: 2.5px;
+      height: 13px;
       background: #E2E8F0;
-      padding: 1.5px;
+      padding: 2px;
       border-radius: 4px;
     }
-    .q4-mix-seg {
-      border-radius: 2px;
-      background: #CBD5E1;
-      height: 100%;
-    }
-    .q4-mix-seg.filled.ok { background: #0284C7; }
-    .q4-mix-seg.filled.done { background: #10B981; }
-    .q4-mix-seg.filled.warn { background: #F59E0B; }
-    .q4-mix-seg.filled.danger { background: #EF4444; }
+    .q4-mix-seg { border-radius: 2px; background: #CBD5E1; height: 100%; }
+    .q4-mix-seg.filled.ok     { background: #003378; }
+    .q4-mix-seg.filled.done   { background: #059669; }
+    .q4-mix-seg.filled.warn   { background: #D97706; }
+    .q4-mix-seg.filled.danger { background: #DC2626; }
+    .q4-mix-seg.filled.closed { background: #64748B; }
+    .q4-c2-frac { font-size: 13.5px; font-weight: 900; color: #0F172A; white-space: nowrap; }
+    .q4-c2-bot { font-size: 11.5px; font-weight: 800; color: #334155; white-space: nowrap; }
 
-    .q4-trace-dock {
-      margin-top: auto;
-      flex-shrink: 0;
+    /* 3열: 상태 배지 + 체류시간 / 아셉틱 이송완료 AI예상 */
+    .q4-col-3 { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding-right: 8px; border-right: 1px solid #E2E8F0; text-align: center; }
+    .q4-st-pill {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 2.5px 9px; border-radius: 6px; font-size: 11.5px; font-weight: 900; white-space: nowrap;
     }
-    .q4-lot-btns {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
+    .q4-st-pill.st-ok     { background: #E0F2FE; color: #0369A1; border: 1px solid #BAE6FD; }
+    .q4-st-pill.st-done   { background: #059669; color: #FFFFFF; }
+    .q4-st-pill.st-warn   { background: #FEF3C7; color: #B45309; border: 1px solid #F59E0B; }
+    .q4-st-pill.st-danger { background: #DC2626; color: #FFFFFF; }
+    .q4-st-pill.st-closed { background: #E2E8F0; color: #64748B; }
+    .q4-c3-sub { font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .q4-c3-sub.sub-normal { color: #047857; }
+    .q4-c3-sub.sub-warn   { color: #B45309; }
+    .q4-c3-sub.sub-danger { color: #B91C1C; }
+
+    /* 4열: 포장전 vs 시작 ➔ AI예상 종료 시계 */
+    .q4-col-4 { display: flex; align-items: center; justify-content: flex-end; min-width: 0; }
+    .q4-time-wait { display: flex; align-items: center; gap: 6px; }
+    .q4-prepack-badge {
+      padding: 3px 9px; border-radius: 6px; background: #F1F5F9; border: 1px solid #94A3B8;
+      color: #334155; font-size: 12.5px; font-weight: 900; white-space: nowrap;
     }
+    .q4-wait-sub { font-size: 11px; font-weight: 700; color: #64748B; white-space: nowrap; }
+    .q4-time-clock { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+    .q4-time-clock .t-start { font-size: 13.5px; font-weight: 800; color: #334155; }
+    .q4-time-clock .t-arr   { font-size: 12px; font-weight: 900; color: #94A3B8; }
+    .q4-ai-tag {
+      padding: 1px 5px; border-radius: 4px; background: #EEF2FF; border: 1px solid #A5B4FC;
+      color: #3730A3; font-size: 10px; font-weight: 900;
+    }
+    .q4-time-clock .t-end { font-size: 14px; font-weight: 900; color: #003378; }
+    .q4-time-clock.is-closed .t-start,
+    .q4-time-clock.is-closed .t-end { color: #64748B; font-weight: 800; }
+
+    @media (max-width: 1420px) {
+      .q4-slot-row { grid-template-columns: minmax(0, 1.3fr) 132px 158px 175px; gap: 6px; padding: 4px 8px; }
+      .q4-c1-prod, .q4-c2-frac, .q4-time-clock .t-end { font-size: 12.5px; }
+    }
+
+    .q4-trace-dock { margin-top: auto; flex-shrink: 0; }
+    .q4-lot-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .btn-lot-hero {
-      padding: 7.5px 10px;
-      border-radius: 8px;
-      border: none;
-      font-size: 12.5px;
-      font-weight: 900;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 5px;
-      color: #FFFFFF;
-      transition: transform 0.12s, filter 0.12s;
+      padding: 7.5px 10px; border-radius: 8px; border: none; font-size: 12.5px; font-weight: 900;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;
+      color: #FFFFFF; transition: transform 0.12s, filter 0.12s;
     }
-    .btn-lot-hero.dairy {
-      background: linear-gradient(135deg, #003378 0%, #0052B4 100%);
-    }
-    .btn-lot-hero.rt {
-      background: linear-gradient(135deg, #0F766E 0%, #0D9488 100%);
-    }
+    .btn-lot-hero.dairy { background: linear-gradient(135deg, #003378 0%, #0052B4 100%); }
+    .btn-lot-hero.rt { background: linear-gradient(135deg, #0F766E 0%, #0D9488 100%); }
     .btn-lot-hero:hover { transform: translateY(-1px); filter: brightness(1.06); }
 
     /* ==================== [2] 2026 부문 8대 KPI 현황판 ==================== */
@@ -3513,6 +3476,9 @@ function renderHome() {
           : 'background:#F8FAFC; border-color:#CBD5E1;';
       }
       const tagBg = isSupUpcoming ? 'background:#D97706;' : 'background:#64748B;';
+      const memoHtml = (isSupUpcoming && au.hero_memo)
+        ? '<div style="margin-top:5px; padding:4px 8px; border-radius:6px; background:rgba(255,255,255,0.78); border:1px solid #FDE68A; font-size:var(--fs-xs); font-weight:700; color:#78350F; line-height:1.35; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;" title="' + esc(au.hero_memo) + '">📌 비고 : ' + esc(au.hero_memo) + '</div>'
+        : '';
       const subVisitHtml = au.upcoming_sup_banner
         ? '<div style="margin-top:4px; font-size:var(--fs-xs); font-weight:700; color:#475569; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">• ' + esc(au.upcoming_sup_banner) + '</div>'
         : '';
@@ -3522,6 +3488,7 @@ function renderHome() {
             '<span class="q3-tag-navy" style="' + tagBg + ' margin-top:0;">' + esc(au.badge_label || '차기 일정') + '</span>' +
             '<span style="font-size:var(--fs-base); font-weight:900; color:#0F172A; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + esc(au.visit_title || '-') + '">' + esc(au.visit_title || '-') + '</span>' +
           '</div>' +
+          memoHtml +
           subVisitHtml +
         '</div>'
       );
@@ -9268,9 +9235,12 @@ function renderQ4HeaderButtons(gi, hb) {
 }
 
 function buildMixBlockGaugeHtml(doneCnt, totalCnt, statusKey) {
-  const tot = Math.min(Math.max(Number(totalCnt) || 1, 1), 12);
+  const tot = Math.min(Math.max(Number(totalCnt) || 1, 1), 10);
   const done = Math.min(Math.max(Number(doneCnt) || 0, 0), tot);
-  const cls = (statusKey === 'danger') ? 'danger' : (statusKey === 'warn' ? 'warn' : (statusKey === 'done' ? 'done' : 'ok'));
+  const cls = (statusKey === 'danger') ? 'danger'
+    : (statusKey === 'warn' ? 'warn'
+    : (statusKey === 'done' ? 'done'
+    : (statusKey === 'closed' ? 'closed' : 'ok')));
   let segs = '';
   for (let i = 0; i < tot; i++) {
     segs += '<span class="q4-mix-seg' + (i < done ? (' filled ' + cls) : '') + '"></span>';
@@ -9292,8 +9262,8 @@ function renderQ4GeneralInspectionList(gi) {
   box.innerHTML = slots.map(function(sl) {
     const sno = sl.steril_no;
     if (!sl.active || !sl.runs || !sl.runs.length) {
-      return '<div class="q4-slot-card is-idle">' +
-        '<span style="font-size:var(--fs-sm); font-weight:800; color:#64748B;">' + esc(sl.steril_ho) + '</span>' +
+      return '<div class="q4-slot-row is-idle">' +
+        '<span class="q4-c1-ho" style="color:#64748B;">' + esc(sl.steril_ho) + '</span>' +
         '<span style="font-size:var(--fs-xs); font-weight:700; color:#94A3B8;">현재 비가동 (대기)</span>' +
       '</div>';
     }
@@ -9303,18 +9273,19 @@ function renderQ4GeneralInspectionList(gi) {
       : (sl.active_idx || 0);
     const it = sl.runs[useIdx] || sl.primary;
 
-    const tone = it.hold_status === 'danger' ? 'is-danger' : (it.hold_status === 'warn' ? 'is-warn' : (it.hold_status === 'done' ? 'is-done' : 'is-ok'));
-    const badgeCls = it.hold_status === 'danger' ? 'badge-err' : (it.hold_status === 'warn' ? 'badge-warn' : 'badge-ok');
+    const stKey = it.hold_status || 'ok'; // ok | warn | danger | done | closed
+    const rowTone = 'is-' + stKey;
 
-    let seqSwitchHtml = '';
+    const extraTagHtml = (it.extra_pack_cnt && it.extra_pack_cnt > 0)
+      ? '<span class="q4-extra-pack" title="동일 내용물 타 포장팩: ' + esc((it.extra_pack_names || []).join(', ')) + '">[외 ' + it.extra_pack_cnt + '건]</span>'
+      : '';
+
+    let seqBtnHtml = '';
     if (sl.runs.length >= 2) {
-      const otherIdx = (useIdx + 1) % sl.runs.length;
-      const otherRun = sl.runs[otherIdx];
-      const btnLbl = (otherIdx > useIdx)
-        ? ('⏭ 차기(' + (otherIdx + 1) + '/' + sl.runs.length + '): ' + otherRun.product_name)
-        : ('⏮ 이전(' + (otherIdx + 1) + '/' + sl.runs.length + '): ' + otherRun.product_name);
-      seqSwitchHtml = '<button type="button" class="q4-next-btn" onclick="stepQ4SterilSlotRun(' + sno + ', 1)" title="클릭하여 같은 호기의 이전/다음 생산 내용물 확인">' +
-        esc(btnLbl.length > 18 ? (btnLbl.slice(0, 17) + '…') : btnLbl) +
+      const nxtIdx = (useIdx + 1) % sl.runs.length;
+      const nxtRun = sl.runs[nxtIdx];
+      seqBtnHtml = '<button type="button" class="q4-seq-pill" onclick="stepQ4SterilSlotRun(' + sno + ', 1)" title="다른 내용물 전환 (' + esc(nxtRun.product_name) + ')">' +
+        (nxtIdx + 1) + '차 품목 ▸' +
       '</button>';
     }
 
@@ -9322,25 +9293,58 @@ function renderQ4GeneralInspectionList(gi) {
       ? '<span class="badge badge-err" style="font-size:10px; padding:1px 5px;">규격이탈 ' + it.fails_cnt + '</span>'
       : '';
 
-    return '<div class="q4-slot-card ' + tone + '" title="설비 기준: ' + esc(it.equip_spec || '') + (it.eta_note ? (' / ' + esc(it.eta_note)) : '') + '">' +
-      '<div class="q4-slot-top">' +
-        '<div style="min-width:0; display:flex; align-items:center; gap:5px; overflow:hidden;">' +
-          '<span class="q4-slot-ho">' + esc(it.steril_ho) + '·' + esc(it.packer_ho) + '</span>' +
-          '<strong class="q4-slot-prod">' + esc(it.product_name) + '</strong>' +
-          failPill +
+    const statusPillCls = stKey === 'danger' ? 'st-danger'
+      : (stKey === 'warn' ? 'st-warn'
+      : (stKey === 'done' ? 'st-done'
+      : (stKey === 'closed' ? 'st-closed' : 'st-ok')));
+
+    const subToneCls = stKey === 'danger' ? 'sub-danger' : (stKey === 'warn' ? 'sub-warn' : 'sub-normal');
+    const subHtml = it.aseptic_sub_text
+      ? '<div class="q4-c3-sub ' + subToneCls + '">' + esc(it.aseptic_sub_text) + '</div>'
+      : '';
+
+    let timeRightHtml = '';
+    if (!it.fin_started) {
+      timeRightHtml = '<div class="q4-time-wait"><span class="q4-prepack-badge">포장전</span><span class="q4-wait-sub">첫샘플 대기</span></div>';
+    } else if (it.is_pack_finished || !it.eta_is_ai) {
+      timeRightHtml = '<div class="q4-time-clock is-closed">' +
+        '<span class="t-start">' + esc(it.fin_start_hm) + '</span>' +
+        '<span class="t-arr">→</span>' +
+        '<span class="t-end">' + esc(it.eta_hm || '-') + ' 종료</span>' +
+      '</div>';
+    } else {
+      timeRightHtml = '<div class="q4-time-clock">' +
+        '<span class="t-start">' + esc(it.fin_start_hm) + '</span>' +
+        '<span class="t-arr">→</span>' +
+        '<span class="q4-ai-tag">AI예상</span>' +
+        '<span class="t-end">' + esc(it.eta_hm || '-') + ' 종료</span>' +
+      '</div>';
+    }
+
+    return '<div class="q4-slot-row ' + rowTone + '" title="설비 기준: ' + esc(it.equip_spec || '') + (it.eta_note ? (' / ' + esc(it.eta_note)) : '') + '">' +
+      '<div class="q4-col-1">' +
+        '<div class="q4-c1-top">' +
+          '<span class="q4-c1-ho">' + esc(it.steril_ho) + ' · ' + esc(it.packer_ho) + '</span>' +
+          seqBtnHtml +
         '</div>' +
-        '<div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">' +
-          seqSwitchHtml +
-          '<span class="q4-slot-eta">' + esc(it.fin_text) + ' → 종료예정 <b>' + esc(it.eta_hm || '-') + '</b></span>' +
+        '<div class="q4-c1-bot">' +
+          '<strong class="q4-c1-prod">' + esc(it.product_name) + '</strong>' +
+          extraTagHtml + failPill +
         '</div>' +
       '</div>' +
-      '<div class="q4-slot-bot">' +
-        '<div class="q4-mix-gauge-wrap">' +
-          buildMixBlockGaugeHtml(it.mix_done, it.mix_total, it.hold_status) +
-          '<strong style="color:#0F172A; white-space:nowrap;">' + esc(it.mix_text) + ' (' + (it.mix_pct || 0) + '%)</strong>' +
+      '<div class="q4-col-2">' +
+        '<div class="q4-c2-top">' +
+          buildMixBlockGaugeHtml(it.mix_done, it.mix_total, stKey) +
+          '<span class="q4-c2-frac">' + it.mix_done + '/' + it.mix_total + '</span>' +
         '</div>' +
-        '<span style="color:#CBD5E1;">|</span>' +
-        '<span class="badge ' + badgeCls + '" style="font-size:10.5px; padding:1px 7px;">' + esc(it.hold_badge) + '</span>' +
+        '<div class="q4-c2-bot">' + esc(it.mix_text) + '</div>' +
+      '</div>' +
+      '<div class="q4-col-3">' +
+        '<span class="q4-st-pill ' + statusPillCls + '">' + esc(it.hold_badge) + '</span>' +
+        subHtml +
+      '</div>' +
+      '<div class="q4-col-4">' +
+        timeRightHtml +
       '</div>' +
     '</div>';
   }).join('');

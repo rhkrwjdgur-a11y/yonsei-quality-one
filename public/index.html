@@ -860,55 +860,281 @@
       filter: brightness(0.94);
     }
 
-    /* Q4: 클레임·부적합 진행 현황 & 냉장/상온 역추적 전용 버튼 */
-    .q4-body {
+    /* Q2 법규 하단 상시 노출 대응 코멘트 & 인라인 편집 박스 */
+    .q2-law-cmt-box {
+      margin-top: 4px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: #EFF6FF;
+      border: 1px solid #BFDBFE;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      font-size: var(--fs-xs);
+      line-height: 1.38;
+    }
+    .q2-law-cmt-box.is-empty {
+      background: #F8FAFC;
+      border: 1px dashed #CBD5E1;
+    }
+    .q2-law-cmt-arr {
+      color: var(--yonsei-blue);
+      font-weight: 900;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .q2-law-cmt-txt {
+      color: #1E293B;
+      font-weight: 700;
+      word-break: keep-all;
+    }
+    .q2-law-cmt-box.is-empty .q2-law-cmt-txt {
+      color: #64748B;
+      font-weight: 600;
+    }
+    .q2-law-inline-edit {
+      margin-top: 5px;
+      padding: 5px 7px;
+      border-radius: 6px;
+      background: #FFFBEB;
+      border: 1px solid #FCD34D;
+    }
+
+    /* Q4: 상단 [클레임 추이 그래프 ↔ 실시간 일반검사] + 중단 [인수인계 보드] + 하단 [냉장/상온 클레임 역추적] */
+    .q4-tab-switch {
+      display: inline-flex;
+      align-items: center;
+      background: #F1F5F9;
+      border: 1px solid #CBD5E1;
+      border-radius: 7px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .q4-sw-btn {
+      border: none;
+      background: transparent;
+      color: #475569;
+      font-size: var(--fs-xs);
+      font-weight: 800;
+      padding: 4px 9px;
+      border-radius: 5px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+    .q4-sw-btn.active {
+      background: var(--yonsei-blue);
+      color: #FFFFFF;
+      box-shadow: 0 1px 3px rgba(0, 51, 120, 0.2);
+    }
+    .q4-ex-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 900;
+      background: #FEF3C7;
+      color: #92400E;
+      border: 1px solid #FCD34D;
+      line-height: 1.2;
+    }
+    .q4-sw-btn.active .q4-ex-pill {
+      background: #FDE68A;
+      color: #78350F;
+      border-color: #F59E0B;
+    }
+
+    .q4-stack-wrap {
       flex: 1;
       min-height: 0;
       display: flex;
       flex-direction: column;
-      gap: clamp(6px, 0.85vh, 10px);
+      gap: 6px;
       overflow: hidden;
     }
-    .q4-zero-box {
-      background: var(--ok-bg);
-      border: 1px solid #86EFAC;
+    .q4-top-stage {
+      flex: 1.15 1 0;
+      min-height: 0;
+      border: 1px solid #E2E8F0;
       border-radius: 9px;
-      padding: clamp(7px, 0.95vh, 11px) 12px;
+      background: #F8FAFC;
+      padding: 6px 9px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .q4-claim-meta {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 8px;
+      gap: 6px;
+      font-size: var(--fs-xs);
+      color: #334155;
+      margin-bottom: 3px;
       flex-shrink: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .q4-cnt-grid {
+    .q4-chart-box {
       flex: 1;
       min-height: 0;
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
+      position: relative;
     }
-    .q4-cnt-card {
-      border: 1px solid #CBD5E1;
-      border-radius: 9px;
-      padding: 7px 8px;
-      text-align: center;
-      background: #F8FAFC;
+
+    .q4-gi-subbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      font-size: 10.5px;
+      font-weight: 700;
+      color: #475569;
+      padding-bottom: 4px;
+      margin-bottom: 4px;
+      border-bottom: 1px dashed #CBD5E1;
+      flex-shrink: 0;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .q4-gi-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
       display: flex;
       flex-direction: column;
-      justify-content: center;
-      cursor: pointer;
-      transition: border-color 0.12s, background 0.12s;
+      gap: 4px;
+      padding-right: 2px;
     }
-    .q4-cnt-card:hover {
-      border-color: #60A5FA;
+    .q4-gi-scroll::-webkit-scrollbar { width: 4px; }
+    .q4-gi-scroll::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+
+    .q4-gi-row {
       background: #FFFFFF;
+      border: 1px solid #CBD5E1;
+      border-left: 3.5px solid #0284C7;
+      border-radius: 7px;
+      padding: 5px 8px;
+      font-size: var(--fs-xs);
+      line-height: 1.35;
     }
-    .q4-cnt-lbl { font-size: var(--fs-xs); font-weight: 700; color: var(--text-sub); }
-    .q4-cnt-num { font-size: calc(var(--fs-xl) * 1.15); font-weight: 900; color: #0F172A; margin-top: 3px; }
+    .q4-gi-row.is-done { background: #F0FDF4; border-color: #86EFAC; border-left-color: #059669; }
+    .q4-gi-row.is-warn { background: #FFFBEB; border-color: #FCD34D; border-left-color: #D97706; }
+    .q4-gi-row.is-danger { background: #FEF2F2; border-color: #FCA5A5; border-left-color: #DC2626; }
+    .q4-gi-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .q4-gi-ho {
+      font-weight: 900;
+      color: var(--yonsei-blue);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .q4-gi-prod {
+      color: #0F172A;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .q4-gi-eta {
+      font-size: 11px;
+      font-weight: 700;
+      color: #0F172A;
+      background: rgba(15, 23, 42, 0.05);
+      padding: 1px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .q4-gi-bot {
+      margin-top: 2px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: wrap;
+      color: #334155;
+    }
+
+    .q4-handover-box {
+      flex: 0.85 1 0;
+      min-height: 76px;
+      border: 1px solid #CBD5E1;
+      border-radius: 9px;
+      background: #FFFFFF;
+      padding: 5px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      overflow: hidden;
+    }
+    .q4-ho-hdr {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .q4-ho-input-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0;
+    }
+    .q4-ho-list {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding-right: 2px;
+    }
+    .q4-ho-list::-webkit-scrollbar { width: 4px; }
+    .q4-ho-list::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+    .q4-ho-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 3px 6px;
+      border-radius: 5px;
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      font-size: var(--fs-xs);
+      line-height: 1.35;
+    }
+    .q4-ho-item.is-pinned { background: #FFFBEB; border-color: #FDE68A; }
+    .q4-ho-item.is-checked { opacity: 0.62; background: #F1F5F9; }
+    .q4-ho-item.is-checked .q4-ho-txt { text-decoration: line-through; color: #64748B; }
+    .q4-ho-txt {
+      flex: 1;
+      min-width: 0;
+      cursor: pointer;
+      color: #0F172A;
+      font-weight: 700;
+      word-break: keep-all;
+    }
+    .q4-ho-meta { color: var(--yonsei-blue); font-weight: 800; }
+    .q4-ho-del {
+      border: none;
+      background: none;
+      color: #94A3B8;
+      font-size: 11px;
+      cursor: pointer;
+      padding: 0 2px;
+      flex-shrink: 0;
+    }
+    .q4-ho-del:hover { color: #DC2626; }
 
     .q4-trace-dock {
       margin-top: auto;
-      padding-top: 6px;
+      padding-top: 2px;
       flex-shrink: 0;
     }
     .q4-lot-btns {
@@ -917,7 +1143,7 @@
       gap: 8px;
     }
     .btn-lot-hero {
-      padding: 9px 10px;
+      padding: 8px 10px;
       border-radius: 8px;
       border: none;
       font-size: 12.5px;
@@ -2252,12 +2478,15 @@
           <div class="bottom-notes-3line q1-ok" id="q1NotesBox">시트 데이터를 불러오는 중입니다...</div>
         </div>
 
-        <!-- Q2: 법규 개정 핵심 보드 + 표시사항 검토·부자재·포장 3단 파이프라인 + 특이사항 메모 -->
+        <!-- Q2: 확장된 법규 D-Day · 당사 대응 코멘트 상시 노출 + 표시사항·부자재 전환 흐름(기존 100% 유지) -->
         <div class="quad-card">
           <div class="quad-hdr">
             <div class="quad-title">
-              <span>● 표시사항 · 부자재 전환 & 법규 현황</span>
-              <span class="badge badge-neutral" id="q2CumBadge" style="cursor:pointer;" onclick="LABEL_TAB='analytics'; switchView('label')" title="표시사항 월별 통계 보기">당월 0건</span>
+              <span>● 법규 · 공문 대응 현황 &amp; 표시사항 · 부자재 전환 흐름</span>
+              <span class="badge badge-neutral" id="q2CumBadge" style="cursor:pointer;" onclick="LABEL_TAB='analytics'; switchView('label')" title="표시사항 월별 통계 및 특이사항 보기">당월 0건</span>
+            </div>
+            <div class="quad-actions">
+              <span style="font-size:11px; font-weight:700; color:#64748B;">법규 클릭 시 코멘트 입력</span>
             </div>
           </div>
 
@@ -2267,17 +2496,9 @@
             </div>
             <div class="q2-pipe-grid" id="q2PipelineGrid"></div>
           </div>
-
-          <div class="bottom-notes-3line q2-memo">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
-              <span style="color:#92400E; font-weight:900;">★ 표시사항 특이사항 메모 ("표시사항 현황" 시트 [특이사항] 탭 실시간 연동)</span>
-              <button class="link-chip" style="font-size:11px;" onclick="openLabelMemoModal()">메모 편집 ›</button>
-            </div>
-            <div id="q2LabelMemoTxt" style="white-space:pre-line; font-weight:700;">-</div>
-          </div>
         </div>
 
-        <!-- Q3: 방문심사 · 협력업체 방문 일정 현황 (등록 버튼만 유지) -->
+        <!-- Q3: 방문심사 · 협력업체 방문 일정 현황 (기존 유지) -->
         <div class="quad-card">
           <div class="quad-hdr">
             <div class="quad-title">● 방문심사 · 협력업체 방문 일정 현황</div>
@@ -2298,20 +2519,57 @@
           </div>
         </div>
 
-        <!-- Q4: 클레임 · 부적합 진행 현황 및 냉장/상온 분리 LOT 역추적 (신규 등록 및 냉장/상온 버튼만 유지) -->
+        <!-- Q4: 상단 [클레임 그래프 ↔ 실시간 일반검사] + 중단 [인수인계 보드] + 하단 [냉장/상온 클레임 역추적] -->
         <div class="quad-card">
           <div class="quad-hdr">
-            <div class="quad-title">● 클레임 · 부적합 진행 현황 및 LOT 역추적</div>
+            <div class="quad-title">● 실시간 일반검사</div>
             <div class="quad-actions">
-              <span class="badge badge-ok" id="q4ActiveBadge">진행 0건</span>
-              <button class="btn btn-primary btn-sm" onclick="openClaimNcModal()">+ 신규 등록</button>
+              <div class="q4-tab-switch">
+                <button type="button" class="q4-sw-btn active" id="q4TopModeClaimBtn" onclick="switchQ4TopMode('CLAIM')">📈 클레임 추이 그래프</button>
+                <button type="button" class="q4-sw-btn" id="q4TopModeGiBtn" onclick="switchQ4TopMode('GI')">🧪 실시간 일반검사 <span class="q4-ex-pill">예시</span></button>
+              </div>
             </div>
           </div>
-          <div class="q4-body" id="q4BodyBox"></div>
+
+          <div class="q4-stack-wrap">
+            <!-- 상단 전환 스테이지: 클레임 그래프(기본) / 실시간 일반검사(예시 또는 QMS 실시간) -->
+            <div class="q4-top-stage" id="q4ClaimChartPane">
+              <div class="q4-claim-meta">
+                <span id="q4ClaimMetaTxt">클레임 추이 집계 중...</span>
+                <button type="button" class="link-chip" style="font-size:11px;" onclick="switchView('claim')">상세 분석 ›</button>
+              </div>
+              <div class="q4-chart-box"><canvas id="chartHomeQ4Claim"></canvas></div>
+            </div>
+
+            <div class="q4-top-stage" id="q4GiListPane" style="display:none;"></div>
+
+            <!-- 중단: 교대 · 부서간 인수인계 전달사항 보드 -->
+            <div class="q4-handover-box">
+              <div class="q4-ho-hdr">
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <strong style="font-size:var(--fs-sm); color:#0F172A;">📋 교대 · 인수인계 전달사항</strong>
+                  <span class="badge badge-ok" id="q4HandoverBadge" style="padding:1.5px 7px; font-size:10.5px;">미확인 0</span>
+                </div>
+                <button type="button" class="link-chip" style="font-size:11px;" onclick="openHandoverFullModal()">전체·팝업 관리 ›</button>
+              </div>
+              <div class="q4-ho-input-row">
+                <label style="display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:800; color:#92400E; cursor:pointer; white-space:nowrap;" title="체크 시 상단에 고정됩니다">
+                  <input type="checkbox" id="chkQ4HandoverPin" /> 📌고정
+                </label>
+                <input type="text" id="inpQ4Handover" class="form-ctrl" style="flex:1; height:27px; padding:2px 8px; font-size:12px;"
+                  placeholder="인수인계·전달 멘트 입력 후 Enter (작성자·시간 자동 기록)"
+                  onkeydown="if(event.key==='Enter') submitQuickHandover()" />
+                <button type="button" class="btn btn-primary btn-sm" style="height:27px; padding:0 9px;" onclick="submitQuickHandover()">등록</button>
+              </div>
+              <div class="q4-ho-list" id="q4HandoverList"></div>
+            </div>
+          </div>
+
+          <!-- 4x4 분면 맨 하단 고정: 냉장 / 상온 클레임 역추적 -->
           <div class="q4-trace-dock">
             <div class="q4-lot-btns">
-              <button type="button" class="btn-lot-hero dairy" onclick="openLotViewWithScope('DAIRY')">❄️ 냉장 LOT 역추적 ›</button>
-              <button type="button" class="btn-lot-hero rt" onclick="openLotViewWithScope('RT')">📦 상온 LOT 역추적 ›</button>
+              <button type="button" class="btn-lot-hero dairy" onclick="openLotViewWithScope('DAIRY')">❄️ 냉장 클레임 역추적 ›</button>
+              <button type="button" class="btn-lot-hero rt" onclick="openLotViewWithScope('RT')">🔥 상온 클레임 역추적 ›</button>
             </div>
           </div>
         </div>
@@ -2351,6 +2609,7 @@
               <option value="2028년">2028년</option>
             </select>
             <button type="button" class="btn btn-sm" onclick="loadSelfQualityData(true)">🔄 새로고침</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="syncSelfQualityFromSheet()">📌 시트 [자가품질] 탭 즉시 반영하기</button>
           </div>
           <div class="sqc-stat-pills" id="sqcSummaryPills">
             <span class="sqc-pill">대상 유형 21종</span>
@@ -2937,6 +3196,9 @@ function getDashboardCheckedLaws() {
   return (lw.all_laws || []).filter(function(x) { return Boolean(x && x.show_on_dashboard); });
 }
 
+let Q2_OPEN_CMT_LAW_ID = '';
+let Q4_TOP_MODE = 'AUTO';
+
 function renderQ2WideLawBar() {
   const bar = document.getElementById('q2LawWideBar');
   if (!bar) return;
@@ -2951,32 +3213,91 @@ function renderQ2WideLawBar() {
   }
 
   bar.innerHTML = laws.map(function(item) {
+    const lid = String(item.law_id || '');
     const stageStr = String(item['법규단계'] || '고시');
     const isGuide = stageStr.indexOf('공문') !== -1 || stageStr.indexOf('지침') !== -1;
     const isNotice = !isGuide && Boolean(item['예고여부']);
     const stCls = isGuide ? 'badge-ok' : (isNotice ? 'badge-purple' : 'badge-info');
     const cardExtraCls = isGuide ? ' is-guide' : (isNotice ? ' is-notice' : '');
     const sumTxt = item['실무조치요약'] || item['자동조치요약'] || '-';
+    const cmtTxt = String(item.action_comment || '').trim();
+    const isOpenEdit = (Q2_OPEN_CMT_LAW_ID === lid);
     const enfDt = (item['시행일'] && item['시행일'] !== '-' && item['시행일'] !== '미정')
       ? ('시행 ' + item['시행일'])
       : '시행일 미정';
-    const tipLawName = '법규명: ' + (item['법규명'] || '-') + ' (클릭 시 법령명·원문 및 요약 편집)';
+    const tipLawName = '법규명: ' + (item['법규명'] || '-') + ' (클릭 시 아래에 당사 대응 코멘트 입력)';
 
-    return '<div class="q2-law-item-card' + cardExtraCls + '" onclick="openLawDetailModal(\'' + esc(item.law_id || '') + '\')" title="' + esc(tipLawName) + '">' +
+    const cmtDisplayHtml = isOpenEdit
+      ? '<div class="q2-law-inline-edit" onclick="event.stopPropagation()">' +
+          '<div style="display:flex; gap:5px; align-items:center;">' +
+            '<span style="font-size:11.5px; font-weight:900; color:#003378; white-space:nowrap;">↳ 당사 대응 :</span>' +
+            '<input type="text" id="inpQ2LawCmt_' + esc(lid) + '" class="form-ctrl" style="flex:1; height:28px; padding:2px 8px; font-size:12px; font-weight:700;" ' +
+              'value="' + esc(cmtTxt) + '" placeholder="무엇을 진행 중이거나 예정인지 간단히 입력 (Enter 저장)" ' +
+              'onkeydown="if(event.key===\'Enter\'){saveQ2LawCommentInline(\'' + esc(lid) + '\');} else if(event.key===\'Escape\'){Q2_OPEN_CMT_LAW_ID=\'\'; renderQ2WideLawBar();}" />' +
+            '<select id="selQ2LawPrep_' + esc(lid) + '" class="form-ctrl" style="width:102px; height:28px; padding:2px 5px; font-size:11.5px; font-weight:800;">' +
+              ['검토전', '부자재변경중', '반영완료'].map(function(p) {
+                return '<option value="' + p + '" ' + (item.prep_status === p ? 'selected' : '') + '>' + p + '</option>';
+              }).join('') +
+            '</select>' +
+            '<button type="button" class="btn btn-primary btn-sm" style="height:28px;" onclick="saveQ2LawCommentInline(\'' + esc(lid) + '\')">저장</button>' +
+            '<button type="button" class="btn btn-sm" style="height:28px;" onclick="Q2_OPEN_CMT_LAW_ID=\'\'; renderQ2WideLawBar();">닫기</button>' +
+          '</div>' +
+        '</div>'
+      : '<div class="q2-law-cmt-box' + (cmtTxt ? '' : ' is-empty') + '">' +
+          '<span class="q2-law-cmt-arr">↳ 당사 대응 :</span>' +
+          '<span class="q2-law-cmt-txt">' + (cmtTxt ? esc(cmtTxt) : '클릭하여 당사 대응 계획 · 진행사항을 간단히 적어주세요') + '</span>' +
+        '</div>';
+
+    return '<div class="q2-law-item-card' + cardExtraCls + '" onclick="toggleQ2LawInlineEdit(\'' + esc(lid) + '\')" title="' + esc(tipLawName) + '">' +
       '<div class="q2-law-item-hdr">' +
         '<div class="q2-law-item-left">' +
           '<span class="badge ' + stCls + '" style="padding:2px 7px; font-size:11px;">' + esc(stageStr) + '</span>' +
           '<span class="badge ' + esc(item.d_day_cls || 'badge-info') + '" style="padding:2px 8px; font-size:11.5px; font-weight:900;">' + esc(item.d_day_label || '-') + '</span>' +
           '<span style="font-size:11.5px; font-weight:700; color:#475569;">' + esc(enfDt) + '</span>' +
+          '<strong style="font-size:11.5px; color:#003378; max-width:210px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + esc(item['법규명'] || '') + '</strong>' +
         '</div>' +
         '<div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">' +
-          '<span style="font-size:10.5px; font-weight:700; color:#64748B;">법령·원문 ›</span>' +
+          '<button type="button" class="link-chip" style="font-size:10.5px; padding:1px 4px;" onclick="event.stopPropagation(); openLawDetailModal(\'' + esc(lid) + '\')">법령·원문 ›</button>' +
           '<span class="badge ' + esc(item.prep_timing_cls || 'badge-neutral') + '" style="padding:2px 7px; font-size:10.5px;">' + esc(item.prep_status || '검토전') + '</span>' +
         '</div>' +
       '</div>' +
       '<div class="q2-law-item-sum">' + esc(sumTxt) + '</div>' +
+      cmtDisplayHtml +
     '</div>';
   }).join('');
+}
+
+function toggleQ2LawInlineEdit(lawId) {
+  Q2_OPEN_CMT_LAW_ID = (Q2_OPEN_CMT_LAW_ID === lawId) ? '' : lawId;
+  renderQ2WideLawBar();
+  if (Q2_OPEN_CMT_LAW_ID) {
+    setTimeout(function() {
+      const inp = document.getElementById('inpQ2LawCmt_' + Q2_OPEN_CMT_LAW_ID);
+      if (inp) inp.focus();
+    }, 30);
+  }
+}
+
+async function saveQ2LawCommentInline(lawId) {
+  const inp = document.getElementById('inpQ2LawCmt_' + lawId);
+  const sel = document.getElementById('selQ2LawPrep_' + lawId);
+  const cmtVal = inp ? inp.value.trim() : '';
+  const prepVal = sel ? sel.value : '검토전';
+  try {
+    const res = await apiPost('/api/law-pref', {
+      law_id: lawId,
+      mode: 'Pin',
+      prep: prepVal,
+      comment: cmtVal
+    });
+    BUNDLE.law = res.law;
+    Q2_OPEN_CMT_LAW_ID = '';
+    saveBundleToBrowserCache(BUNDLE);
+    renderQ2WideLawBar();
+    showToast('당사 법규 대응 코멘트가 시트에 저장되었습니다.');
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
 }
 
 // ==============================================================================
@@ -3325,53 +3646,12 @@ function renderHome() {
     setHtml('q3VisitList', '<div style="color:var(--err-fg); font-size:12px; padding:8px;">일정 표시 오류: ' + esc(err3.message) + '</div>');
   }
 
-  // --- [Q4] 클레임 · 부적합 현황 (카드 클릭 시 상세 내역 이동) ---
+  // --- [Q4] 클레임 추이 그래프 / 실시간 일반검사(예시·실시간) + 인수인계 보드 ---
   try {
-    const cnh = BUNDLE.claim_nc_hist || {};
-    const cnts = cnh.counts || { active: 0, total: 0, claim: 0, nc: 0 };
-    const actCnt = cnts.active || 0;
-    const q4Badge = document.getElementById('q4ActiveBadge');
-    if (q4Badge) {
-      q4Badge.textContent = '진행 ' + actCnt + '건';
-      q4Badge.className = 'badge ' + (actCnt > 0 ? 'badge-err' : 'badge-ok');
-    }
-
-    const actItems = cnh.active_items || [];
-    if (!actItems.length) {
-      setHtml('q4BodyBox',
-        '<div class="q4-zero-box">' +
-          '<div>' +
-            '<div style="font-weight:900; color:var(--ok-fg); font-size:13px;">✓ 현재 출고보류 · 추가검사 진행 중인 클레임/부적합 건이 없습니다</div>' +
-            '<div style="font-size:11.5px; color:#065F46; margin-top:2px;">전 공정(상온 · 우유카톤/병 · 발효유 · 두유 · 미생물) 정상 출고 기준 유지 중</div>' +
-          '</div>' +
-          '<span class="badge badge-ok">이상 없음</span>' +
-        '</div>' +
-        '<div class="q4-cnt-grid">' +
-          '<div class="q4-cnt-card" onclick="openLotViewWithScope(\'HIST\')" title="클레임·부적합 전체 내역 보기"><div class="q4-cnt-lbl">시트 누적 전체 이력</div><div class="q4-cnt-num">' + (cnts.total || 0) + '건</div></div>' +
-          '<div class="q4-cnt-card" onclick="openLotViewWithScope(\'HIST\')" title="주요 클레임 기록 보기"><div class="q4-cnt-lbl">주요 클레임 기록</div><div class="q4-cnt-num">' + (cnts.claim || 0) + '건</div></div>' +
-          '<div class="q4-cnt-card" onclick="openLotViewWithScope(\'HIST\')" title="공정 부적합 기록 보기"><div class="q4-cnt-lbl">공정 부적합 기록</div><div class="q4-cnt-num" style="color:var(--warn-fg);">' + (cnts.nc || 0) + '건</div></div>' +
-        '</div>'
-      );
-    } else {
-      setHtml('q4BodyBox',
-        '<div class="mini-scroll-list">' +
-        actItems.map(function(it) {
-          const cCls = it['구분'] === '부적합' ? 'badge-err' : 'badge-warn';
-          return '<div class="mini-item" onclick="openLotViewWithScope(\'HIST\')">' +
-            '<div style="display:flex; justify-content:space-between; align-items:center; gap:4px;">' +
-              '<div><span class="badge ' + cCls + '">' + esc(it['구분'] || '-') + '</span> <strong style="font-size:12.5px;">' + esc(it['제품명'] || '-') + '</strong> <span style="font-size:11px; color:var(--text-muted);">(' + esc(it['소비기한'] || '-') + ')</span></div>' +
-              '<span class="badge badge-info">' + esc(it['진행상태'] || '-') + '</span>' +
-            '</div>' +
-            '<div style="font-size:11.5px; color:var(--text-sub); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' +
-              esc(it['상세사유'] || '-') + ' → ' + esc(it['추가검사_조치내역'] || '-') +
-            '</div>' +
-          '</div>';
-        }).join('') +
-        '</div>'
-      );
-    }
+    renderQ4Area();
   } catch (err4) {
-    setHtml('q4BodyBox', '<div style="color:var(--err-fg); font-size:12px; padding:8px;">이력 표시 오류: ' + esc(err4.message) + '</div>');
+    const gp = document.getElementById('q4GiListPane');
+    if (gp) gp.innerHTML = '<div style="color:var(--err-fg); font-size:12px; padding:8px;">표시 오류: ' + esc(err4.message) + '</div>';
   }
 }
 
@@ -3417,6 +3697,17 @@ function renderLabelView() {
         '<div class="stat-card"><div class="stat-lbl">[특이사항] 탭 연동 메모</div><div style="font-size:12px; color:#78350F; margin-top:5px; white-space:pre-line; max-height:52px; overflow-y:auto;">' + esc(memoTxt || '등록된 특이사항 없음') + '</div></div>' +
       '</div>';
 
+  const specialMemoBannerHtml =
+    '<div class="panel-card" style="background:#FFFBEB; border:1.5px solid #FDE68A; padding:11px 15px; margin-bottom:12px;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:5px;">' +
+        '<strong style="font-size:13.5px; color:#92400E;">★ 표시사항 특이사항 메모 ("표시사항 현황" 시트 [특이사항] 탭 실시간 연동)</strong>' +
+        '<button class="btn btn-sm" style="background:#FFFFFF; border-color:#F59E0B; color:#92400E; font-weight:800;" onclick="openLabelMemoModal()">메모 편집 ›</button>' +
+      '</div>' +
+      '<div style="font-size:13px; font-weight:700; color:#78350F; white-space:pre-line; line-height:1.55;">' +
+        esc(memoTxt || '등록된 표시사항 특이사항이 없습니다. 우측 [메모 편집]을 눌러 작성해 주세요.') +
+      '</div>' +
+    '</div>';
+
   sec.innerHTML =
     '<div class="page-hdr">' +
       '<div><h2 class="page-h2">표시사항 검토 진행 현황 및 25년 vs 26년 업무량 분석</h2><div class="page-desc">월별 통계 및 부서별 업무량 분석을 기본 제공하며, [특이사항] 탭 메모 양방향 편집 및 자사 부자재 전환 분류를 지원합니다.</div></div>' +
@@ -3424,6 +3715,7 @@ function renderLabelView() {
         '<button class="btn btn-primary" onclick="openLabelMemoModal()">📝 [특이사항] 탭 메모 편집</button>' +
       '</div>' +
     '</div>' +
+    specialMemoBannerHtml +
     topKpiCardsHtml +
     '<div class="tab-bar">' +
       '<button class="tab-btn ' + (LABEL_TAB === 'analytics' ? 'active' : '') + '" onclick="LABEL_TAB=\'analytics\'; renderLabelView()">월별 · 부서별 · 생산처별 통계 (기본)</button>' +
@@ -8258,7 +8550,7 @@ function openLawDetailModal(lawId) {
   const isGuideTab = String(item['탭구분'] || '').indexOf('공문') !== -1 || String(item['탭구분'] || '').indexOf('지침') !== -1;
 
   openModal(
-    '⚖️ 법규 · 공문 원문 및 핵심 요약 관리',
+    '⚖️ 법규 · 공문 원문 및 당사 대응 코멘트 관리',
     '<div style="margin-bottom:10px;">' +
       '<div style="display:flex; gap:6px; align-items:center; margin-bottom:4px; flex-wrap:wrap;">' +
         '<span class="badge ' + (isGuideTab ? 'badge-ok' : 'badge-info') + '">' + esc(item['탭구분']) + '</span>' +
@@ -8272,7 +8564,11 @@ function openLawDetailModal(lawId) {
         '<label class="form-lbl" style="margin:0;">📌 핵심 요약문 (저장 시 [_법규요약DB] 및 [대시보드] 탭에 영구 반영)</label>' +
         '<button class="btn btn-sm" id="btnLawAiGen" onclick="runLawGeminiSummary(\'' + esc(lawId) + '\')">✨ Gemini AI 요약 생성</button>' +
       '</div>' +
-      '<textarea id="txtLawSumEdit" class="form-ctrl" rows="3">' + esc(item['실무조치요약']) + '</textarea>' +
+      '<textarea id="txtLawSumEdit" class="form-ctrl" rows="2">' + esc(item['실무조치요약']) + '</textarea>' +
+    '</div>' +
+    '<div class="form-row">' +
+      '<label class="form-lbl" style="color:#003378;">↳ 당사 대응 코멘트 (대시보드 법규 하단에 항상 연결 표시)</label>' +
+      '<input type="text" id="inpLawActionCmtEdit" class="form-ctrl" value="' + esc(item.action_comment || '') + '" placeholder="예: 기존 포장재 1월 소진 예상, 12월 말 동판 변경 발주 예정" />' +
     '</div>' +
     '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">' +
       '<div><label class="form-lbl">통합 대시보드 노출</label>' +
@@ -8291,13 +8587,13 @@ function openLawDetailModal(lawId) {
     '</div>' +
     '<div class="form-row">' +
       '<label class="form-lbl">시트 원문 전체</label>' +
-      '<div style="max-height:210px; overflow-y:auto; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:7px; padding:10px; white-space:pre-line; font-size:12.5px; line-height:1.55; color:#334155;">' +
+      '<div style="max-height:190px; overflow-y:auto; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:7px; padding:10px; white-space:pre-line; font-size:12.5px; line-height:1.55; color:#334155;">' +
         esc(item['원문내용']) +
       '</div>' +
     '</div>',
     (isGuideTab ? '<button class="btn" style="color:var(--err-fg); margin-right:auto;" onclick="deleteLawGuidelineItem(\'' + esc(lawId) + '\')">공문 삭제</button>' : '') +
     '<button class="btn" onclick="closeModal()">닫기</button>' +
-    '<button class="btn btn-primary" onclick="saveLawDetailModal(\'' + esc(lawId) + '\')">💾 [_법규요약DB] 시트에 영구 저장</button>'
+    '<button class="btn btn-primary" onclick="saveLawDetailModal(\'' + esc(lawId) + '\')">💾 시트에 영구 저장</button>'
   );
 }
 
@@ -8318,6 +8614,7 @@ async function runLawGeminiSummary(lawId) {
 
 async function saveLawDetailModal(lawId) {
   const sumTxt = document.getElementById('txtLawSumEdit').value;
+  const cmtTxt = document.getElementById('inpLawActionCmtEdit').value;
   const modeVal = document.getElementById('selLawDashMode').value;
   const prepVal = document.getElementById('selLawPrepEdit').value;
   try {
@@ -8326,7 +8623,8 @@ async function saveLawDetailModal(lawId) {
       mode: modeVal,
       prep: prepVal,
       summary: sumTxt,
-      summary_method: _LAST_SUMMARY_METHOD
+      summary_method: _LAST_SUMMARY_METHOD,
+      comment: cmtTxt
     });
     BUNDLE.law = res.law;
     saveBundleToBrowserCache(BUNDLE);
@@ -8996,6 +9294,334 @@ window.addEventListener('DOMContentLoaded', async function() {
     }
   });
 });
+// ==============================================================================
+// [Q4 확장 렌더러] 클레임 추이 그래프(기본) ↔ 실시간 일반검사(예시/실시간) + 인수인계 보드 + 자가품질 반영
+// ==============================================================================
+function switchQ4TopMode(mode) {
+  Q4_TOP_MODE = mode;
+  renderQ4Area();
+}
+
+function renderQ4Area() {
+  if (!BUNDLE || !BUNDLE.ok) return;
+  const gi = BUNDLE.general_inspection || { has_live_qms: false, is_example: true, ref_date: '', ref_tab: '-', items: [] };
+  const hb = BUNDLE.handover_board || { items: [], total_cnt: 0, unchecked_cnt: 0, pinned_cnt: 0 };
+
+  // QMS 실데이터 유입 전에는 클레임 그래프('CLAIM') 기본 표시, QMS 연동 시 실시간 일반검사('GI') 자동 기본 표시
+  const effMode = (Q4_TOP_MODE === 'CLAIM' || Q4_TOP_MODE === 'GI')
+    ? Q4_TOP_MODE
+    : (gi.has_live_qms ? 'GI' : 'CLAIM');
+
+  const btnCl = document.getElementById('q4TopModeClaimBtn');
+  const btnGi = document.getElementById('q4TopModeGiBtn');
+  const paneCl = document.getElementById('q4ClaimChartPane');
+  const paneGi = document.getElementById('q4GiListPane');
+
+  if (btnCl) btnCl.classList.toggle('active', effMode === 'CLAIM');
+  if (btnGi) {
+    btnGi.classList.toggle('active', effMode === 'GI');
+    if (gi.has_live_qms) {
+      const alertSum = (gi.danger_cnt || 0) + (gi.warn_cnt || 0);
+      btnGi.innerHTML = '🧪 실시간 일반검사' + (alertSum > 0 ? (' <span class="badge badge-err" style="font-size:10px; padding:1px 5px; margin-left:3px;">주의 ' + alertSum + '</span>') : '');
+    } else {
+      btnGi.innerHTML = '🧪 실시간 일반검사 <span class="q4-ex-pill">예시</span>';
+    }
+  }
+
+  if (paneCl) paneCl.style.display = (effMode === 'CLAIM') ? 'flex' : 'none';
+  if (paneGi) paneGi.style.display = (effMode === 'GI') ? 'flex' : 'none';
+
+  if (effMode === 'CLAIM') {
+    renderQ4MiniClaimChart();
+  } else {
+    renderQ4GeneralInspectionList(gi);
+  }
+
+  renderQ4HandoverBoard(hb);
+}
+
+function renderQ4MiniClaimChart() {
+  const cl = BUNDLE.claim || {};
+  const metaEl = document.getElementById('q4ClaimMetaTxt');
+  const actYr = cl.active_year || '2026년';
+  const curPack = (cl.year_totals && cl.year_totals[actYr]) || null;
+  const predPpm = (cl.cum_pred_ppm !== undefined && cl.cum_pred_ppm > 0) ? cl.cum_pred_ppm : cl.actual_ppm;
+
+  if (metaEl) {
+    metaEl.innerHTML = '<b>' + esc(actYr) + '</b> 누적 <b>' + esc(cl.actual_ppm || 0) + ' PPM</b> (' + Number(cl.total_cnt || 0).toLocaleString() + '건) · 연말예측 <b>' + esc(predPpm || 0) + ' PPM</b> (목표 ' + esc(cl.target_ppm || 1.12) + ' 이하)';
+  }
+
+  destroyChart('homeQ4Claim');
+  const ctx = document.getElementById('chartHomeQ4Claim');
+  if (!ctx) return;
+
+  const months = ['3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월', '1월', '2월'];
+  const mRows = (curPack && curPack.monthly) ? curPack.monthly : (cl.trend_rows || []);
+  const ppmData = months.map(function(_, idx) {
+    const r = mRows[idx];
+    return (r && r._기록여부) ? Number(r['당해_PPM'] !== undefined ? r['당해_PPM'] : (r['2026년_PPM'] || 0)) : null;
+  });
+  const cntData = months.map(function(_, idx) {
+    const r = mRows[idx];
+    return (r && r._기록여부) ? Number(r['당해_건수'] !== undefined ? r['당해_건수'] : (r['2026년_건수'] || 0)) : null;
+  });
+  const fcData = (curPack && curPack.fc_line) ? curPack.fc_line : (cl.fc_line || []);
+
+  CHARTS['homeQ4Claim'] = new Chart(ctx, {
+    data: {
+      labels: months,
+      datasets: [
+        { type: 'bar', label: '클레임 건수(건)', data: cntData, backgroundColor: 'rgba(2, 132, 199, 0.25)', borderColor: 'rgba(2, 132, 199, 0.55)', borderWidth: 1, borderRadius: 3, yAxisID: 'yCnt', barPercentage: 0.52 },
+        { type: 'line', label: actYr + ' PPM', data: ppmData, borderColor: '#003378', backgroundColor: '#003378', yAxisID: 'y', tension: 0.24, borderWidth: 2.4, pointRadius: 3 },
+        { type: 'line', label: '계절예측 PPM', data: fcData, borderColor: '#7C3AED', borderDash: [5, 3], yAxisID: 'y', tension: 0.24, borderWidth: 2, pointRadius: 2, fill: false },
+        { type: 'line', label: '목표(1.12)', data: months.map(function() { return cl.target_ppm || 1.12; }), borderColor: '#EF4444', borderDash: [3, 3], yAxisID: 'y', pointRadius: 0, borderWidth: 1.4, fill: false }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      spanGaps: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { boxWidth: 10, font: { size: 10, weight: 'bold' }, padding: 6 } }
+      },
+      scales: {
+        x: { ticks: { font: { size: 10, weight: 'bold' } }, grid: { display: false } },
+        y: { position: 'left', beginAtZero: true, ticks: { font: { size: 10 } } },
+        yCnt: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+function renderQ4GeneralInspectionList(gi) {
+  const pane = document.getElementById('q4GiListPane');
+  if (!pane) return;
+
+  const items = gi.items || [];
+  const isEx = Boolean(gi.is_example);
+  const hdrNote = isEx
+    ? '<div class="q4-gi-subbar">' +
+        '<span><span class="q4-ex-pill">예시</span> 상온 공정일보(<b>' + esc(gi.ref_tab || gi.ref_date || '-') + '</b>) 가동 품목 · 포장 확인시간 기반 시뮬레이션</span>' +
+        '<span style="color:#64748B;">미숫가루·가공유 2h / 곡물 3h / 일반 3.5h</span>' +
+      '</div>'
+    : '<div class="q4-gi-subbar">' +
+        '<span style="color:#047857; font-weight:800;">● ' + esc(gi.ref_tab || 'QMS 실시간 연동중') + '</span>' +
+        '<span style="color:#64748B;">미숫가루·가공유 2h / 곡물 3h / 일반 3.5h</span>' +
+      '</div>';
+
+  if (!items.length) {
+    pane.innerHTML = hdrNote + '<div style="margin:auto; font-size:12px; color:var(--text-muted); font-weight:700; padding:12px;">해당 일자 상온 공정일보에 가동 품목이 없습니다.</div>';
+    return;
+  }
+
+  pane.innerHTML = hdrNote +
+    '<div class="q4-gi-scroll">' +
+      items.map(function(it) {
+        const tone = it.hold_status === 'danger' ? 'is-danger' : (it.hold_status === 'warn' ? 'is-warn' : (it.hold_status === 'done' ? 'is-done' : 'is-ok'));
+        const badgeCls = it.hold_status === 'danger' ? 'badge-err' : (it.hold_status === 'warn' ? 'badge-warn' : 'badge-ok');
+        const failPill = (it.fails_cnt && it.fails_cnt > 0) ? '<span class="badge badge-err" style="font-size:10px; padding:1px 5px;">이탈 ' + it.fails_cnt + '</span>' : '';
+        const coPill = it.co_transfer ? '<span class="badge badge-purple" style="font-size:10px; padding:1px 5px;" title="' + esc(it.co_transfer) + '">동시이송</span>' : '';
+        const exTag = it.is_example ? '<span class="q4-ex-pill" style="margin-left:3px;">예시</span>' : '';
+
+        return '<div class="q4-gi-row ' + tone + '" title="설비 기준: ' + esc(it.equip_spec || '') + (it.eta_note ? (' / ' + esc(it.eta_note)) : '') + '">' +
+          '<div class="q4-gi-top">' +
+            '<div style="min-width:0; display:flex; align-items:center; gap:5px;">' +
+              '<span class="q4-gi-ho">' + esc(it.steril_ho) + '·' + esc(it.packer_ho) + '</span>' +
+              '<strong class="q4-gi-prod">' + esc(it.product_name) + '</strong>' +
+              exTag + failPill + coPill +
+            '</div>' +
+            '<span class="q4-gi-eta">예상종료 <b>' + esc(it.eta_hm || '-') + '</b></span>' +
+          '</div>' +
+          '<div class="q4-gi-bot">' +
+            '<span><b>' + esc(it.mix_text) + '</b></span>' +
+            '<span style="color:#CBD5E1;">|</span>' +
+            '<span class="badge ' + badgeCls + '" style="font-size:10.5px; padding:1.5px 6px;">' + esc(it.hold_badge) + '</span>' +
+            '<span style="color:#CBD5E1;">|</span>' +
+            '<span style="color:#334155; font-weight:700;">' + esc(it.fin_text) + '</span>' +
+          '</div>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+}
+
+function renderQ4HandoverBoard(hb) {
+  const badgeEl = document.getElementById('q4HandoverBadge');
+  const listEl = document.getElementById('q4HandoverList');
+  if (badgeEl) {
+    const uCnt = hb.unchecked_cnt || 0;
+    badgeEl.textContent = uCnt > 0 ? ('미확인 ' + uCnt + '건') : ('전체확인 (' + (hb.total_cnt || 0) + ')');
+    badgeEl.className = 'badge ' + (uCnt > 0 ? 'badge-warn' : 'badge-ok');
+  }
+  if (!listEl) return;
+
+  const items = hb.items || [];
+  if (!items.length) {
+    listEl.innerHTML = '<div style="font-size:11.5px; color:var(--text-muted); padding:6px 4px; text-align:center;">등록된 교대·부서 인수인계 전달사항이 없습니다. 위 입력창에 작성 후 Enter를 누르세요.</div>';
+    return;
+  }
+
+  listEl.innerHTML = items.slice(0, 15).map(function(it) {
+    const isChk = Boolean(it.checked);
+    const pinMark = it.pinned ? '<span style="color:#B45309; font-weight:900; margin-right:3px;">📌</span>' : '';
+    const chkTip = isChk && it.checked_by ? (' (확인자: ' + it.checked_by + ' ' + (it.checked_at || '') + ')') : '';
+    return '<div class="q4-ho-item' + (isChk ? ' is-checked' : '') + (it.pinned ? ' is-pinned' : '') + '">' +
+      '<input type="checkbox" ' + (isChk ? 'checked' : '') + ' style="width:14px; height:14px; cursor:pointer; flex-shrink:0; margin-top:2px;" ' +
+        'onchange="toggleHandoverCheck(\'' + esc(it.uid) + '\')" title="클릭 시 확인 완료 처리" />' +
+      '<div class="q4-ho-txt" onclick="toggleHandoverCheck(\'' + esc(it.uid) + '\')" title="' + esc(it.text + chkTip) + '">' +
+        pinMark + '<span class="q4-ho-meta">[' + esc(it.created_at || '-') + ' · ' + esc(it.author || '-') + ']</span> ' +
+        '<span>' + esc(it.text) + '</span>' +
+      '</div>' +
+      '<button type="button" class="q4-ho-del" onclick="deleteHandoverItem(\'' + esc(it.uid) + '\')" title="삭제">✕</button>' +
+    '</div>';
+  }).join('');
+}
+
+async function submitQuickHandover() {
+  const inp = document.getElementById('inpQ4Handover');
+  const pinChk = document.getElementById('chkQ4HandoverPin');
+  const txt = inp ? (inp.value || '').trim() : '';
+  if (!txt) {
+    showToast('전달할 인수인계 내용을 입력해 주세요.', 2200);
+    return;
+  }
+  try {
+    const res = await apiPost('/api/handover', {
+      action: 'add',
+      text: txt,
+      pinned: Boolean(pinChk && pinChk.checked)
+    });
+    BUNDLE.handover_board = res.handover_board;
+    if (inp) inp.value = '';
+    if (pinChk) pinChk.checked = false;
+    saveBundleToBrowserCache(BUNDLE);
+    renderQ4HandoverBoard(BUNDLE.handover_board);
+    showToast('인수인계 보드에 등록되었습니다.');
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
+}
+
+async function toggleHandoverCheck(uid) {
+  try {
+    const res = await apiPost('/api/handover', { action: 'toggle_check', uid: uid });
+    BUNDLE.handover_board = res.handover_board;
+    saveBundleToBrowserCache(BUNDLE);
+    renderQ4HandoverBoard(BUNDLE.handover_board);
+    if (document.getElementById('handoverModalListBox')) renderHandoverModalList();
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
+}
+
+async function toggleHandoverPin(uid) {
+  try {
+    const res = await apiPost('/api/handover', { action: 'toggle_pin', uid: uid });
+    BUNDLE.handover_board = res.handover_board;
+    saveBundleToBrowserCache(BUNDLE);
+    renderQ4HandoverBoard(BUNDLE.handover_board);
+    if (document.getElementById('handoverModalListBox')) renderHandoverModalList();
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
+}
+
+async function deleteHandoverItem(uid) {
+  try {
+    const res = await apiPost('/api/handover', { action: 'delete', uid: uid });
+    BUNDLE.handover_board = res.handover_board;
+    saveBundleToBrowserCache(BUNDLE);
+    renderQ4HandoverBoard(BUNDLE.handover_board);
+    if (document.getElementById('handoverModalListBox')) renderHandoverModalList();
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
+}
+
+async function clearCheckedHandoverItems() {
+  if (!confirm('확인 체크된 완료 항목(고정 공지 제외)을 일괄 정리하시겠습니까?')) return;
+  try {
+    const res = await apiPost('/api/handover', { action: 'clear_checked' });
+    BUNDLE.handover_board = res.handover_board;
+    saveBundleToBrowserCache(BUNDLE);
+    renderQ4HandoverBoard(BUNDLE.handover_board);
+    if (document.getElementById('handoverModalListBox')) renderHandoverModalList();
+    showToast('완료된 인수인계 항목이 정리되었습니다.');
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
+}
+
+function openHandoverFullModal() {
+  openModal(
+    '📋 교대 · 부서간 인수인계 전달사항 전체 관리',
+    '<div style="display:flex; gap:6px; margin-bottom:10px; align-items:center;">' +
+      '<label style="font-size:12px; font-weight:800; color:#92400E; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; cursor:pointer;">' +
+        '<input type="checkbox" id="chkModalHoPin" /> 📌 상단고정' +
+      '</label>' +
+      '<input type="text" id="inpModalHoTxt" class="form-ctrl" style="flex:1;" placeholder="신규 인수인계·전달 멘트 입력 후 Enter" onkeydown="if(event.key===\'Enter\') submitModalHandover()" />' +
+      '<button class="btn btn-primary btn-sm" style="height:34px;" onclick="submitModalHandover()">+ 등록</button>' +
+    '</div>' +
+    '<div id="handoverModalListBox" style="max-height:360px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div>',
+    '<button class="btn" style="color:#B45309; margin-right:auto;" onclick="clearCheckedHandoverItems()">✓ 확인완료 항목 일괄 정리</button>' +
+    '<button class="btn" onclick="closeModal()">닫기</button>'
+  );
+  renderHandoverModalList();
+}
+
+async function submitModalHandover() {
+  const inp = document.getElementById('inpModalHoTxt');
+  const pin = document.getElementById('chkModalHoPin');
+  const txt = inp ? (inp.value || '').trim() : '';
+  if (!txt) return;
+  try {
+    const res = await apiPost('/api/handover', { action: 'add', text: txt, pinned: Boolean(pin && pin.checked) });
+    BUNDLE.handover_board = res.handover_board;
+    if (inp) inp.value = '';
+    if (pin) pin.checked = false;
+    saveBundleToBrowserCache(BUNDLE);
+    renderQ4HandoverBoard(BUNDLE.handover_board);
+    renderHandoverModalList();
+  } catch (e) {
+    showToast(e.message, 3000);
+  }
+}
+
+function renderHandoverModalList() {
+  const box = document.getElementById('handoverModalListBox');
+  if (!box) return;
+  const items = (BUNDLE && BUNDLE.handover_board && BUNDLE.handover_board.items) || [];
+  if (!items.length) {
+    box.innerHTML = '<div style="padding:22px; text-align:center; color:var(--text-muted);">등록된 전달사항이 없습니다.</div>';
+    return;
+  }
+  box.innerHTML = items.map(function(it) {
+    const isChk = Boolean(it.checked);
+    return '<div style="display:flex; align-items:flex-start; gap:8px; padding:8px 10px; border-radius:8px; border:1px solid ' + (it.pinned ? '#FCD34D' : '#E2E8F0') + '; background:' + (it.pinned ? '#FFFBEB' : (isChk ? '#F8FAFC' : '#FFFFFF')) + ';">' +
+      '<input type="checkbox" ' + (isChk ? 'checked' : '') + ' style="width:16px; height:16px; margin-top:2px; cursor:pointer;" onchange="toggleHandoverCheck(\'' + esc(it.uid) + '\')" />' +
+      '<div style="flex:1; min-width:0; ' + (isChk ? 'text-decoration:line-through; color:#64748B;' : '') + '">' +
+        '<div style="font-size:12px; font-weight:800; color:#003378; margin-bottom:2px;">[' + esc(it.created_at) + ' · ' + esc(it.author) + ']' +
+          (isChk && it.checked_by ? (' <span style="color:#047857;">(✓ ' + esc(it.checked_by) + ' ' + esc(it.checked_at) + ' 확인)</span>') : '') +
+        '</div>' +
+        '<div style="font-size:13.5px; font-weight:700; color:#0F172A; line-height:1.45;">' + esc(it.text) + '</div>' +
+      '</div>' +
+      '<button class="btn btn-sm" style="padding:2px 7px;" onclick="toggleHandoverPin(\'' + esc(it.uid) + '\')" title="상단 고정 토글">' + (it.pinned ? '📌해제' : '📌고정') + '</button>' +
+      '<button class="btn btn-sm" style="padding:2px 7px; color:var(--err-fg);" onclick="deleteHandoverItem(\'' + esc(it.uid) + '\')">삭제</button>' +
+    '</div>';
+  }).join('');
+}
+
+async function syncSelfQualityFromSheet() {
+  try {
+    showToast('미생물 일보 [자가품질] 탭 데이터를 읽어 반영 중입니다...', 2000);
+    const yrParam = SQC_STATE.year ? ('?year=' + encodeURIComponent(SQC_STATE.year)) : '';
+    const res = await apiPost('/api/self-quality/sync-sheet' + yrParam, {});
+    applySqcPayloadAndRender(res);
+    showToast(res.message || '[자가품질] 탭 반영이 완료되었습니다.');
+  } catch (e) {
+    showToast('반영 실패: ' + e.message, 3200);
+  }
+}
 // ======================== [public/index.html - PART 4 / 4 끝] ========================
 </script>
 </body>

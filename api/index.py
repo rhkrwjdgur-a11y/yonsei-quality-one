@@ -135,71 +135,121 @@ def get_active_audit_summary(schedules: List[dict], today_ref: Any = None, *args
 
     ordered = sort_audit_schedules_two_tier(schedules, today_d)
 
-    visit_items = [s for s in ordered if str(s.get("구분") or "").strip() != "협력업체 방문"]
-    sup_items = [s for s in ordered if str(s.get("구분") or "").strip() == "협력업체 방문"]
+    done_set = {"심사종료", "방문완료"}
+    all_pending = [s for s in ordered if s.get("진행현황") not in done_set]
+    pending_visits = [s for s in all_pending if str(s.get("구분") or "").strip() != "협력업체 방문"]
+    pending_sups = [s for s in all_pending if str(s.get("구분") or "").strip() == "협력업체 방문"]
 
-    pending_visits = [s for s in visit_items if s.get("진행현황") != "심사종료"]
-    done_visits = [s for s in visit_items if s.get("진행현황") == "심사종료"]
+    def _sort_key_earliest(item: dict) -> Tuple[date, int]:
+        d_o = parse_date_obj(item.get("심사일자")) or date(2099, 12, 31)
+        is_sup = 1 if str(item.get("구분") or "").strip() == "협력업체 방문" else 0
+        return (d_o, is_sup)
 
-    pending_sups = [s for s in sup_items if s.get("진행현황") != "방문완료"]
+    if all_pending:
+        all_pending_sorted = sorted(all_pending, key=_sort_key_earliest)
+        top_item = all_pending_sorted[0]
+        top_is_sup = (str(top_item.get("구분") or "").strip() == "협력업체 방문")
 
-    # 차기 협력업체 방문 배너 생성 (가장 가까운 출장 일정 기준)
-    upcoming_sup_banner = ""
-    if pending_sups:
-        first_sup = pending_sups[0]
-        s_dt = str(first_sup.get("심사일자") or "")
-        s_mmdd = s_dt[5:] if len(s_dt) >= 10 else (s_dt or "-")
-        s_dday = str(first_sup.get("d_day_label") or "-")
-        s_name = str(first_sup.get("심사명") or "-")
-        extra_txt = f" 외 {len(pending_sups) - 1}건" if len(pending_sups) > 1 else ""
-        upcoming_sup_banner = f"[{s_dday}] {s_mmdd} {s_name}{extra_txt}"
-
-    # 당사 방문심사 게이지 기준 선정: 예정/진행중 최우선(임박순) -> 없으면 가장 최신 종료 건(100%)
-    chosen_visit = None
-    is_recent_done = False
-    if pending_visits:
-        chosen_visit = pending_visits[0]
-    elif done_visits:
-        chosen_visit = done_visits[0]
-        is_recent_done = True
-
-    if chosen_visit:
-        st = str(chosen_visit.get("진행현황") or "심사준비중")
-        cfg = AUDIT_STATUS_CONFIG.get(st, AUDIT_STATUS_CONFIG["심사준비중"])
-        v_dt = str(chosen_visit.get("심사일자") or "")
-        v_mmdd = v_dt[5:] if len(v_dt) >= 10 else (v_dt or "-")
-        v_name = str(chosen_visit.get("심사명") or "-")
-        v_uid = str(chosen_visit.get("고유ID") or chosen_visit.get("uid") or chosen_visit.get("id") or "")
-        v_dday = str(chosen_visit.get("d_day_label") or "")
-
-        if is_recent_done:
-            visit_title = f"[최근 방문심사 ({v_mmdd})] {v_name}"
-        else:
+        if not top_is_sup:
+            # 가장 빠른 일정이 '방문심사(당사 수검)'일 때만 5단계 진행 게이지 활성화
+            st = str(top_item.get("진행현황") or "심사준비중")
+            cfg = AUDIT_STATUS_CONFIG.get(st, AUDIT_STATUS_CONFIG["심사준비중"])
+            v_dt = str(top_item.get("심사일자") or "")
+            v_mmdd = v_dt[5:] if len(v_dt) >= 10 else (v_dt or "-")
+            v_name = str(top_item.get("심사명") or "-")
+            v_uid = str(top_item.get("고유ID") or top_item.get("uid") or top_item.get("id") or "")
+            v_dday = str(top_item.get("d_day_label") or "")
             dd_part = f" · {v_dday}" if v_dday and v_dday != "-" else ""
-            visit_title = f"[방문심사 ({v_mmdd}{dd_part})] {v_name}"
+            visit_title = f"[{v_mmdd}{dd_part}] {v_name}"
+
+            sub_sup_hint = ""
+            if pending_sups:
+                fs = pending_sups[0]
+                fs_dt = str(fs.get("심사일자") or "")
+                fs_mmdd = fs_dt[5:] if len(fs_dt) >= 10 else (fs_dt or "-")
+                extra_s = f" 외 {len(pending_sups) - 1}건" if len(pending_sups) > 1 else ""
+                sub_sup_hint = f"[{fs.get('d_day_label', '-')}] {fs_mmdd} {fs.get('심사명', '-')}{extra_s}"
+
+            return {
+                "hero_mode": "VISIT_ACTIVE",
+                "show_gauge": True,
+                "active_uid": v_uid,
+                "badge_label": "당사 수검",
+                "visit_title": visit_title,
+                "status": st,
+                "pct": cfg["pct"],
+                "color": cfg["color"],
+                "is_recent_done": False,
+                "upcoming_sup_banner": sub_sup_hint,
+                "upcoming_sup_cnt": len(pending_sups),
+                "upcoming_banner": f"[방문심사] {visit_title}",
+            }
+
+        # 가장 빠른 일정이 '협력업체 방문(출장)'일 때: 의미 없는 100% 게이지 숨김 & 해당 날짜 방문 대상 전체 표출
+        s_dt = str(top_item.get("심사일자") or "")
+        s_mmdd = s_dt[5:] if len(s_dt) >= 10 else (s_dt or "-")
+        s_dday = str(top_item.get("d_day_label") or "-")
+        same_day_sups = [x for x in pending_sups if str(x.get("심사일자") or "") == s_dt]
+        raw_names = [str(x.get("심사명") or "-").strip() for x in same_day_sups]
+
+        if len(raw_names) >= 2 and all(":" in nm for nm in raw_names):
+            prefixes = {nm.split(":", 1)[0].strip() for nm in raw_names}
+            if len(prefixes) == 1:
+                pfx = raw_names[0].split(":", 1)[0].strip()
+                bodies = [nm.split(":", 1)[1].strip() for nm in raw_names]
+                merged_nm = f"{pfx} : {', '.join(bodies)}"
+            else:
+                merged_nm = " / ".join(raw_names)
+        else:
+            merged_nm = " / ".join(raw_names)
+
+        later_cnt = len(pending_sups) - len(same_day_sups)
+        later_sfx = f" (이후 {later_cnt}건 예정)" if later_cnt > 0 else ""
+        hero_line = f"[{s_dday} · {s_mmdd}] {merged_nm}{later_sfx}"
+
+        next_visit_hint = ""
+        if pending_visits:
+            fv = pending_visits[0]
+            fv_dt = str(fv.get("심사일자") or "")
+            fv_mmdd = fv_dt[5:] if len(fv_dt) >= 10 else (fv_dt or "-")
+            next_visit_hint = f"차기 당사수검 : [{fv.get('d_day_label', '-')}] {fv_mmdd} {fv.get('심사명', '-')}"
 
         return {
-            "active_uid": v_uid,
-            "visit_title": visit_title,
-            "status": st,
-            "pct": cfg["pct"],
-            "color": cfg["color"],
-            "is_recent_done": is_recent_done,
-            "upcoming_sup_banner": upcoming_sup_banner,
+            "hero_mode": "SUPPLIER_UPCOMING",
+            "show_gauge": False,
+            "active_uid": "",
+            "badge_label": "차기 협력업체 방문",
+            "visit_title": hero_line,
+            "status": "방문예정",
+            "pct": 0,
+            "color": "#D97706",
+            "is_recent_done": False,
+            "upcoming_sup_banner": next_visit_hint,
             "upcoming_sup_cnt": len(pending_sups),
-            "upcoming_banner": upcoming_sup_banner or visit_title,
+            "upcoming_banner": hero_line,
         }
 
+    # 예정된 방문심사도 없고 협력업체 방문도 모두 끝난 공백기
+    latest_done = ordered[0] if ordered else None
+    done_txt = ""
+    if latest_done:
+        ld_dt = str(latest_done.get("심사일자") or "")
+        ld_mmdd = ld_dt[5:] if len(ld_dt) >= 10 else ld_dt
+        done_txt = f" (최근 완료: {ld_mmdd} {latest_done.get('심사명', '-')})"
+
     return {
+        "hero_mode": "NONE",
+        "show_gauge": False,
         "active_uid": "",
-        "visit_title": "등록된 당사 방문심사 일정이 없습니다.",
-        "status": "심사준비중",
+        "badge_label": "일정 대기",
+        "visit_title": f"현재 예정된 방문심사 · 협력업체 방문 일정이 없습니다{done_txt}",
+        "status": "심사종료",
         "pct": 0,
         "color": "#94A3B8",
-        "is_recent_done": False,
-        "upcoming_sup_banner": upcoming_sup_banner,
-        "upcoming_sup_cnt": len(pending_sups),
-        "upcoming_banner": upcoming_sup_banner or "등록된 심사 일정 없음",
+        "is_recent_done": True,
+        "upcoming_sup_banner": "",
+        "upcoming_sup_cnt": 0,
+        "upcoming_banner": "예정된 심사·출장 일정 없음",
     }
 
 MICRO_STATUS_LIST = ["자동연동", "출고적합", "검사중", "재검·출고보류"]
@@ -3534,12 +3584,43 @@ def extract_hist_dairy_run_times(dairy_hist_c: list, target_date: str, line_filt
     return [cards_by_ho[k] for k in order_hos]
 
 
+KNOWN_DAIRY_HEADER_GHOSTS = {
+    "세브란스/콜라겐", "세브란스/저당/바나바잎", "세브란스/헛개", "세브란스/위락",
+    "연세대학교/오메가-3", "vilac/프로바이오틱/오메가3",
+    "푸르밀/복숭아", "푸르밀/블루베리", "푸르밀/플레인", "푸르밀/딸기",
+    "연세/플레인", "연세/딸기", "연세/복숭아", "연세/블루베리",
+    "오늘좋은/떠먹는플레인", "오늘좋은/떠먹는딸기", "오늘좋은/떠먹는복숭아",
+    "부산요네뜨/플레인", "부산요네뜨/딸기", "부산요네뜨/복숭아",
+    "simplus/플레인요거트", "simplus/딸기요거트", "simplus/복숭아요거트",
+    "건국/플레인", "건국/딸기", "a2/플레인", "a2/딸기", "a2/복숭아",
+    "a2/플레인(쿠팡)", "a2/딸기(쿠팡)", "a2greek/무가당플레인"
+}
+
+
+def is_false_dairy_header_note(note_text: Any, dairy_prod_names: Optional[List[str]] = None) -> bool:
+    """발효유·우유 시트 아래쪽 표의 2줄짜리 품목명 머리글 셀(예: '세브란스 / 콜라겐', '푸르밀 / 복숭아') 오인식 판별"""
+    s = str(note_text or "").strip()
+    if not s or s in ("-", "없음", "이상없음", "적합", "부적합", "00.00", "0.0"):
+        return True
+    ns = re.sub(r"\s+", "", s).lower()
+    no_slash = ns.replace("/", "")
+    if ns in KNOWN_DAIRY_HEADER_GHOSTS or no_slash in {x.replace("/", "") for x in KNOWN_DAIRY_HEADER_GHOSTS}:
+        return True
+    if re.fullmatch(r"(?:00\.00|0\.0|\d{1,2}\.\d{1,2}|-)(?:/(?:00\.00|0\.0|\d{1,2}\.\d{1,2}|-))*", ns):
+        return True
+    if dairy_prod_names:
+        for p in dairy_prod_names:
+            p_base = re.sub(r"\(\s*(?:카톤|병|병포장)?\s*\d+\s*(?:mL|ml|ML|㎖|L|g|kg)\s*\)", "", str(p or ""))
+            p_ns = re.sub(r"[\s/]+", "", p_base).lower()
+            if p_ns and no_slash == p_ns:
+                return True
+    return False
+
+
 def extract_dairy_live_special_notes(rows: list, line_label: str) -> List[Tuple[str, str]]:
     """
-    유제품 포장일보 실시간 탭에서 현장 특이사항 원문 추출:
-    - 우유 탭: 하단 '특이사항' 행(C37:R37 병합 영역 및 다중 줄바꿈)
-    - 발효유 탭: 우측 '호상 발효유 특이사항'(I18:M20) 및 '카톤/병 발효유 특이사항'(J21:M34) 우측 병합 박스
-    반환: [(세부항목명, 특이사항_텍스트), ...]
+    유제품 포장일보 실시간 탭에서 현장 특이사항 원문만 정확히 추출:
+    - 발효유 탭 스캔 시 아래쪽 병발효유·호상발효유 품목 머리글 표로 절대 넘어가지 않도록 경계 차단
     """
     if not rows:
         return []
@@ -3569,24 +3650,30 @@ def extract_dairy_live_special_notes(rows: list, line_label: str) -> List[Tuple[
                             continue
                         for ln in raw_v.splitlines():
                             cl = re.sub(r"\s+", " ", ln).strip()
-                            if cl and cl not in ("-", "이상없음", "없음") and cl not in lines_acc:
+                            if cl and not is_false_dairy_header_note(cl) and cl not in lines_acc:
                                 lines_acc.append(cl)
                 if lines_acc:
-                    extracted.append(("우유 포장 특이사항", " / ".join(lines_acc)))
+                    joined = " / ".join(lines_acc)
+                    if not is_false_dairy_header_note(joined):
+                        extracted.append(("우유 포장 특이사항", joined))
         return extracted
 
-    # 발효유 탭 스캔
     for r_i, r in enumerate(rows):
         for c_i, cell in enumerate(r):
             cn = _ns(cell)
-            if "호상발효유특이사항" in cn or "카톤/병발효유특이사항" in cn:
-                is_hosang = ("호상발효유특이사항" in cn)
+            if cn in ("호상발효유특이사항", "카톤/병발효유특이사항"):
+                is_hosang = (cn == "호상발효유특이사항")
                 item_label = "호상 발효유 특이사항" if is_hosang else "카톤/병 발효유 특이사항"
 
-                r_end = min(len(rows) - 1, r_i + 15)
-                for rr in range(r_i + 1, min(len(rows), r_i + 16)):
-                    left_join = "".join(_ns(x) for x in rows[rr][:min(len(rows[rr]), c_i + 4)])
-                    if (is_hosang and "카톤/병발효유특이사항" in left_join) or ("최대소비기한" in left_join and rr > r_i + 2):
+                r_end = min(len(rows) - 1, r_i + 10)
+                for rr in range(r_i + 1, min(len(rows), r_i + 13)):
+                    c0_rr = _ns(rows[rr][0]) if len(rows[rr]) > 0 else ""
+                    c1_rr = _ns(rows[rr][1]) if len(rows[rr]) > 1 else ""
+                    row_all_ns = "".join(_ns(x) for x in rows[rr])
+                    if is_hosang and ("병발효유" in c0_rr or "카톤/병발효유특이사항" in row_all_ns):
+                        r_end = rr - 1
+                        break
+                    if (not is_hosang) and ("호상발효유" in c0_rr or (rr > r_i and "최대소비기한" in (c0_rr + c1_rr))):
                         r_end = rr - 1
                         break
 
@@ -3607,20 +3694,21 @@ def extract_dairy_live_special_notes(rows: list, line_label: str) -> List[Tuple[
                         vn = _ns(raw_v)
                         if any(sk in vn for sk in [
                             "금속추출기", "금속검출기", "실행성검증", "생산일:",
-                            "최대소비기한", "카톤/병발효유특이사항", "호상발효유특이사항"
+                            "최대소비기한", "카톤/병발효유특이사항", "호상발효유특이사항", "00.00"
                         ]):
                             continue
                         if scan_r_start == r_i and vn in ("적합", "부적합", "-"):
                             continue
-                        if vn in ("-", "이상없음", "없음"):
+                        if is_false_dairy_header_note(raw_v) or is_false_dairy_header_note(raw_v.replace("\n", " / ")):
                             continue
                         for ln in raw_v.splitlines():
                             cl = re.sub(r"\s+", " ", ln).strip()
-                            if cl and cl not in ("-", "이상없음", "없음") and cl not in lines_acc:
+                            if cl and cl not in ("-", "이상없음", "없음", "00.00") and cl not in lines_acc:
                                 lines_acc.append(cl)
 
-                if lines_acc:
-                    extracted.append((item_label, " / ".join(lines_acc)))
+                joined = " / ".join(lines_acc)
+                if lines_acc and not is_false_dairy_header_note(joined):
+                    extracted.append((item_label, joined))
 
     return extracted
 
@@ -3871,11 +3959,16 @@ def fetch_process_milk_sheet(sheet_urls_map: dict):
                 lr["_exp_tip"] = matched_dr.get("_exp_tip", "") if matched_dr else ""
                 lr["_exp_alert"] = matched_dr.get("_exp_alert", "") if matched_dr else ""
 
+        dairy_prod_pool_temp = [full_nm for full_nm, _, _, _ in coord_master.values() if full_nm]
         dairy_hist_c_raw = rows_to_records(batch_map.get(t_dc, [])) if t_dc else []
         dairy_hist_c = []
+        dc_dirty = False
         for cr in dairy_hist_c_raw:
             orig_tab = str(cr.get("원본탭명", "")).strip()
             if orig_tab and any(bad in orig_tab for bad in ["수정", "복사", "양식", "사본", "백업"]):
+                continue
+            if "특이사항" in str(cr.get("기록분류", "")) and is_false_dairy_header_note(cr.get("특이사항", ""), dairy_prod_pool_temp):
+                dc_dirty = True
                 continue
             cr_c = dict(cr)
             c_d = parse_date_obj(cr_c.get("생산일자", ""))
@@ -3884,7 +3977,6 @@ def fetch_process_milk_sheet(sheet_urls_map: dict):
             dairy_hist_c.append(cr_c)
 
         # 실시간 탭(우유 C37:R37 / 발효유 우측 특이사항 박스) 내용을 _이력DB_유제품공정CCP에 즉시 병합·보완
-        dc_dirty = False
         dc_new_rows = []
         for live_notes, live_dt_raw, ln_tag, orig_t in [
             (live_m_notes, m_dt, "우유", t_m),
@@ -11736,16 +11828,16 @@ def evaluate_room_multi_angle(
 
     p_spd_str = f"{eq['pack_speed_pph']//10000}만" if eq["pack_speed_pph"] % 10000 == 0 else f"{eq['pack_speed_pph']/10000:.1f}만"
     fin_disp = (
-        f"완제 {fin_start_hm} 개시" if fin_started
-        else (f"미기입({fin_start_hm}가정)" if assumed_start and fin_start_hm else "완제 대기")
+        f"포장시작 {fin_start_hm}" if fin_started
+        else (f"시작예상 {fin_start_hm}" if assumed_start and fin_start_hm else "포장 대기")
     )
 
     return {
         "steril_no": eq["steril_no"],
         "steril_ho": f"{eq['steril_no']}호기",
         "packer_ho": eq["packer_label"],
-        "product_name": _clean_base_prod_title(prod_name, strip_export=bool(variant_tags and len(variant_tags) >= 2)),
-        "variant_tags": variant_tags or [],
+        "product_name": _clean_base_prod_title(prod_name, strip_export=True),
+        "variant_tags": [],
         "mix_done": done_mix_cnt,
         "mix_total": tot_b,
         "mix_pct": mix_pct,

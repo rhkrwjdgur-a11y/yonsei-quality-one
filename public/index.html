@@ -3474,6 +3474,7 @@ function renderHome() {
   try {
     const auWrap = BUNDLE.audit || {};
     const au = auWrap.summary || {};
+    const showGauge = Boolean(au.show_gauge);
     const steps = [
       ['심사준비중', '준비중 20%'],
       ['심사중', '심사중 50%'],
@@ -3481,29 +3482,50 @@ function renderHome() {
       ['서류심사중', '서류 90%'],
       ['심사종료', '종료 100%']
     ];
-    const isRecentDone = Boolean(au.is_recent_done) || (String(au.visit_title || '').indexOf('최근 방문심사') !== -1 && au.status === '심사종료');
-    const heroBadgeTxt = isRecentDone ? '최근 수검' : '당사 수검';
 
-    const upcomingSupStripHtml = au.upcoming_sup_banner
-      ? '<div class="q3-sup-upcoming-strip" onclick="switchView(\'audit\', \'schedule\')" title="클릭 시 일정 등록·관리 화면으로 이동">' +
-          '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">🚐 <b>차기 협력업체 방문 :</b> ' + esc(au.upcoming_sup_banner) + '</span>' +
+    const hbBoxEl = document.getElementById('q3HeroBox');
+    if (showGauge) {
+      if (hbBoxEl) hbBoxEl.style.cssText = '';
+      const subHintHtml = au.upcoming_sup_banner
+        ? '<div class="q3-sup-upcoming-strip" onclick="switchView(\'audit\', \'schedule\')">' +
+            '<span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">🚐 <b>차기 협력업체 방문 :</b> ' + esc(au.upcoming_sup_banner) + '</span>' +
+          '</div>'
+        : '';
+      setHtml('q3HeroBox',
+        subHintHtml +
+        '<div class="q3-banner-line">' +
+          '<span class="q3-tag-navy">' + esc(au.badge_label || '당사 수검') + '</span>' +
+          '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + esc(au.visit_title || '-') + '"><b>' + esc(au.visit_title || '-') + '</b></span>' +
+        '</div>' +
+        '<div class="gauge-track"><div class="gauge-fill" style="width:' + (au.pct || 0) + '%; background-color:' + esc(au.color || '#003378') + ';">' + (au.pct || 0) + '%</div></div>' +
+        '<div class="step-btn-row">' +
+          steps.map(function(st) {
+            const isAct = au.status === st[0] ? ' active' : '';
+            return '<button class="step-btn' + isAct + '" onclick="quickChangeAuditStatus(\'' + esc(au.active_uid || '') + '\', \'' + st[0] + '\')">' + st[1] + '</button>';
+          }).join('') +
         '</div>'
-      : '';
-
-    setHtml('q3HeroBox',
-      upcomingSupStripHtml +
-      '<div class="q3-banner-line">' +
-        '<span class="q3-tag-navy">' + heroBadgeTxt + '</span>' +
-        '<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + esc(au.visit_title || '-') + '"><b>' + esc(au.visit_title || '-') + '</b></span>' +
-      '</div>' +
-      '<div class="gauge-track"><div class="gauge-fill" style="width:' + (au.pct || 0) + '%; background-color:' + esc(au.color || '#003378') + ';">' + (au.pct || 0) + '%</div></div>' +
-      '<div class="step-btn-row">' +
-        steps.map(function(st) {
-          const isAct = au.status === st[0] ? ' active' : '';
-          return '<button class="step-btn' + isAct + '" onclick="quickChangeAuditStatus(\'' + esc(au.active_uid || '') + '\', \'' + st[0] + '\')">' + st[1] + '</button>';
-        }).join('') +
-      '</div>'
-    );
+      );
+    } else {
+      const isSupUpcoming = (au.hero_mode === 'SUPPLIER_UPCOMING');
+      if (hbBoxEl) {
+        hbBoxEl.style.cssText = isSupUpcoming
+          ? 'background:#FFFBEB; border-color:#FCD34D;'
+          : 'background:#F8FAFC; border-color:#CBD5E1;';
+      }
+      const tagBg = isSupUpcoming ? 'background:#D97706;' : 'background:#64748B;';
+      const subVisitHtml = au.upcoming_sup_banner
+        ? '<div style="margin-top:4px; font-size:var(--fs-xs); font-weight:700; color:#475569; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">• ' + esc(au.upcoming_sup_banner) + '</div>'
+        : '';
+      setHtml('q3HeroBox',
+        '<div style="cursor:pointer;" onclick="switchView(\'audit\', \'schedule\')" title="클릭 시 일정 관리 화면으로 이동">' +
+          '<div class="q3-banner-line" style="align-items:center;">' +
+            '<span class="q3-tag-navy" style="' + tagBg + ' margin-top:0;">' + esc(au.badge_label || '차기 일정') + '</span>' +
+            '<span style="font-size:var(--fs-base); font-weight:900; color:#0F172A; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + esc(au.visit_title || '-') + '">' + esc(au.visit_title || '-') + '</span>' +
+          '</div>' +
+          subVisitHtml +
+        '</div>'
+      );
+    }
 
     const orderedScheds = sortSchedulesTwoTierClient(auWrap.schedules || []);
     const visitList = orderedScheds.filter(function(s) { return s['구분'] !== '협력업체 방문'; });
@@ -9284,10 +9306,6 @@ function renderQ4GeneralInspectionList(gi) {
     const tone = it.hold_status === 'danger' ? 'is-danger' : (it.hold_status === 'warn' ? 'is-warn' : (it.hold_status === 'done' ? 'is-done' : 'is-ok'));
     const badgeCls = it.hold_status === 'danger' ? 'badge-err' : (it.hold_status === 'warn' ? 'badge-warn' : 'badge-ok');
 
-    const varTagsHtml = (it.variant_tags && it.variant_tags.length >= 2)
-      ? '<span class="q4-var-chip" title="동일 원액 다중 포장: ' + esc(it.variant_tags.join(' / ')) + '">동일원액 ' + it.variant_tags.length + '종 (' + esc(it.variant_tags.join(', ')) + ')</span>'
-      : '';
-
     let seqSwitchHtml = '';
     if (sl.runs.length >= 2) {
       const otherIdx = (useIdx + 1) % sl.runs.length;
@@ -9295,13 +9313,13 @@ function renderQ4GeneralInspectionList(gi) {
       const btnLbl = (otherIdx > useIdx)
         ? ('⏭ 차기(' + (otherIdx + 1) + '/' + sl.runs.length + '): ' + otherRun.product_name)
         : ('⏮ 이전(' + (otherIdx + 1) + '/' + sl.runs.length + '): ' + otherRun.product_name);
-      seqSwitchHtml = '<button type="button" class="q4-next-btn" onclick="stepQ4SterilSlotRun(' + sno + ', 1)" title="클릭하여 같은 호기의 이전/다음 생산 품목 확인">' +
-        esc(btnLbl.length > 20 ? (btnLbl.slice(0, 19) + '…') : btnLbl) +
+      seqSwitchHtml = '<button type="button" class="q4-next-btn" onclick="stepQ4SterilSlotRun(' + sno + ', 1)" title="클릭하여 같은 호기의 이전/다음 생산 내용물 확인">' +
+        esc(btnLbl.length > 18 ? (btnLbl.slice(0, 17) + '…') : btnLbl) +
       '</button>';
     }
 
     const failPill = (it.fails_cnt && it.fails_cnt > 0)
-      ? '<span class="badge badge-err" style="font-size:10px; padding:1px 5px;">이탈 ' + it.fails_cnt + '</span>'
+      ? '<span class="badge badge-err" style="font-size:10px; padding:1px 5px;">규격이탈 ' + it.fails_cnt + '</span>'
       : '';
 
     return '<div class="q4-slot-card ' + tone + '" title="설비 기준: ' + esc(it.equip_spec || '') + (it.eta_note ? (' / ' + esc(it.eta_note)) : '') + '">' +
@@ -9309,11 +9327,11 @@ function renderQ4GeneralInspectionList(gi) {
         '<div style="min-width:0; display:flex; align-items:center; gap:5px; overflow:hidden;">' +
           '<span class="q4-slot-ho">' + esc(it.steril_ho) + '·' + esc(it.packer_ho) + '</span>' +
           '<strong class="q4-slot-prod">' + esc(it.product_name) + '</strong>' +
-          varTagsHtml + failPill +
+          failPill +
         '</div>' +
         '<div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">' +
           seqSwitchHtml +
-          '<span class="q4-slot-eta">예상종료 <b>' + esc(it.eta_hm || '-') + '</b></span>' +
+          '<span class="q4-slot-eta">' + esc(it.fin_text) + ' → 종료예정 <b>' + esc(it.eta_hm || '-') + '</b></span>' +
         '</div>' +
       '</div>' +
       '<div class="q4-slot-bot">' +
@@ -9322,9 +9340,7 @@ function renderQ4GeneralInspectionList(gi) {
           '<strong style="color:#0F172A; white-space:nowrap;">' + esc(it.mix_text) + ' (' + (it.mix_pct || 0) + '%)</strong>' +
         '</div>' +
         '<span style="color:#CBD5E1;">|</span>' +
-        '<span class="badge ' + badgeCls + '" style="font-size:10.5px; padding:1px 6px;">' + esc(it.hold_badge) + '</span>' +
-        '<span style="color:#CBD5E1;">|</span>' +
-        '<span style="color:#334155; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(it.fin_text) + '</span>' +
+        '<span class="badge ' + badgeCls + '" style="font-size:10.5px; padding:1px 7px;">' + esc(it.hold_badge) + '</span>' +
       '</div>' +
     '</div>';
   }).join('');

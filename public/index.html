@@ -2241,6 +2241,29 @@
       justify-content: space-between;
       gap: 8px;
     }
+
+  /* 버튼 클릭 즉시 진행중(스피너) 표시 공통 스타일 */
+    @keyframes btnSpinAnim {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .is-btn-busy {
+      pointer-events: none !important;
+      opacity: 0.88 !important;
+      cursor: wait !important;
+      position: relative;
+    }
+    .btn-inline-spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: btnSpinAnim 0.65s linear infinite;
+      vertical-align: -2px;
+      margin-right: 5px;
+    }
   </style>
 </head>
 <body>

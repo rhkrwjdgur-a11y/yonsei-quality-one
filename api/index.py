@@ -151,7 +151,7 @@ def get_active_audit_summary(schedules: List[dict], today_ref: Any = None, *args
         top_is_sup = (str(top_item.get("구분") or "").strip() == "협력업체 방문")
 
         if not top_is_sup:
-            # 가장 빠른 일정이 '방문심사(당사 수검)'일 때만 5단계 진행 게이지 활성화
+            # 가장 빠른 일정이 '방문심사(당사 수검)'일 때: 5단계 게이지 활성화 (비고 미표시 · 외 N건 제거)
             st = str(top_item.get("진행현황") or "심사준비중")
             cfg = AUDIT_STATUS_CONFIG.get(st, AUDIT_STATUS_CONFIG["심사준비중"])
             v_dt = str(top_item.get("심사일자") or "")
@@ -167,8 +167,7 @@ def get_active_audit_summary(schedules: List[dict], today_ref: Any = None, *args
                 fs = pending_sups[0]
                 fs_dt = str(fs.get("심사일자") or "")
                 fs_mmdd = fs_dt[5:] if len(fs_dt) >= 10 else (fs_dt or "-")
-                extra_s = f" 외 {len(pending_sups) - 1}건" if len(pending_sups) > 1 else ""
-                sub_sup_hint = f"[{fs.get('d_day_label', '-')}] {fs_mmdd} {fs.get('심사명', '-')}{extra_s}"
+                sub_sup_hint = f"[{fs.get('d_day_label', '-')}] {fs_mmdd} {fs.get('심사명', '-')}"
 
             return {
                 "hero_mode": "VISIT_ACTIVE",
@@ -176,6 +175,7 @@ def get_active_audit_summary(schedules: List[dict], today_ref: Any = None, *args
                 "active_uid": v_uid,
                 "badge_label": "당사 수검",
                 "visit_title": visit_title,
+                "hero_memo": "",
                 "status": st,
                 "pct": cfg["pct"],
                 "color": cfg["color"],
@@ -185,7 +185,7 @@ def get_active_audit_summary(schedules: List[dict], today_ref: Any = None, *args
                 "upcoming_banner": f"[방문심사] {visit_title}",
             }
 
-        # 가장 빠른 일정이 '협력업체 방문(출장)'일 때: 의미 없는 100% 게이지 숨김 & 해당 날짜 방문 대상 전체 표출
+        # 가장 빠른 일정이 '협력업체 방문(출장)'일 때: 외 N건 제거 & 시트 비고란(hero_memo) 표출
         s_dt = str(top_item.get("심사일자") or "")
         s_mmdd = s_dt[5:] if len(s_dt) >= 10 else (s_dt or "-")
         s_dday = str(top_item.get("d_day_label") or "-")
@@ -203,9 +203,27 @@ def get_active_audit_summary(schedules: List[dict], today_ref: Any = None, *args
         else:
             merged_nm = " / ".join(raw_names)
 
-        later_cnt = len(pending_sups) - len(same_day_sups)
-        later_sfx = f" (이후 {later_cnt}건 예정)" if later_cnt > 0 else ""
-        hero_line = f"[{s_dday} · {s_mmdd}] {merged_nm}{later_sfx}"
+        hero_line = f"[{s_dday} · {s_mmdd}] {merged_nm}"
+
+        # 동일 일자 협력업체 방문 비고 병합 (같은 비고면 1줄 통합, 서로 다르면 업체명과 함께 표시)
+        memo_entries = []
+        distinct_memos = []
+        for x in same_day_sups:
+            mm = str(x.get("비고") or "").strip()
+            if not mm or mm == "-":
+                continue
+            raw_nm = str(x.get("심사명") or "").strip()
+            short_comp = raw_nm.split(":", 1)[1].strip() if ":" in raw_nm else raw_nm
+            memo_entries.append((short_comp, mm))
+            if mm not in distinct_memos:
+                distinct_memos.append(mm)
+
+        if len(distinct_memos) == 1:
+            hero_memo = distinct_memos[0]
+        elif len(distinct_memos) >= 2:
+            hero_memo = " / ".join(f"{comp}: {mm}" for comp, mm in memo_entries)
+        else:
+            hero_memo = ""
 
         next_visit_hint = ""
         if pending_visits:
@@ -220,6 +238,7 @@ def get_active_audit_summary(schedules: List[dict], today_ref: Any = None, *args
             "active_uid": "",
             "badge_label": "차기 협력업체 방문",
             "visit_title": hero_line,
+            "hero_memo": hero_memo,
             "status": "방문예정",
             "pct": 0,
             "color": "#D97706",
@@ -243,6 +262,7 @@ def get_active_audit_summary(schedules: List[dict], today_ref: Any = None, *args
         "active_uid": "",
         "badge_label": "일정 대기",
         "visit_title": f"현재 예정된 방문심사 · 협력업체 방문 일정이 없습니다{done_txt}",
+        "hero_memo": "",
         "status": "심사종료",
         "pct": 0,
         "color": "#94A3B8",
@@ -11586,13 +11606,14 @@ def api_save_law_guideline(body: LawGuidelineSavePayload, _u: dict = Depends(req
         "law": new_law_bundle
     }
 # ============================================================================
-# [Q-Safety 확장 모듈 4] 실시간 일반검사(1~5호기 5슬롯 · 동일원액 병합 · 혼합게이지 · 차기품목) & 인수인계 알림 API
+# [Q-Safety 확장 모듈 4] 실시간 일반검사 (1~5호기 4구역 전광판 · 아셉틱 선충진 역산 · 배관 +15분) & 인수인계 API
 # ============================================================================
 STERIL_FLOW_LPH = {1: 5000, 2: 6000, 3: 6000, 4: 8000, 5: 6000}
 MIX_TANK_CAP_L = {1: 6000, 2: 10000, 3: 6000, 4: 8000, 5: 6000}
 PACK_SPEED_PPH = {"A": 20000, "B": 24000, "C": 7000, "D": 24000, "E": 24000, "F": 40000}
 DEFAULT_STERIL_BY_PACKER = {"A": 3, "B": 1, "C": 5, "D": 1, "E": 2, "F": 4}
-DEFAULT_EXAMPLE_BATCHES = {"A": 4, "B": 5, "C": 2, "D": 5, "E": 5, "F": 6}
+DEFAULT_EXAMPLE_BATCHES = {"A": 4, "B": 5, "C": 3, "D": 5, "E": 5, "F": 6}
+PIPE_PURGE_MIN = 15.0  # 마지막 배치 후 배관 내 잔여 유액 밀어내기 시간 (+15분)
 
 GRAIN_3H_KEYWORDS = [
     "오곡", "5곡", "7곡", "9곡", "12곡", "15곡", "16곡", "17곡", "19곡", "21곡",
@@ -11605,6 +11626,14 @@ PROCESSED_MILK_2H_KEYWORDS = [
     "파스퇴르딸기", "커피우유", "모카", "카라멜", "메론", "멜론",
     "흑당", "연유", "밀크티", "바닐라", "비타민플러스", "키짱"
 ]
+
+OEM_BRAND_TOKENS_RE = re.compile(
+    r"(?:연세대학교|연세우유|연세두유|연세|세브란스|황성주\s*박사의|황성주|이롬|"
+    r"비락|두유2u|2u|부산우유|부산|건국우유|건국|삼육두유|삼육|푸르밀|남양|파스퇴르|"
+    r"오늘\s*좋은|오늘좋은|심플러스|simplus|homeplus|홈플러스|마켓컬리|컬리|곰곰|노브랜드|강릉초당|"
+    r"wang|왕|뼈를\s*생각한|전용목장|목장우유|미국수출|베트남수출|중국수출|몽골수출|수출용|수출|export)",
+    re.IGNORECASE,
+)
 
 
 def _parse_hhmm_to_dt(base_d: date, hm_str: Any) -> Optional[datetime]:
@@ -11623,22 +11652,23 @@ def _fmt_dur_hm(minutes_val: float) -> str:
     return f"{h}시간 {m:02d}분" if h > 0 else f"{m}분"
 
 
-def _core_liquid_key(prod_name: str) -> str:
-    """동일 내용물(원액)의 내수/수출/용량/제품코드 파생 포장을 하나로 묶기 위한 정규화 키"""
+def _content_liquid_signature(prod_name: str) -> str:
+    """동일 내용물(원액)에 포장팩만 다른 자사·OEM·PB·수출 품목 자동 병합용 시그니처"""
     s = str(prod_name or "").strip()
     s = re.sub(r"\b1[0127]\d{3}(?:\s*[,/]\s*1[0127]\d{3})*\b", " ", s)
-    s = re.sub(
-        r"\(\s*(?:[^)]*(?:수출|export|미국|베트남|중국|몽골|홍콩|대만|필리핀|호주|캐나다|전용|박스|입|팩|프리즈마|미드|콤비|슬림|mL|ml|L|g)[^)]*)\s*\)",
-        " ",
-        s,
-        flags=re.IGNORECASE,
-    )
-    s = re.sub(r"(?:미국수출|베트남수출|수출용|수출|export)\b", " ", s, flags=re.IGNORECASE)
-    s = re.sub(r"\d+(?:\.\d+)?\s*(?:mL|ml|ML|㎖|L|g|kg)\b", " ", s)
-    return re.sub(r"[\s\(\)\[\]\{\}\-_·,/&\+!]+", "", s).lower()
+    s = re.sub(r"\([^)]*\)", " ", s)
+    s = re.sub(r"\d+(?:\.\d+)?\s*(?:mL|ml|ML|㎖|L|g|kg|입|팩)\b", " ", s)
+    s = OEM_BRAND_TOKENS_RE.sub(" ", s)
+    core = re.sub(r"(?:가공두유|원액두유|두유|멸균우유|살균우유|우유)", " ", s)
+    core_clean = re.sub(r"[\s\(\)\[\]\{\}\-_·,/&\+!]+", "", core).lower()
+    if "칼마디" in core_clean:
+        return "두유_칼마디"
+    if len(core_clean) >= 2:
+        return core_clean
+    return re.sub(r"[\s\(\)\[\]\{\}\-_·,/&\+!]+", "", s).lower() or "default"
 
 
-def _clean_base_prod_title(prod_name: str, strip_export: bool = False) -> str:
+def _clean_base_prod_title(prod_name: str, strip_export: bool = True) -> str:
     s = str(prod_name or "").strip()
     s = re.sub(r"\s*1[0127]\d{3}(?:\s*[,/]\s*1[0127]\d{3})*\b", "", s)
     if strip_export:
@@ -11649,14 +11679,6 @@ def _clean_base_prod_title(prod_name: str, strip_export: bool = False) -> str:
             flags=re.IGNORECASE,
         )
     return re.sub(r"\s+", " ", s).strip()
-
-
-def _extract_pack_variant_tag(prod_name: str, packer_code: str, fin_hm: str) -> str:
-    s = str(prod_name or "")
-    m = re.search(r"\(([^)]*(?:수출|export|미국|베트남|중국|몽골|홍콩|대만|전용)[^)]*)\)", s, re.IGNORECASE)
-    v_lbl = m.group(1).strip() if m else ("수출" if "수출" in s else "내수")
-    hm_part = f" {fin_hm}" if fin_hm else ""
-    return f"{packer_code}·{v_lbl}{hm_part}" if packer_code and packer_code != "-" else f"{v_lbl}{hm_part}"
 
 
 def classify_spoilage_risk_rule(prod_name: str, category_hint: str = "") -> dict:
@@ -11730,9 +11752,9 @@ def evaluate_room_multi_angle(
     vol_hint: str = "",
     fails_cnt: int = 0,
     co_transfer_txt: str = "",
-    variant_tags: Optional[List[str]] = None,
+    extra_pack_names: Optional[List[str]] = None,
+    is_finished_confirmed: bool = False,
     is_example: bool = False,
-    assumed_start: bool = False,
 ) -> dict:
     eq = get_equipment_rates(steril_no, packer_code, prod_name, vol_hint)
     risk = classify_spoilage_risk_rule(prod_name)
@@ -11752,23 +11774,19 @@ def evaluate_room_multi_angle(
     mix_all_done = (done_mix_cnt >= tot_b)
     mix_pct = int(round((done_mix_cnt / float(tot_b)) * 100))
 
+    # [원칙 1] 완제품 첫 샘플 시각이 확정되어야만 아셉틱 선충진량을 역산하고 AI 예상 종료시각을 산출 (미검사 시 포장전 표시 · 종료예측 미표출)
     fin_start_dt = _parse_hhmm_to_dt(prod_d, fin_first_time_str)
-    fin_started = (fin_start_dt is not None) and (not assumed_start)
+    fin_started = (fin_start_dt is not None)
     fin_start_hm = fin_start_dt.strftime("%H:%M") if fin_start_dt else ""
 
-    steril_hours = tot_liquid_l / float(eq["steril_flow_lph"])
-    pack_hours = est_qty / float(eq["pack_speed_pph"])
-    bottleneck_hours = max(steril_hours, pack_hours)
-    aseptic_buffer_min = 12.0 if eq["steril_flow_lph"] > eq["pack_drain_lph"] * 1.15 else 5.0
+    eta_dt: Optional[datetime] = None
+    eta_hm = ""
+    eta_is_ai = True
+    eta_note = ""
 
-    if fin_start_dt is not None:
-        base_pack_start = fin_start_dt
-    elif mix_dts:
-        base_pack_start = mix_dts[0][1] + timedelta(minutes=35)
-    else:
-        base_pack_start = None
-
+    single_batch_steril_min = (b_vol / float(eq["steril_flow_lph"])) * 60.0
     expected_per_batch_min = (b_vol / max(eq["eff_drain_lph"], 1000.0)) * 60.0
+
     delay_min = 0.0
     if len(mix_dts) >= 2:
         span_actual = (mix_dts[-1][1] - mix_dts[0][1]).total_seconds() / 60.0
@@ -11776,27 +11794,59 @@ def evaluate_room_multi_angle(
         if span_actual > span_expected + 15.0:
             delay_min = min(span_actual - span_expected, 180.0)
 
-    eta_dt: Optional[datetime] = None
-    eta_hm = "-"
-    eta_note = ""
-    if base_pack_start is not None:
-        total_pack_min = (bottleneck_hours * 60.0) + aseptic_buffer_min + delay_min
-        eta_dt = base_pack_start + timedelta(minutes=total_pack_min)
+    if fin_started and fin_start_dt is not None:
+        if mix_dts and fin_start_dt > mix_dts[0][1]:
+            lead_min = (fin_start_dt - mix_dts[0][1]).total_seconds() / 60.0
+            eff_fill_min = max(0.0, lead_min - PIPE_PURGE_MIN)
+            v_buffer_l = min(tot_liquid_l, (eff_fill_min / 60.0) * float(eq["steril_flow_lph"]))
+        else:
+            v_buffer_l = 0.0
+
+        pack_need_min = (est_qty / float(eq["pack_speed_pph"])) * 60.0
+        rem_steril_l = max(0.0, tot_liquid_l - v_buffer_l)
+        steril_rem_min = (rem_steril_l / float(eq["steril_flow_lph"])) * 60.0 + PIPE_PURGE_MIN + 10.0
+
+        req_from_fin_start_min = max(pack_need_min, steril_rem_min) + delay_min
+        eta_dt = fin_start_dt + timedelta(minutes=req_from_fin_start_min)
+
         if mix_all_done and mix_dts:
-            min_tail_dt = mix_dts[-1][1] + timedelta(minutes=expected_per_batch_min + 25.0)
+            min_tail_dt = mix_dts[-1][1] + timedelta(minutes=single_batch_steril_min + PIPE_PURGE_MIN + 12.0)
             if min_tail_dt > eta_dt:
                 eta_dt = min_tail_dt
+
         eta_hm = eta_dt.strftime("%H:%M") + ("(익일)" if eta_dt.date() > prod_d else "")
         if delay_min >= 20:
             eta_note = f"포장·이송 지연 +{int(round(delay_min))}분 반영"
 
-    is_pack_finished = bool(eta_dt is not None and now_dt >= (eta_dt + timedelta(minutes=10)))
+    is_pack_finished = bool(is_finished_confirmed or (mix_all_done and eta_dt is not None and now_dt >= (eta_dt + timedelta(minutes=15))))
+    if is_pack_finished:
+        eta_is_ai = False
 
+    # [원칙 2] 혼합 진행중(체류시간 표시) vs 혼합검사 종료(체류시간 숨김 + 아셉틱 이송완료 AI예상[+15분 배관 잔량 이송]) 분리
     hold_status = "ok"
     hold_badge = ""
-    if mix_all_done:
+    aseptic_sub_text = ""
+
+    if is_pack_finished:
+        hold_status = "closed"
+        hold_badge = "포장마감"
+        aseptic_sub_text = ""
+    elif mix_all_done:
         hold_status = "done"
-        hold_badge = "✅ 혼합종료 · 포장마감" if is_pack_finished else "✅ 혼합검사 종료"
+        hold_badge = "✓ 혼합검사 종료"
+        if mix_dts:
+            aseptic_done_dt = mix_dts[-1][1] + timedelta(minutes=single_batch_steril_min + PIPE_PURGE_MIN)
+            if fin_start_dt is not None:
+                flow_all_dt = fin_start_dt + timedelta(minutes=((tot_liquid_l / float(eq["steril_flow_lph"])) * 60.0) + PIPE_PURGE_MIN - 15.0)
+                if flow_all_dt > aseptic_done_dt:
+                    aseptic_done_dt = flow_all_dt
+            a_hm = aseptic_done_dt.strftime("%H:%M")
+            if now_dt >= aseptic_done_dt:
+                aseptic_sub_text = f"아셉틱 이송완료 ({a_hm})"
+            else:
+                aseptic_sub_text = f"아셉틱 이송완료 AI예상 {a_hm}"
+        else:
+            aseptic_sub_text = "아셉틱 이송 진행중"
     elif mix_dts:
         last_b_no = mix_dts[-1][0]
         cleared_by_tank_cycle = max(0, last_b_no - 3)
@@ -11815,44 +11865,46 @@ def evaluate_room_multi_angle(
             dur_txt = _fmt_dur_hm(hold_elapsed_min)
             if hold_elapsed_min >= risk["limit_min"]:
                 hold_status = "danger"
-                hold_badge = f"🚨 {oldest_bno}배치 체류 {dur_txt} ({risk['risk_group']} 초과!)"
+                hold_badge = f"🚨 {oldest_bno}배치 체류 {dur_txt}"
+                aseptic_sub_text = f"{risk['risk_group']} 기준 초과 (변질위험)"
             elif hold_elapsed_min >= risk["warn_min"]:
                 hold_status = "warn"
-                hold_badge = f"⚠️ {oldest_bno}배치 체류 {dur_txt} ({risk['risk_group']} 임박)"
+                hold_badge = f"⚠️ {oldest_bno}배치 체류 {dur_txt}"
+                aseptic_sub_text = f"{risk['risk_group']} 기준 임박"
             else:
                 hold_status = "ok"
-                hold_badge = f"체류 {dur_txt} ({risk['risk_group']})"
+                hold_badge = f"혼합 진행중 · 체류 {dur_txt}"
+                aseptic_sub_text = f"변질기준 {risk['risk_group']} 이내 정상"
 
     if not hold_badge:
-        hold_badge = f"기준 {risk['risk_group']}"
+        hold_badge = "혼합 대기중"
+        aseptic_sub_text = f"관리기준 {risk['risk_group']}"
 
+    extras = [x for x in (extra_pack_names or []) if x]
     p_spd_str = f"{eq['pack_speed_pph']//10000}만" if eq["pack_speed_pph"] % 10000 == 0 else f"{eq['pack_speed_pph']/10000:.1f}만"
-    fin_disp = (
-        f"포장시작 {fin_start_hm}" if fin_started
-        else (f"시작예상 {fin_start_hm}" if assumed_start and fin_start_hm else "포장 대기")
-    )
 
     return {
         "steril_no": eq["steril_no"],
         "steril_ho": f"{eq['steril_no']}호기",
         "packer_ho": eq["packer_label"],
         "product_name": _clean_base_prod_title(prod_name, strip_export=True),
-        "variant_tags": [],
+        "extra_pack_cnt": len(extras),
+        "extra_pack_names": extras,
         "mix_done": done_mix_cnt,
         "mix_total": tot_b,
         "mix_pct": mix_pct,
         "mix_all_done": mix_all_done,
-        "mix_text": f"혼합 {done_mix_cnt}/{tot_b}",
+        "mix_text": f"혼합 {done_mix_cnt}/{tot_b} ({mix_pct}%)",
         "fin_started": fin_started,
         "fin_start_hm": fin_start_hm,
-        "fin_text": fin_disp,
-        "risk_group": risk["risk_group"],
-        "limit_label": risk["limit_label"],
-        "hold_status": hold_status,
-        "hold_badge": hold_badge,
         "eta_hm": eta_hm,
+        "eta_is_ai": eta_is_ai,
         "eta_note": eta_note,
         "is_pack_finished": is_pack_finished,
+        "hold_status": hold_status,
+        "hold_badge": hold_badge,
+        "aseptic_sub_text": aseptic_sub_text,
+        "risk_group": risk["risk_group"],
         "equip_spec": f"{eq['steril_flow_lph']:,}L/h · {p_spd_str}개/h · 배치 {int(b_vol):,}L",
         "fails_cnt": fails_cnt,
         "co_transfer": co_transfer_txt,
@@ -11862,7 +11914,7 @@ def evaluate_room_multi_angle(
 
 
 def _pack_into_five_sterilizer_slots(evaluated_runs: List[dict]) -> List[dict]:
-    """멸균 1~5호기 5개 고정 슬롯으로 정렬하고, 호기당 연속 2품목 생산 시 현재 가동 품목 + 차기/전품목 전환 정보 구성"""
+    """멸균 1~5호기 5슬롯 정렬 — 실제로 내용물이 달라 검사방이 2개 이상 열린 경우에만 runs 배열에 복수 항목 구성"""
     by_st: Dict[int, List[dict]] = {1: [], 2: [], 3: [], 4: [], 5: []}
     for r in evaluated_runs:
         sno = int(r.get("steril_no") or 1)
@@ -11873,6 +11925,16 @@ def _pack_into_five_sterilizer_slots(evaluated_runs: List[dict]) -> List[dict]:
     slots: List[dict] = []
     for sno in (1, 2, 3, 4, 5):
         runs = sorted(by_st[sno], key=lambda x: x.get("_sort_hm", "23:59"))
+        # 같은 호기에서 이미 다음 내용물 포장이 개시되었으면 앞선 품목은 확정 마감 처리
+        if len(runs) >= 2:
+            for idx_prev in range(len(runs) - 1):
+                if runs[idx_prev + 1].get("fin_started"):
+                    runs[idx_prev]["is_pack_finished"] = True
+                    runs[idx_prev]["eta_is_ai"] = False
+                    runs[idx_prev]["hold_status"] = "closed"
+                    runs[idx_prev]["hold_badge"] = "포장마감"
+                    runs[idx_prev]["aseptic_sub_text"] = ""
+
         if not runs:
             slots.append({
                 "steril_no": sno,
@@ -11882,8 +11944,6 @@ def _pack_into_five_sterilizer_slots(evaluated_runs: List[dict]) -> List[dict]:
                 "run_cnt": 0,
                 "primary": None,
                 "runs": [],
-                "prev_summary": "",
-                "next_summary": "",
             })
             continue
 
@@ -11895,9 +11955,6 @@ def _pack_into_five_sterilizer_slots(evaluated_runs: List[dict]) -> List[dict]:
         else:
             act_idx = len(runs) - 1
 
-        prev_r = runs[act_idx - 1] if act_idx > 0 else None
-        next_r = runs[act_idx + 1] if (act_idx + 1) < len(runs) else None
-
         slots.append({
             "steril_no": sno,
             "steril_ho": f"{sno}호기",
@@ -11906,8 +11963,6 @@ def _pack_into_five_sterilizer_slots(evaluated_runs: List[dict]) -> List[dict]:
             "run_cnt": len(runs),
             "primary": runs[act_idx],
             "runs": runs,
-            "prev_summary": f"전품목 완료: {prev_r['product_name']}" if prev_r else "",
-            "next_summary": f"차기 대기: {next_r['packer_ho']} {next_r['product_name']}" if next_r else "",
         })
     return slots
 
@@ -11916,11 +11971,11 @@ def build_general_inspection_board(rt_today: Optional[dict], rt_yest: Optional[d
     now_dt = now_kst()
     today_iso = now_dt.strftime("%Y-%m-%d")
 
-    # 1) QMS 실시간 데이터가 수신된 경우 (동일 멸균기·동일 원액 그룹화 + 1~5호기 5슬롯 구성)
+    # 1) QMS 실시간 데이터가 수신된 경우: QMS에서 열린 실제 검사방(room) 기준으로만 품목 분리 (동시이송 포장만 통합)
     if _QMS_LIVE_ROOMS_CACHE.get("rooms") and _QMS_LIVE_ROOMS_CACHE.get("date") >= (now_dt.date() - timedelta(days=1)).strftime("%Y-%m-%d"):
         live_dt_str = _QMS_LIVE_ROOMS_CACHE["date"]
         live_d = parse_date_obj(live_dt_str) or now_dt.date()
-        grouped_live: Dict[Tuple[int, str], dict] = {}
+        live_items = []
 
         for rm in _QMS_LIVE_ROOMS_CACHE["rooms"]:
             st_no = int(rm.get("sterilizer") or 2)
@@ -11931,53 +11986,25 @@ def build_general_inspection_board(rt_today: Optional[dict], rt_yest: Optional[d
             fin_t_list = [str(x or "").strip() for x in ((vals.get("완제품") or {}).get("times") or []) if str(x or "").strip()]
             fin_first = fin_t_list[0] if fin_t_list else ""
             co_list = rm.get("co_transfer") or []
-            co_txt = ", ".join([str(c.get("label") or "") for c in co_list if isinstance(c, dict) and c.get("label")])
+            co_packers = [re.sub(r"[^A-F]", "", str(c.get("packer") or "").upper())[:1] for c in co_list if isinstance(c, dict)]
+            co_names = [_clean_base_prod_title(str(c.get("product_name") or c.get("label") or "")) for c in co_list if isinstance(c, dict) and (c.get("product_name") or c.get("label"))]
+            all_p_codes = "".join(dict.fromkeys([c for c in ([p_code] + co_packers) if c]))
 
-            ckey = (st_no, _core_liquid_key(p_nm))
-            g = grouped_live.setdefault(ckey, {
-                "steril_no": st_no,
-                "packers": [],
-                "prod_name": p_nm,
-                "batches": int(rm.get("batches") or max(len(mix_t), 5)),
-                "blend_vol": float(rm.get("blend_volume") or 0),
-                "qty": 0,
-                "mix_t": mix_t,
-                "fin_hms": [],
-                "pack_spec": str(rm.get("pack_spec") or ""),
-                "fails": 0,
-                "co_txt": co_txt,
-                "variant_tags": [],
-            })
-            if p_code and p_code not in g["packers"]:
-                g["packers"].append(p_code)
-            g["qty"] += int(rm.get("quantity") or 0)
-            g["fails"] += int(rm.get("fails") or 0)
-            if len(mix_t) > len(g["mix_t"]):
-                g["mix_t"] = mix_t
-            g["batches"] = max(g["batches"], int(rm.get("batches") or 0))
-            if fin_first:
-                g["fin_hms"].append(fin_first)
-            g["variant_tags"].append(_extract_pack_variant_tag(p_nm, p_code, fin_first))
-
-        live_items = []
-        for (_, _), g in grouped_live.items():
-            first_hm = sorted(g["fin_hms"])[0] if g["fin_hms"] else ""
-            v_tags = g["variant_tags"] if len(g["variant_tags"]) >= 2 else []
             live_items.append(evaluate_room_multi_angle(
                 prod_d=live_d,
                 now_dt=now_dt,
-                steril_no=g["steril_no"],
-                packer_code="".join(g["packers"]),
-                prod_name=g["prod_name"],
-                total_batches=g["batches"],
-                batch_vol_l=g["blend_vol"],
-                planned_qty=g["qty"],
-                mix_times_str=g["mix_t"],
-                fin_first_time_str=first_hm,
-                vol_hint=g["pack_spec"],
-                fails_cnt=g["fails"],
-                co_transfer_txt=g["co_txt"],
-                variant_tags=v_tags,
+                steril_no=st_no,
+                packer_code=all_p_codes or p_code,
+                prod_name=p_nm,
+                total_batches=int(rm.get("batches") or max(len(mix_t), 5)),
+                batch_vol_l=float(rm.get("blend_volume") or 0),
+                planned_qty=int(rm.get("quantity") or 0),
+                mix_times_str=mix_t,
+                fin_first_time_str=fin_first,
+                vol_hint=str(rm.get("pack_spec") or ""),
+                fails_cnt=int(rm.get("fails") or 0),
+                extra_pack_names=co_names,
+                is_finished_confirmed=bool(rm.get("is_closed", False)),
                 is_example=False,
             ))
 
@@ -11994,7 +12021,7 @@ def build_general_inspection_board(rt_today: Optional[dict], rt_yest: Optional[d
                 "items": live_items,
             }
 
-    # 2) QMS 연동 전: 상온 공정일보 가동 품목 · 포장 확인시간 기반 1~5호기 5슬롯 예시 시뮬레이션
+    # 2) QMS 연동 전 예시 모드: 같은 포장호기·동일 내용물(OEM/PB/수출)은 '[외 N건]'으로 1개 슬롯에 합치고, 확인시간 미기입 시 '포장전' 유지!
     src_view = rt_today if (rt_today and rt_today.get("compact_rows")) else rt_yest
     if not src_view or not src_view.get("compact_rows"):
         return {
@@ -12010,7 +12037,10 @@ def build_general_inspection_board(rt_today: Optional[dict], rt_yest: Optional[d
 
     ref_dt_str = str(src_view.get("prod_date") or today_iso).strip()
     ref_d = parse_date_obj(ref_dt_str) or now_dt.date()
-    sim_now = now_dt if (ref_d == now_dt.date() and 8 <= now_dt.hour <= 17) else datetime(ref_d.year, ref_d.month, ref_d.day, 14, 15)
+    if ref_d == now_dt.date():
+        sim_now = now_dt
+    else:
+        sim_now = datetime(ref_d.year, ref_d.month, ref_d.day, 13, 30)
 
     valid_crows = [
         cp for cp in (src_view.get("compact_rows") or [])
@@ -12018,9 +12048,12 @@ def build_general_inspection_board(rt_today: Optional[dict], rt_yest: Optional[d
         and not is_test_production_entry(cp.get("생산 제품명", ""), cp.get("소비기한", ""))
     ]
 
+    # 먼저 포장호기별로 묶은 뒤 내용물 시그니처(_content_liquid_signature)가 같으면 OEM·다중포장('외 N건')으로 병합
     grouped_ex: Dict[Tuple[int, str], dict] = {}
+    steril_for_packer: Dict[str, int] = {}
     used_st_nos = set()
-    for idx_r, cp in enumerate(valid_crows):
+
+    for cp in valid_crows:
         p_nm = str(cp.get("생산 제품명") or "").strip()
         ho_raw = str(cp.get("포장호기") or "-").strip()
         p_code = re.sub(r"[^A-F]", "", ho_raw.upper())[:1]
@@ -12029,79 +12062,86 @@ def build_general_inspection_board(rt_today: Optional[dict], rt_yest: Optional[d
         m_st = re.search(r"(\d)호기", ster_sum)
         if m_st:
             st_no = int(m_st.group(1))
+            steril_for_packer[p_code] = st_no
+        elif p_code in steril_for_packer:
+            st_no = steril_for_packer[p_code]
         else:
             st_no = DEFAULT_STERIL_BY_PACKER.get(p_code, 2)
-            # 멸균기 미기입 시 비어 있는 호기에 자연스럽게 분산 배치
             if st_no in used_st_nos and p_code != "F":
                 for cand_s in (1, 2, 3, 5):
                     if cand_s not in used_st_nos:
                         st_no = cand_s
                         break
+            steril_for_packer[p_code] = st_no
         used_st_nos.add(st_no)
 
         chk_raw = str(cp.get("확인시간") or "")
         m_hm = re.search(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", chk_raw)
-        has_real_chk = m_hm is not None
-        fin_hm = m_hm.group(1) if has_real_chk else f"0{8 + (idx_r % 2)}:{30 if idx_r % 2 == 0 else 50}"
+        fin_hm = m_hm.group(1) if m_hm else ""
 
-        ckey = (st_no, _core_liquid_key(p_nm))
+        liq_sig = _content_liquid_signature(p_nm)
+        ckey = (st_no, liq_sig)
         g = grouped_ex.setdefault(ckey, {
             "steril_no": st_no,
             "packers": [],
-            "prod_name": p_nm,
+            "lead_name": p_nm,
+            "all_names": [],
             "fin_hms": [],
-            "has_real_chk": False,
-            "variant_tags": [],
         })
         if p_code and p_code not in g["packers"]:
             g["packers"].append(p_code)
-        if has_real_chk:
-            g["has_real_chk"] = True
+        clean_nm = _clean_base_prod_title(p_nm, strip_export=False)
+        if clean_nm and clean_nm not in g["all_names"]:
+            g["all_names"].append(clean_nm)
         if fin_hm:
             g["fin_hms"].append(fin_hm)
-        v_tag = _extract_pack_variant_tag(p_nm, p_code, fin_hm if has_real_chk else "")
-        if v_tag not in g["variant_tags"]:
-            g["variant_tags"].append(v_tag)
 
     st_run_counts: Dict[int, int] = {}
     for (sno, _) in grouped_ex.keys():
         st_run_counts[sno] = st_run_counts.get(sno, 0) + 1
 
     example_items = []
-    for (st_no, _), g in grouped_ex.items():
-        first_hm = sorted(g["fin_hms"])[0] if g["fin_hms"] else "09:00"
+    for idx_g, ((st_no, _), g) in enumerate(grouped_ex.items()):
+        # 실제 확인시간이 찍혀 있을 때만 포장 개시로 인정 (미기입 시 '' -> '포장전' 및 AI 종료시각 미표시)
+        first_hm = sorted(g["fin_hms"])[0] if g["fin_hms"] else ""
         p_joined = "".join(g["packers"])
         lead_p = g["packers"][0] if g["packers"] else "A"
-        eq = get_equipment_rates(st_no, p_joined, g["prod_name"])
+        eq = get_equipment_rates(st_no, p_joined, g["lead_name"])
         b_vol = eq["default_batch_vol_l"]
         base_tot = DEFAULT_EXAMPLE_BATCHES.get(lead_p, 5)
         tot_batches = max(3, base_tot // max(1, st_run_counts.get(st_no, 1)))
 
-        fin_dt = _parse_hhmm_to_dt(ref_d, first_hm) or datetime(ref_d.year, ref_d.month, ref_d.day, 9, 0)
-        mix1_dt = fin_dt - timedelta(minutes=35)
-        step_min = max(42.0, (b_vol / max(eq["eff_drain_lph"], 1000.0)) * 60.0 * 0.90)
+        if first_hm:
+            fin_dt = _parse_hhmm_to_dt(ref_d, first_hm) or datetime(ref_d.year, ref_d.month, ref_d.day, 9, 0)
+            mix1_dt = fin_dt - timedelta(minutes=38)
+        else:
+            # 포장 개시 전(확인시간 미기입)인 경우: 현재 시각 기준 혼합 배치만 진행 중인 예시 생성
+            base_h = max(7, min(sim_now.hour - 1, 10))
+            mix1_dt = datetime(ref_d.year, ref_d.month, ref_d.day, base_h, 15 + (idx_g * 10) % 40)
 
+        step_min = max(44.0, (b_vol / max(eq["eff_drain_lph"], 1000.0)) * 60.0 * 0.90)
         sim_mix_times = []
         for b_i in range(tot_batches):
             b_dt = mix1_dt + timedelta(minutes=b_i * step_min)
-            if b_dt <= sim_now or b_i == 0:
+            if b_dt <= sim_now or (first_hm and b_i == 0):
                 sim_mix_times.append(b_dt.strftime("%H:%M"))
+        if not sim_mix_times and sim_now.hour >= 8:
+            sim_mix_times.append(mix1_dt.strftime("%H:%M"))
 
-        v_tags = g["variant_tags"] if len(g["variant_tags"]) >= 2 else []
+        extra_nms = g["all_names"][1:] if len(g["all_names"]) >= 2 else []
         example_items.append(evaluate_room_multi_angle(
             prod_d=ref_d,
             now_dt=sim_now,
             steril_no=st_no,
             packer_code=p_joined,
-            prod_name=g["prod_name"],
+            prod_name=g["lead_name"],
             total_batches=tot_batches,
             batch_vol_l=b_vol,
             planned_qty=0,
             mix_times_str=sim_mix_times,
             fin_first_time_str=first_hm,
-            variant_tags=v_tags,
+            extra_pack_names=extra_nms,
             is_example=True,
-            assumed_start=(not g["has_real_chk"]),
         ))
 
     slots_5 = _pack_into_five_sterilizer_slots(example_items)
@@ -12184,7 +12224,6 @@ def api_manage_handover_board(body: HandoverActionPayload, cur_user: dict = Depe
                 "pinned": bool(body.pinned),
             })
         elif act in ("dismiss", "toggle_check", "delete"):
-            # 확인 체크 즉시 목록에서 제거!
             cur_list = [x for x in cur_list if x.get("uid") != body.uid]
         elif act == "toggle_pin":
             for it in cur_list:

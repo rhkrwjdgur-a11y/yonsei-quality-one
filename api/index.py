@@ -208,7 +208,9 @@ LAW_PREP_LIST = ["검토전", "부자재변경중", "반영완료"]
 
 # '법규정보' 시트 내 '대시보드' 탭 및 1~2줄 요약 전용 '_법규요약DB' 탭 표준 컬럼
 LAW_DASH_TAB = "대시보드"
-LAW_DASH_COLS = ["법규ID", "구분", "시행일", "법규명", "준비상태", "핵심요약", "관련부서", "수정일시"]
+LAW_DASH_COLS = ["법규ID", "구분", "시행일", "법규명", "준비상태", "핵심요약", "관련부서", "수정일시", "대응코멘트"]
+_HANDOVER_NOTES_CACHE: Dict[str, Any] = {"items": []}
+_QMS_LIVE_ROOMS_CACHE: Dict[str, Any] = {"date": "", "updated_at": "", "rooms": []}
 LAW_SUMMARY_DB_TAB = "_법규요약DB"
 LAW_SUMMARY_DB_COLS = ["법규ID", "탭구분", "시행일", "법규명", "핵심요약_2줄", "요약방식", "수정일시"]
 
@@ -6024,336 +6026,6 @@ def sync_law_summary_db_worksheet(sh, all_laws: list, summary_db_map: Dict[str, 
 
 
 def parse_law_dashboard_tab(rows: list) -> Tuple[bool, Dict[str, dict]]:
-    if not rows or len(rows) < 2:
-        return False, {}
-
-    hdr_idx = -1
-    hdr_ns = []
-    for idx, r in enumerate(rows[:5]):
-        cand = [re.sub(r"\s+", "", str(x)) for x in r]
-        if any(k in "".join(cand) for k in ["법규ID", "법규명", "법령명"]):
-            hdr_idx = idx
-            hdr_ns = cand
-            break
-    if hdr_idx < 0:
-        return False, {}
-
-    c_id = next((i for i, h in enumerate(hdr_ns) if "ID" in h.upper()), -1)
-    c_nm = next((i for i, h in enumerate(hdr_ns) if "법규명" in h or "법령명" in h or "고시명" in h), -1)
-    c_prep = next((i for i, h in enumerate(hdr_ns) if "준비" in h or "상태" in h), -1)
-    c_sum = next((i for i, h in enumerate(hdr_ns) if "요약" in h or "내용" in h), -1)
-
-    pinned_map: Dict[str, dict] = {}
-    for r in rows[hdr_idx + 1:]:
-        if not any(str(x).strip() for x in r):
-            continue
-        lid = str(r[c_id]).strip() if (0 <= c_id < len(r)) else ""
-        nm = str(r[c_nm]).strip() if (0 <= c_nm < len(r)) else ""
-        if not lid and not nm:
-            continue
-        prep = str(r[c_prep]).strip() if (0 <= c_prep < len(r)) else "검토전"
-        if prep not in LAW_PREP_LIST:
-            prep = "검토전"
-        summ = str(r[c_sum]).strip() if (0 <= c_sum < len(r)) else ""
-        entry = {"prep": prep, "summary": summ, "law_name": nm}
-        if lid:
-            pinned_map[lid] = entry
-        norm_nm = re.sub(r"\s+", "", nm)
-        if norm_nm:
-            pinned_map[norm_nm] = entry
-
-    return (len(pinned_map) > 0), pinned_map
-
-
-def sync_law_dashboard_worksheet(sh, all_laws_enriched: list):
-    ws_all = api_call_with_retry(sh.worksheets)
-    ws_dash = next((w for w in ws_all if w.title.strip() == LAW_DASH_TAB), None)
-    if ws_dash is None:
-        ws_dash = api_call_with_retry(sh.add_worksheet, title=LAW_DASH_TAB, rows=100, cols=10)
-
-    now_s = now_kst().strftime("%Y-%m-%d %H:%M:%S")
-    dash_items = [x for x in all_laws_enriched if x.get("show_on_dashboard")]
-    dash_items.sort(key=lambda x: x.get("_sort_k", 99999))
-
-    payload = [LAW_DASH_COLS]
-    for it in dash_items:
-        payload.append([
-            str(it.get("law_id", "")),
-            str(it.get("법규단계", "고시")),
-            str(it.get("시행일", "-")),
-            str(it.get("법규명", "")),
-            str(it.get("prep_status", "검토전")),
-            str(it.get("실무조치요약", "")),
-            str(it.get("당사관련부서", "-")),
-            now_s
-        ])
-    api_call_with_retry(ws_dash.clear)
-    safe_ws_update(ws_dash, payload)
-
-
-def fetch_law_info_sheet(sheet_urls_map: dict):
-    sh, err = open_sheet_isolated(sheet_urls_map, "law_info")
-    if sh is None:
-        return [], False, {}, {}, f"[법규정보] {err}"
-
-    try:
-        ws_all = api_call_with_retry(sh.worksheets)
-        ws_titles = [w.title for w in ws_all]
-        t_dash = next((t for t in ws_titles if t.strip() == LAW_DASH_TAB), None)
-        t_sdb = next((t for t in ws_titles if t.strip() == LAW_SUMMARY_DB_TAB), None)
-        t_weekly = next((t for t in ws_titles if re.sub(r"\s+", "", t) == "주간식품안전"), None)
-
-        exclude_sys = {t for t in [t_dash, t_sdb, t_weekly] if t and not t.strip().startswith("_")}
-        target_tabs = [
-            t for t in ws_titles
-            if t not in exclude_sys
-            and not t.strip().startswith("_")
-            and any(yr in t for yr in ["2026", "2025", "2027", "공문", "지침"])
-        ]
-        if not target_tabs:
-            target_tabs = [t for t in ws_titles if t not in exclude_sys and not t.strip().startswith("_")][:4]
-
-        fetch_list = target_tabs + ([t_dash] if t_dash else []) + ([t_sdb] if t_sdb else []) + ([t_weekly] if t_weekly else [])
-        batch_map = batch_fetch_tabs(sh, fetch_list, "FORMATTED_VALUE")
-
-        if t_weekly is not None:
-            _WEEKLY_SAFETY_CACHE["data"] = parse_weekly_safety_tab_rows(batch_map.get(t_weekly, []))
-        else:
-            _WEEKLY_SAFETY_CACHE["data"] = {"active_week_id": "", "weeks": []}
-
-        dash_initialized, dash_tab_map = parse_law_dashboard_tab(batch_map.get(t_dash, [])) if t_dash else (False, {})
-        summary_db_map = parse_law_summary_db_tab(batch_map.get(t_sdb, [])) if t_sdb else {}
-
-        today_d = now_kst().date()
-        now_s = now_kst().strftime("%Y-%m-%d %H:%M:%S")
-        all_laws = []
-        sdb_dirty = (t_sdb is None)
-        missing_laws_count = 0
-
-        raw_parsed_items = []
-        for t_name in target_tabs:
-            rows = batch_map.get(t_name, [])
-            if len(rows) < 2:
-                continue
-            tab_has_notice = "예고" in t_name
-
-            hdr_idx = -1
-            col_ministry, col_law, col_content, col_notice_dt, col_enf_dt, col_rel = -1, -1, -1, -1, -1, -1
-            for r_i, r in enumerate(rows[:12]):
-                r_ns = [re.sub(r"\s+", "", str(x)) for x in r]
-                if any("법규명" in x or "법령명" in x for x in r_ns) and any("내용" in x or "시행" in x or "예고" in x for x in r_ns):
-                    hdr_idx = r_i
-                    for c_i, cell_txt in enumerate(r_ns):
-                        if ("부처" in cell_txt or "기관" in cell_txt) and col_ministry < 0:
-                            col_ministry = c_i
-                        elif ("법규명" in cell_txt or "법령명" in cell_txt or "고시명" in cell_txt) and col_law < 0:
-                            col_law = c_i
-                        elif "내용" in cell_txt and col_content < 0:
-                            col_content = c_i
-                        elif any(k in cell_txt for k in ["고시일", "공포일", "예고일", "입법예고"]) and col_notice_dt < 0:
-                            col_notice_dt = c_i
-                        elif ("시행일" in cell_txt or "시행예정" in cell_txt or "의견제출" in cell_txt) and col_enf_dt < 0:
-                            col_enf_dt = c_i
-                        elif ("관련" in cell_txt or "당사" in cell_txt or "부서" in cell_txt or "비고" in cell_txt) and col_rel < 0:
-                            col_rel = c_i
-                    break
-
-            if hdr_idx < 0 or col_law < 0:
-                continue
-
-            c_law_end = col_content if col_content > col_law else col_law + 1
-            next_after_content = min([c for c in [col_notice_dt, col_enf_dt, col_rel] if c > col_content] or [col_content + 1])
-
-            last_ministry = ""
-            for dr in rows[hdr_idx + 1:]:
-                if not any(str(x).strip() for x in dr):
-                    continue
-                min_v = str(dr[col_ministry]).strip() if (0 <= col_ministry < len(dr)) else ""
-                if min_v:
-                    last_ministry = min_v
-
-                law_parts = [str(x).strip() for x in dr[col_law : min(c_law_end, len(dr))] if str(x).strip()]
-                law_nm = re.sub(r"\s+", " ", " ".join(dict.fromkeys(law_parts))).strip()
-                if not law_nm or law_nm in ["법규명", "법령명"]:
-                    continue
-
-                cnt_parts = [str(x).strip() for x in dr[col_content : min(next_after_content, len(dr))] if str(x).strip()] if col_content >= 0 else []
-                content_full = "\n".join(dict.fromkeys(cnt_parts)).strip()
-
-                notice_raw = str(dr[col_notice_dt]).strip() if (0 <= col_notice_dt < len(dr)) else ""
-                enf_raw = str(dr[col_enf_dt]).strip() if (0 <= col_enf_dt < len(dr)) else ""
-                rel_raw = " ".join([str(x).strip() for x in dr[col_rel:] if str(x).strip()]) if (0 <= col_rel < len(dr)) else ""
-
-                lid = make_law_id(t_name, law_nm, enf_raw, notice_raw)
-                if lid not in summary_db_map:
-                    missing_laws_count += 1
-
-                raw_parsed_items.append((t_name, tab_has_notice, last_ministry, law_nm, content_full, notice_raw, enf_raw, rel_raw, lid))
-
-        # 서버 타임아웃 없이 한 번 동기화할 때마다 최대 4건씩 Gemini AI 요약을 생성하여 _법규요약DB에 영구 축적
-        ai_budget = 0
-        ai_used = 0
-
-        for (t_name, tab_has_notice, last_ministry, law_nm, content_full, notice_raw, enf_raw, rel_raw, lid) in raw_parsed_items:
-            cached_s_obj = summary_db_map.get(lid)
-            if cached_s_obj and cached_s_obj.get("summary"):
-                saved_s = cached_s_obj["summary"]
-                saved_m = cached_s_obj.get("method", "auto_2line")
-                if saved_m == "manual" or (not is_broken_or_overlong_summary(saved_s, content_full)):
-                    short_sum = saved_s
-                else:
-                    ai_txt = generate_gemini_law_summary_single(law_nm, content_full) if ai_used < ai_budget else None
-                    if ai_txt and not is_broken_or_overlong_summary(ai_txt):
-                        ai_used += 1
-                        short_sum = ai_txt
-                        summary_db_map[lid] = {"summary": short_sum, "method": "gemini", "updated_at": now_s}
-                    else:
-                        short_sum = extract_concise_law_summary(law_nm, content_full, max_len=105)
-                        summary_db_map[lid] = {"summary": short_sum, "method": "auto_2line", "updated_at": now_s}
-                    sdb_dirty = True
-            else:
-                ai_txt = generate_gemini_law_summary_single(law_nm, content_full) if ai_used < ai_budget else None
-                if ai_txt and not is_broken_or_overlong_summary(ai_txt):
-                    ai_used += 1
-                    short_sum = ai_txt
-                    summary_db_map[lid] = {"summary": short_sum, "method": "gemini", "updated_at": now_s}
-                else:
-                    short_sum = extract_concise_law_summary(law_nm, content_full, max_len=105)
-                    summary_db_map[lid] = {"summary": short_sum, "method": "auto_2line", "updated_at": now_s}
-                sdb_dirty = True
-
-            is_guide_item = ("공문" in t_name) or ("지침" in t_name)
-            is_notice_item = (not is_guide_item) and (tab_has_notice or any(k in law_nm for k in ["예고", "개정안", "개정령(안)", "고시(안)"]))
-            stage_type = "공문·지침" if is_guide_item else ("예고" if is_notice_item else "고시")
-
-            enf_d = parse_date_obj(enf_raw)
-            d_day = (enf_d - today_d).days if enf_d else None
-            enf_iso = enf_d.strftime("%Y-%m-%d") if enf_d else (enf_raw or "미정")
-
-            is_qs_dept = ("품질안전" in rel_raw) or ("식품안전" in rel_raw) or ("품질관리" in rel_raw) or ("전부문" in rel_raw) or ("전사" in rel_raw)
-            auto_default_show = (not tab_has_notice) and is_qs_dept and (d_day is not None and d_day >= -14)
-
-            all_laws.append({
-                "law_id": lid,
-                "탭구분": t_name.strip(),
-                "법규단계": stage_type,
-                "예고여부": is_notice_item,
-                "주무부처": last_ministry or "-",
-                "법규명": law_nm,
-                "자동조치요약": short_sum,
-                "원문내용": content_full or "-",
-                "고시_예고일": notice_raw or "-",
-                "시행일": enf_iso,
-                "시행일_원문": enf_raw or "-",
-                "d_day": d_day,
-                "당사관련부서": rel_raw or "-",
-                "품질안전해당": is_qs_dept,
-                "auto_default": auto_default_show
-            })
-
-        if sdb_dirty and all_laws:
-            try:
-                sync_law_summary_db_worksheet(sh, all_laws, summary_db_map)
-            except Exception:
-                pass
-
-        needs_dash_resync = (t_dash and not dash_initialized and bool(all_laws))
-        if dash_initialized and dash_tab_map:
-            for _, v_obj in dash_tab_map.items():
-                if is_broken_or_overlong_summary(v_obj.get("summary", "")):
-                    v_obj["summary"] = ""
-                    needs_dash_resync = True
-
-        if t_dash and needs_dash_resync and all_laws:
-            repaired_bundle = apply_law_preferences(all_laws, dash_initialized, dash_tab_map, {})
-            try:
-                sync_law_dashboard_worksheet(sh, repaired_bundle["all_laws"])
-                dash_initialized = True
-                dash_tab_map = {
-                    x["law_id"]: {"prep": x["prep_status"], "summary": x["실무조치요약"], "law_name": x["법규명"]}
-                    for x in repaired_bundle["dashboard_laws"]
-                }
-            except Exception:
-                pass
-
-        return all_laws, dash_initialized, dash_tab_map, summary_db_map, None
-    except Exception as e:
-        return [], False, {}, {}, f"[법규정보] {e}"
-
-
-def apply_law_preferences(raw_laws: list, dash_initialized: bool, dash_tab_map: dict, legacy_prefs: dict) -> dict:
-    enriched = []
-    for item in raw_laws:
-        lid = item["law_id"]
-        norm_title = re.sub(r"\s+", "", item["법규명"])
-        dash_entry = dash_tab_map.get(lid) or dash_tab_map.get(norm_title)
-        leg_entry = legacy_prefs.get(lid, {})
-
-        if dash_initialized:
-            show_dash = dash_entry is not None
-            prep = (dash_entry.get("prep") if dash_entry else None) or leg_entry.get("prep", "검토전")
-            custom_sum = (dash_entry.get("summary") if dash_entry else "") or leg_entry.get("summary", "")
-        else:
-            mode = leg_entry.get("mode", "auto")
-            show_dash = True if mode == "Pin" else (False if mode == "Hide" else bool(item.get("auto_default", False)))
-            prep = leg_entry.get("prep", "검토전")
-            custom_sum = leg_entry.get("summary", "")
-
-        if prep not in LAW_PREP_LIST:
-            prep = "검토전"
-
-        if is_broken_or_overlong_summary(custom_sum):
-            clean_custom = ""
-        else:
-            clean_custom = str(custom_sum).strip()
-
-        d_val = item.get("d_day")
-        if d_val is None:
-            d_label, d_cls, sort_key = "일정미정", "badge-neutral", 99999
-        elif d_val == 0:
-            d_label, d_cls, sort_key = "D-Day", "badge-err", 0
-        elif d_val > 0:
-            d_label = f"D-{d_val}"
-            d_cls = "badge-err" if d_val <= 90 else ("badge-warn" if d_val <= 365 else "badge-info")
-            sort_key = d_val
-        else:
-            abs_d = abs(d_val)
-            d_label, d_cls, sort_key = f"시행+{abs_d}일", "badge-ok", 50000 + abs_d
-
-        prep_tag_txt, prep_tag_cls = compute_obsolescence_prep_tag(d_val, bool(item.get("예고여부")), prep)
-
-        cp = dict(item)
-        cp["prep_status"] = prep
-        cp["prep_timing_tag"] = prep_tag_txt
-        cp["prep_timing_cls"] = prep_tag_cls
-        cp["custom_summary"] = clean_custom
-        cp["실무조치요약"] = clean_custom if clean_custom else item["자동조치요약"]
-        cp["show_on_dashboard"] = show_dash
-        cp["d_day_label"] = d_label
-        cp["d_day_cls"] = d_cls
-        cp["_sort_k"] = sort_key
-        enriched.append(cp)
-
-    dashboard_list = [x for x in enriched if x["show_on_dashboard"]]
-    explicitly_hidden_all = bool(legacy_prefs) and all(v.get("mode") == "Hide" for v in legacy_prefs.values())
-    if not dashboard_list and enriched and not explicitly_hidden_all:
-        fallback_cands = [x for x in enriched if not x.get("예고여부") and (x.get("d_day") is None or x["d_day"] >= -30)]
-        if not fallback_cands:
-            fallback_cands = list(enriched)
-        fallback_cands.sort(key=lambda x: x["_sort_k"])
-        for fc in fallback_cands[:6]:
-            fc["show_on_dashboard"] = True
-        dashboard_list = [x for x in enriched if x["show_on_dashboard"]]
-
-    dashboard_list.sort(key=lambda x: x["_sort_k"])
-
-    all_sorted = sorted(enriched, key=lambda x: (0 if x["show_on_dashboard"] else 1, x["_sort_k"]))
-    return {
-        "dashboard_laws": dashboard_list,
-        "all_laws": all_sorted,
-        "active_cnt": len(dashboard_list),
-        "prep_1yr_cnt": sum(1 for x in dashboard_list if x["d_day"] is not None and 0 <= x["d_day"] <= 365 and x["prep_status"] != "반영완료")
-    }
 
 
 # ==============================================================================
@@ -6528,6 +6200,13 @@ def fetch_audit_and_manual_db(sheet_urls_map: dict):
                                 parsed_pins = json.loads(b_val)
                                 if isinstance(parsed_pins, list):
                                     loaded_label_pins = [str(x).strip() for x in parsed_pins if str(x).strip()]
+                            except Exception:
+                                pass
+                        elif b_key == "handover_notes_json" and b_val:
+                            try:
+                                parsed_ho = json.loads(b_val)
+                                if isinstance(parsed_ho, list):
+                                    _HANDOVER_NOTES_CACHE["items"] = [x for x in parsed_ho if isinstance(x, dict)]
                             except Exception:
                                 pass
 
@@ -8458,6 +8137,8 @@ def _sync_build_bundle_core(force_all_sheets: bool = False) -> dict:
             "law": law_bundle,
             "claim_nc_hist": claim_nc_data,
             "safety_news": _WEEKLY_SAFETY_CACHE.get("data", {"active_week_id": "", "weeks": []}),
+            "handover_board": build_handover_board_payload(_HANDOVER_NOTES_CACHE.get("items", [])),
+            "general_inspection": build_general_inspection_board(rt_today, rt_yest),
             "manual_kpis": merged_manual,
             "special_boards": {
                 "label_memo": label_memo_final,
@@ -8536,6 +8217,7 @@ class LawPrefPayload(BaseModel):
     prep: Optional[str] = None
     summary: Optional[str] = None
     summary_method: Optional[str] = "manual"
+    comment: Optional[str] = None
 
 
 class LawAiReqPayload(BaseModel):
@@ -9623,11 +9305,11 @@ def api_save_law_pref(body: LawPrefPayload, _u: dict = Depends(require_auth_user
 
     if "law" in _LAST_GOOD_SHEETS and _LAST_GOOD_SHEETS["law"][0]:
         raw_laws_cur, dash_init_cur, dash_map_cur, sdb_map_cur, _ = _LAST_GOOD_SHEETS["law"]
-        dash_map_cur = dict(dash_map_cur or {})
+        dash_map_cur = {k: dict(v) for k, v in (dash_map_cur or {}).items()}
         sdb_map_cur = dict(sdb_map_cur or {})
     else:
         raw_laws_cur, dash_init_cur, dash_map_cur, sdb_map_cur, _ = fetch_law_info_sheet(sheet_urls_map)
-        dash_map_cur = dict(dash_map_cur or {})
+        dash_map_cur = {k: dict(v) for k, v in (dash_map_cur or {}).items()}
         sdb_map_cur = dict(sdb_map_cur or {})
 
     now_s = now_kst().strftime("%Y-%m-%d %H:%M:%S")
@@ -9637,6 +9319,7 @@ def api_save_law_pref(body: LawPrefPayload, _u: dict = Depends(require_auth_user
                 dash_map_cur[lw["law_id"]] = {
                     "prep": "검토전",
                     "summary": lw.get("자동조치요약", ""),
+                    "comment": "",
                     "law_name": lw.get("법규명", "")
                 }
         dash_init_cur = True
@@ -9657,6 +9340,9 @@ def api_save_law_pref(body: LawPrefPayload, _u: dict = Depends(require_auth_user
     if norm_nm and norm_nm in dash_map_cur and norm_nm != body.law_id:
         dash_map_cur.pop(norm_nm, None)
 
+    cur_cmt = (existing_entry.get("comment") if existing_entry else "") or ""
+    new_cmt = body.comment.strip() if body.comment is not None else cur_cmt
+
     if body.mode == "Hide":
         dash_map_cur.pop(body.law_id, None)
     elif body.mode == "Pin":
@@ -9674,6 +9360,7 @@ def api_save_law_pref(body: LawPrefPayload, _u: dict = Depends(require_auth_user
         dash_map_cur[body.law_id] = {
             "prep": body.prep if body.prep in LAW_PREP_LIST else cur_p,
             "summary": final_s,
+            "comment": new_cmt,
             "law_name": target_law["법규명"] if target_law else ""
         }
     else:
@@ -9682,6 +9369,7 @@ def api_save_law_pref(body: LawPrefPayload, _u: dict = Depends(require_auth_user
                 existing_entry["prep"] = body.prep
             if body.summary is not None and body.summary.strip():
                 existing_entry["summary"] = body.summary.strip()
+            existing_entry["comment"] = new_cmt
             dash_map_cur[body.law_id] = existing_entry
 
     def _upd_aux(b_map: dict, _now_s: str):
@@ -9691,13 +9379,15 @@ def api_save_law_pref(body: LawPrefPayload, _u: dict = Depends(require_auth_user
                 prefs = {}
         except Exception:
             prefs = {}
-        cur_it = prefs.get(body.law_id, {"mode": "auto", "prep": "검토전", "summary": ""})
+        cur_it = prefs.get(body.law_id, {"mode": "auto", "prep": "검토전", "summary": "", "comment": ""})
         if body.mode in ["Pin", "Hide"]:
             cur_it["mode"] = body.mode
         if body.prep in LAW_PREP_LIST:
             cur_it["prep"] = body.prep
         if body.summary is not None:
             cur_it["summary"] = body.summary.strip()
+        if body.comment is not None:
+            cur_it["comment"] = body.comment.strip()
         prefs[body.law_id] = cur_it
         b_map["law_prefs_json"] = json.dumps(prefs, ensure_ascii=False)
 
@@ -9722,7 +9412,7 @@ def api_save_law_pref(body: LawPrefPayload, _u: dict = Depends(require_auth_user
 
     return {
         "ok": True,
-        "message": "'법규정보' 시트의 [_법규요약DB] 및 [대시보드] 탭에 저장되었습니다.",
+        "message": "'법규정보' 시트의 [대시보드] 탭에 대응 코멘트 및 상태가 저장되었습니다.",
         "law": new_law_bundle
     }
 
@@ -11428,4 +11118,496 @@ def api_save_law_guideline(body: LawGuidelineSavePayload, _u: dict = Depends(req
         "message": "'법규정보 > [공문·지침]' 탭에 저장되었으며 통합 대시보드에 즉시 반영되었습니다.",
         "law": new_law_bundle
     }
+# ============================================================================
+# [Q-Safety 확장 모듈 4] 실시간 일반검사(혼합·3단계 변질경보·다각도 종료예측) & 인수인계 보드 API
+# ============================================================================
+STERIL_FLOW_LPH = {1: 5000, 2: 6000, 3: 6000, 4: 8000, 5: 6000}
+MIX_TANK_CAP_L = {1: 6000, 2: 10000, 3: 6000, 4: 8000, 5: 6000}
+PACK_SPEED_PPH = {"A": 20000, "B": 24000, "C": 7000, "D": 24000, "E": 24000, "F": 40000}
+DEFAULT_STERIL_BY_PACKER = {"A": 5, "B": 1, "C": 3, "D": 2, "E": 3, "F": 4}
+DEFAULT_EXAMPLE_BATCHES = {"A": 4, "B": 5, "C": 2, "D": 5, "E": 5, "F": 6}
+
+GRAIN_3H_KEYWORDS = [
+    "오곡", "5곡", "7곡", "9곡", "12곡", "15곡", "16곡", "17곡", "19곡", "21곡",
+    "다곡", "곡물", "통곡물", "선식", "흑임자", "귀리", "오트", "oat",
+    "현미", "보리", "율무", "수수", "기장", "찹쌀", "볶음곡물"
+]
+
+PROCESSED_MILK_2H_KEYWORDS = [
+    "가공유", "초코", "초콜릿", "초콜렛", "코코아", "바나나", "딸기우유",
+    "파스퇴르딸기", "커피우유", "모카", "카라멜", "메론", "멜론",
+    "흑당", "연유", "밀크티", "바닐라", "비타민플러스", "키짱"
+]
+
+
+def _parse_hhmm_to_dt(base_d: date, hm_str: Any) -> Optional[datetime]:
+    m = re.search(r"(?<!\d)(\d{1,2}):(\d{2})(?!\d)", str(hm_str or ""))
+    if not m:
+        return None
+    hh, mm = int(m.group(1)), int(m.group(2))
+    if not (0 <= hh <= 23 and 0 <= mm <= 59):
+        return None
+    return datetime(base_d.year, base_d.month, base_d.day, hh, mm)
+
+
+def _fmt_dur_hm(minutes_val: float) -> str:
+    m_int = max(0, int(round(minutes_val)))
+    h, m = divmod(m_int, 60)
+    return f"{h}시간 {m:02d}분" if h > 0 else f"{m}분"
+
+
+def classify_spoilage_risk_rule(prod_name: str, category_hint: str = "") -> dict:
+    """
+    혼합액 체류 변질 위험 3단계 기준:
+    1) 미숫가루 함유 두유 또는 가공유 : 2시간 (120분)
+    2) 미숫가루 제외 곡물 함유 제품 : 3시간 (180분)
+    3) 일반 두유 · 음료 · 영양조제 등 : 3시간 30분 (210분)
+    """
+    nm_ns = re.sub(r"\s+", "", str(prod_name or "")).lower()
+    cat_ns = re.sub(r"\s+", "", str(category_hint or "")).lower()
+    pool = f"{nm_ns} {cat_ns}"
+
+    if "미숫가루" in pool or "미수가루" in pool:
+        return {"limit_min": 120, "warn_min": 95, "limit_label": "2시간", "risk_group": "미숫가루 2h"}
+
+    is_soy_or_juice = any(k in pool for k in [
+        "두유", "콩", "과채", "주스", "에이드", "차", "영양조제", "케어", "유산균음료", "스위플", "캐옴"
+    ])
+    if "가공유" in cat_ns or (not is_soy_or_juice and any(k in pool for k in PROCESSED_MILK_2H_KEYWORDS)):
+        return {"limit_min": 120, "warn_min": 95, "limit_label": "2시간", "risk_group": "가공유 2h"}
+    if any(k in pool for k in ["초콜릿드링크", "초콜렛드링크", "초코우유", "바나나우유", "딸기우유", "커피우유"]):
+        return {"limit_min": 120, "warn_min": 95, "limit_label": "2시간", "risk_group": "가공유 2h"}
+
+    if any(gk in pool for gk in GRAIN_3H_KEYWORDS):
+        return {"limit_min": 180, "warn_min": 150, "limit_label": "3시간", "risk_group": "곡물류 3h"}
+
+    return {"limit_min": 210, "warn_min": 175, "limit_label": "3시간 30분", "risk_group": "일반 3.5h"}
+
+
+def get_equipment_rates(steril_no: int, packer_code: str, prod_name: str = "", vol_hint: str = "") -> dict:
+    p_code = re.sub(r"[^A-F]", "", str(packer_code or "").upper())[:1]
+    s_no = steril_no if steril_no in STERIL_FLOW_LPH else DEFAULT_STERIL_BY_PACKER.get(p_code, 2)
+
+    # 멸균 유량: 1호기 5천 / 2,3,5호기 6천 / 4호기 8천 / 2호기+F포장 연결 시 8천
+    steril_flow = 8000 if (s_no == 2 and p_code == "F") else STERIL_FLOW_LPH.get(s_no, 6000)
+    # 1배치 배합량: 기본 6천 / 4호기 또는 2호기+F포장 연결 시 8천
+    default_batch_vol = 8000 if (s_no == 4 or (s_no == 2 and p_code == "F")) else 6000
+    pack_pph = PACK_SPEED_PPH.get(p_code, 24000)
+
+    m_v = re.search(r"(\d{2,4})\s*(?:mL|ml|ML|㎖)", f"{prod_name} {vol_hint}")
+    unit_ml = int(m_v.group(1)) if m_v else (200 if p_code == "C" else 190)
+
+    # 포장기 시간당 실제 액 소모량(L/h) 산출 -> 아셉틱 만충 단속을 감안한 실효 병목 유량(eff_drain_lph) 결정
+    pack_drain_lph = round((pack_pph * unit_ml) / 1000.0, 1)
+    eff_drain_lph = min(float(steril_flow), pack_drain_lph) if pack_drain_lph > 0 else float(steril_flow)
+
+    return {
+        "steril_no": s_no,
+        "packer_code": p_code or "-",
+        "steril_flow_lph": steril_flow,
+        "tank_cap_l": MIX_TANK_CAP_L.get(s_no, 6000),
+        "default_batch_vol_l": default_batch_vol,
+        "pack_speed_pph": pack_pph,
+        "unit_ml": unit_ml,
+        "pack_drain_lph": pack_drain_lph,
+        "eff_drain_lph": eff_drain_lph,
+    }
+
+
+def evaluate_room_multi_angle(
+    prod_d: date,
+    now_dt: datetime,
+    steril_no: int,
+    packer_code: str,
+    prod_name: str,
+    total_batches: int,
+    batch_vol_l: float,
+    planned_qty: int,
+    mix_times_str: List[str],
+    fin_first_time_str: str,
+    vol_hint: str = "",
+    fails_cnt: int = 0,
+    co_transfer_txt: str = "",
+    is_example: bool = False,
+    assumed_start: bool = False,
+) -> dict:
+    eq = get_equipment_rates(steril_no, packer_code, prod_name, vol_hint)
+    risk = classify_spoilage_risk_rule(prod_name)
+
+    b_vol = float(batch_vol_l) if (batch_vol_l and batch_vol_l > 0) else float(eq["default_batch_vol_l"])
+    tot_b = max(1, int(total_batches or 1))
+    tot_liquid_l = tot_b * b_vol
+    est_qty = int(planned_qty) if (planned_qty and planned_qty > 0) else int((tot_liquid_l * 1000.0 * 0.96) / max(eq["unit_ml"], 100))
+
+    mix_dts: List[Tuple[int, datetime, str]] = []
+    for idx, ts in enumerate(mix_times_str or [], start=1):
+        dt_m = _parse_hhmm_to_dt(prod_d, ts)
+        if dt_m:
+            mix_dts.append((idx, dt_m, dt_m.strftime("%H:%M")))
+
+    done_mix_cnt = len(mix_dts)
+    mix_all_done = (done_mix_cnt >= tot_b)
+
+    fin_start_dt = _parse_hhmm_to_dt(prod_d, fin_first_time_str)
+    fin_started = (fin_start_dt is not None) and (not assumed_start)
+    fin_start_hm = fin_start_dt.strftime("%H:%M") if fin_start_dt else ""
+
+    steril_hours = tot_liquid_l / float(eq["steril_flow_lph"])
+    pack_hours = est_qty / float(eq["pack_speed_pph"])
+    bottleneck_hours = max(steril_hours, pack_hours)
+    # 멸균 유량 > 포장 소모량일 때 아셉틱 만충으로 이송이 끊겼다 재가동되는 버퍼 시간 반영
+    aseptic_buffer_min = 12.0 if eq["steril_flow_lph"] > eq["pack_drain_lph"] * 1.15 else 5.0
+
+    if fin_start_dt is not None:
+        base_pack_start = fin_start_dt
+    elif mix_dts:
+        base_pack_start = mix_dts[0][1] + timedelta(minutes=35)
+    else:
+        base_pack_start = None
+
+    # 중간 포장 정지 -> 아셉틱 소진 대기 -> 혼합 이송 간격 지연 발생분(delay_min) 자동 보정
+    expected_per_batch_min = (b_vol / max(eq["eff_drain_lph"], 1000.0)) * 60.0
+    delay_min = 0.0
+    if len(mix_dts) >= 2:
+        span_actual = (mix_dts[-1][1] - mix_dts[0][1]).total_seconds() / 60.0
+        span_expected = expected_per_batch_min * (len(mix_dts) - 1)
+        if span_actual > span_expected + 15.0:
+            delay_min = min(span_actual - span_expected, 180.0)
+
+    eta_hm = "-"
+    eta_note = ""
+    if base_pack_start is not None:
+        total_pack_min = (bottleneck_hours * 60.0) + aseptic_buffer_min + delay_min
+        eta_dt = base_pack_start + timedelta(minutes=total_pack_min)
+        if mix_all_done and mix_dts:
+            min_tail_dt = mix_dts[-1][1] + timedelta(minutes=expected_per_batch_min + 25.0)
+            if min_tail_dt > eta_dt:
+                eta_dt = min_tail_dt
+        eta_hm = eta_dt.strftime("%H:%M") + ("(익일)" if eta_dt.date() > prod_d else "")
+        if delay_min >= 20:
+            eta_note = f"포장·이송 지연 +{int(round(delay_min))}분 반영"
+
+    # 혼합탱크(호기별 3기 순환) + 실효 소진량 교차 기반 체류시간 및 변질 위험 판정
+    hold_status = "ok"
+    hold_badge = ""
+
+    if mix_all_done:
+        hold_status = "done"
+        hold_badge = "✅ 혼합검사 종료"
+    elif mix_dts:
+        last_b_no = mix_dts[-1][0]
+        cleared_by_tank_cycle = max(0, last_b_no - 3)
+        if fin_start_dt and now_dt > fin_start_dt:
+            run_min = (now_dt - fin_start_dt).total_seconds() / 60.0
+            transferred_l = ((run_min / 60.0) * eq["eff_drain_lph"]) + (b_vol * 0.4)
+            cleared_by_flow = int(transferred_l // b_vol)
+        else:
+            cleared_by_flow = 0
+
+        cleared_batches = max(cleared_by_tank_cycle, cleared_by_flow)
+        active_tank_batches = [(bno, bdt, bhm) for (bno, bdt, bhm) in mix_dts if bno > cleared_batches and bdt <= now_dt]
+        if active_tank_batches:
+            oldest_bno, oldest_dt, _ = active_tank_batches[0]
+            hold_elapsed_min = int((now_dt - oldest_dt).total_seconds() // 60)
+            dur_txt = _fmt_dur_hm(hold_elapsed_min)
+            if hold_elapsed_min >= risk["limit_min"]:
+                hold_status = "danger"
+                hold_badge = f"🚨 {oldest_bno}배치 체류 {dur_txt} ({risk['risk_group']} 초과 변질위험!)"
+            elif hold_elapsed_min >= risk["warn_min"]:
+                hold_status = "warn"
+                hold_badge = f"⚠️ {oldest_bno}배치 체류 {dur_txt} ({risk['risk_group']} 임박)"
+            else:
+                hold_status = "ok"
+                hold_badge = f"체류 {dur_txt} ({risk['risk_group']} 정상)"
+
+    if not hold_badge:
+        hold_badge = f"관리기준: {risk['risk_group']}"
+
+    p_spd_str = f"{eq['pack_speed_pph']//10000}만" if eq["pack_speed_pph"] % 10000 == 0 else f"{eq['pack_speed_pph']/10000:.1f}만"
+    fin_disp = (
+        f"완제 {fin_start_hm} 개시" if fin_started
+        else (f"미기입 ({fin_start_hm} 개시 가정)" if assumed_start and fin_start_hm else "완제 개시 대기")
+    )
+
+    return {
+        "steril_ho": f"{eq['steril_no']}호기",
+        "packer_ho": f"{eq['packer_code']}포장" if eq["packer_code"] != "-" else "-",
+        "product_name": prod_name,
+        "mix_done": done_mix_cnt,
+        "mix_total": tot_b,
+        "mix_all_done": mix_all_done,
+        "mix_text": f"혼합 {done_mix_cnt}/{tot_b} 완료" if mix_all_done else f"혼합 {done_mix_cnt}/{tot_b} 진행중",
+        "fin_started": fin_started,
+        "fin_text": fin_disp,
+        "risk_group": risk["risk_group"],
+        "limit_label": risk["limit_label"],
+        "hold_status": hold_status,
+        "hold_badge": hold_badge,
+        "eta_hm": eta_hm,
+        "eta_note": eta_note,
+        "equip_spec": f"{eq['steril_flow_lph']:,}L/h · {p_spd_str}개/h · 배치 {int(b_vol):,}L",
+        "fails_cnt": fails_cnt,
+        "co_transfer": co_transfer_txt,
+        "is_example": is_example,
+    }
+
+
+def build_general_inspection_board(rt_today: Optional[dict], rt_yest: Optional[dict]) -> dict:
+    """
+    1) QMS 실시간 데이터가 수신된 경우: has_live_qms=True, is_example=False 로 실데이터 반환
+    2) QMS 미연동 상태인 경우: 해당 날짜(당일 우선, 비가동 시 전일) 상온 공정일보의 실제 가동 품목과
+       '포장 확인시간'을 참고하여 다각도 설비 수식이 적용된 (예시) 시뮬레이션 데이터를 생성해 반환
+    """
+    now_dt = now_kst()
+    today_iso = now_dt.strftime("%Y-%m-%d")
+
+    if _QMS_LIVE_ROOMS_CACHE.get("rooms") and _QMS_LIVE_ROOMS_CACHE.get("date") >= (now_dt.date() - timedelta(days=1)).strftime("%Y-%m-%d"):
+        live_dt_str = _QMS_LIVE_ROOMS_CACHE["date"]
+        live_d = parse_date_obj(live_dt_str) or now_dt.date()
+        live_items = []
+        for rm in _QMS_LIVE_ROOMS_CACHE["rooms"]:
+            vals = rm.get("values") or {}
+            mix_t = [str(x or "").strip() for x in ((vals.get("혼합액") or {}).get("times") or []) if str(x or "").strip()]
+            fin_t_list = [str(x or "").strip() for x in ((vals.get("완제품") or {}).get("times") or []) if str(x or "").strip()]
+            fin_first = fin_t_list[0] if fin_t_list else ""
+            co_list = rm.get("co_transfer") or []
+            co_txt = ", ".join([str(c.get("label") or "") for c in co_list if isinstance(c, dict) and c.get("label")])
+            live_items.append(evaluate_room_multi_angle(
+                prod_d=live_d,
+                now_dt=now_dt,
+                steril_no=int(rm.get("sterilizer") or 2),
+                packer_code=str(rm.get("packer") or ""),
+                prod_name=str(rm.get("product_name") or "-"),
+                total_batches=int(rm.get("batches") or max(len(mix_t), 5)),
+                batch_vol_l=float(rm.get("blend_volume") or 0),
+                planned_qty=int(rm.get("quantity") or 0),
+                mix_times_str=mix_t,
+                fin_first_time_str=fin_first,
+                vol_hint=str(rm.get("pack_spec") or ""),
+                fails_cnt=int(rm.get("fails") or 0),
+                co_transfer_txt=co_txt,
+                is_example=False,
+            ))
+        if live_items:
+            return {
+                "has_live_qms": True,
+                "is_example": False,
+                "ref_date": live_dt_str,
+                "ref_tab": f"QMS 실시간 ({_QMS_LIVE_ROOMS_CACHE.get('updated_at', '')})",
+                "danger_cnt": sum(1 for x in live_items if x["hold_status"] == "danger"),
+                "warn_cnt": sum(1 for x in live_items if x["hold_status"] == "warn"),
+                "items": live_items,
+            }
+
+    src_view = rt_today if (rt_today and rt_today.get("compact_rows")) else rt_yest
+    if not src_view or not src_view.get("compact_rows"):
+        return {
+            "has_live_qms": False,
+            "is_example": True,
+            "ref_date": today_iso,
+            "ref_tab": "-",
+            "danger_cnt": 0,
+            "warn_cnt": 0,
+            "items": [],
+        }
+
+    ref_dt_str = str(src_view.get("prod_date") or today_iso).strip()
+    ref_d = parse_date_obj(ref_dt_str) or now_dt.date()
+    sim_now = now_dt if (ref_d == now_dt.date() and 8 <= now_dt.hour <= 17) else datetime(ref_d.year, ref_d.month, ref_d.day, 14, 15)
+
+    valid_crows = [
+        cp for cp in (src_view.get("compact_rows") or [])
+        if str(cp.get("생산 제품명") or "").strip() not in ("", "(비가동)")
+        and not is_test_production_entry(cp.get("생산 제품명", ""), cp.get("소비기한", ""))
+    ]
+    ho_counts: Dict[str, int] = {}
+    for cp in valid_crows:
+        pc = re.sub(r"[^A-F]", "", str(cp.get("포장호기") or "").upper())[:1]
+        ho_counts[pc] = ho_counts.get(pc, 0) + 1
+
+    example_items = []
+    seen_ho_prod = set()
+    for idx_r, cp in enumerate(valid_crows):
+        p_nm = str(cp.get("생산 제품명") or "").strip()
+        ho_raw = str(cp.get("포장호기") or "-").strip()
+        p_code = re.sub(r"[^A-F]", "", ho_raw.upper())[:1]
+        dedup_k = (p_code, p_nm)
+        if dedup_k in seen_ho_prod:
+            continue
+        seen_ho_prod.add(dedup_k)
+
+        ster_sum = str(cp.get("멸균기·CCP 요약") or "")
+        m_st = re.search(r"(\d)호기", ster_sum)
+        st_no = int(m_st.group(1)) if m_st else DEFAULT_STERIL_BY_PACKER.get(p_code, 2)
+
+        chk_raw = str(cp.get("확인시간") or "")
+        m_hm = re.search(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", chk_raw)
+        has_real_chk = m_hm is not None
+        fin_hm = m_hm.group(1) if has_real_chk else f"0{8 + (idx_r % 2)}:{30 if idx_r % 2 == 0 else 50}"
+
+        eq = get_equipment_rates(st_no, p_code, p_nm)
+        b_vol = eq["default_batch_vol_l"]
+        base_tot = DEFAULT_EXAMPLE_BATCHES.get(p_code, 5)
+        tot_batches = max(2, base_tot // max(1, ho_counts.get(p_code, 1)))
+
+        fin_dt = _parse_hhmm_to_dt(ref_d, fin_hm) or datetime(ref_d.year, ref_d.month, ref_d.day, 9, 0)
+        mix1_dt = fin_dt - timedelta(minutes=35)
+        step_min = max(42.0, (b_vol / max(eq["eff_drain_lph"], 1000.0)) * 60.0 * 0.90)
+
+        sim_mix_times = []
+        for b_i in range(tot_batches):
+            b_dt = mix1_dt + timedelta(minutes=b_i * step_min)
+            if b_dt <= sim_now or b_i == 0:
+                sim_mix_times.append(b_dt.strftime("%H:%M"))
+
+        example_items.append(evaluate_room_multi_angle(
+            prod_d=ref_d,
+            now_dt=sim_now,
+            steril_no=st_no,
+            packer_code=p_code,
+            prod_name=p_nm,
+            total_batches=tot_batches,
+            batch_vol_l=b_vol,
+            planned_qty=0,
+            mix_times_str=sim_mix_times,
+            fin_first_time_str=fin_hm,
+            is_example=True,
+            assumed_start=(not has_real_chk),
+        ))
+
+    return {
+        "has_live_qms": False,
+        "is_example": True,
+        "ref_date": ref_dt_str,
+        "ref_tab": src_view.get("tab_title", ref_dt_str),
+        "danger_cnt": sum(1 for x in example_items if x["hold_status"] == "danger"),
+        "warn_cnt": sum(1 for x in example_items if x["hold_status"] == "warn"),
+        "items": example_items,
+    }
+
+
+def build_handover_board_payload(raw_items: List[dict]) -> dict:
+    clean_list = []
+    for it in (raw_items or []):
+        if not isinstance(it, dict) or not str(it.get("text") or "").strip():
+            continue
+        clean_list.append({
+            "uid": str(it.get("uid") or uuid.uuid4().hex[:8]),
+            "text": str(it.get("text") or "").strip(),
+            "author": str(it.get("author") or "-").strip(),
+            "emp_no": str(it.get("emp_no") or "").strip(),
+            "created_at": str(it.get("created_at") or "").strip(),
+            "created_iso": str(it.get("created_iso") or "").strip(),
+            "checked": bool(it.get("checked", False)),
+            "checked_by": str(it.get("checked_by") or "").strip(),
+            "checked_at": str(it.get("checked_at") or "").strip(),
+            "pinned": bool(it.get("pinned", False)),
+        })
+
+    clean_list.sort(key=lambda x: (
+        0 if x["pinned"] else 1,
+        1 if x["checked"] else 0,
+        -(int(re.sub(r"\D+", "", x.get("created_iso", ""))[:14] or "0"))
+    ))
+    return {
+        "items": clean_list,
+        "total_cnt": len(clean_list),
+        "unchecked_cnt": sum(1 for x in clean_list if not x["checked"]),
+        "pinned_cnt": sum(1 for x in clean_list if x["pinned"]),
+    }
+
+
+class HandoverActionPayload(BaseModel):
+    action: str  # add | toggle_check | toggle_pin | edit | delete | clear_checked
+    uid: Optional[str] = ""
+    text: Optional[str] = ""
+    pinned: Optional[bool] = False
+
+
+@app.post("/api/handover")
+def api_manage_handover_board(body: HandoverActionPayload, cur_user: dict = Depends(require_auth_user)):
+    act = (body.action or "").strip()
+    user_label = f"{cur_user.get('성명', '')} {cur_user.get('직급', '')}".strip() or cur_user.get("사번", "-")
+    now_dt = now_kst()
+    now_short = now_dt.strftime("%m/%d %H:%M")
+    now_iso = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    def _upd(b_map: dict, _ts: str):
+        try:
+            cur_list = json.loads(b_map.get("handover_notes_json", "[]"))
+            if not isinstance(cur_list, list):
+                cur_list = []
+        except Exception:
+            cur_list = []
+
+        if act == "add":
+            txt = (body.text or "").strip()
+            if not txt:
+                raise HTTPException(status_code=400, detail="전달·인수인계 내용을 입력해 주세요.")
+            cur_list.insert(0, {
+                "uid": uuid.uuid4().hex[:8],
+                "text": txt,
+                "author": user_label,
+                "emp_no": cur_user.get("사번", ""),
+                "created_at": now_short,
+                "created_iso": now_iso,
+                "checked": False,
+                "checked_by": "",
+                "checked_at": "",
+                "pinned": bool(body.pinned),
+            })
+        elif act == "toggle_check":
+            for it in cur_list:
+                if it.get("uid") == body.uid:
+                    nxt = not bool(it.get("checked"))
+                    it["checked"] = nxt
+                    it["checked_by"] = user_label if nxt else ""
+                    it["checked_at"] = now_short if nxt else ""
+        elif act == "toggle_pin":
+            for it in cur_list:
+                if it.get("uid") == body.uid:
+                    it["pinned"] = not bool(it.get("pinned"))
+        elif act == "edit":
+            txt = (body.text or "").strip()
+            if not txt:
+                raise HTTPException(status_code=400, detail="내용을 입력해 주세요.")
+            for it in cur_list:
+                if it.get("uid") == body.uid:
+                    it["text"] = txt
+        elif act == "delete":
+            cur_list = [x for x in cur_list if x.get("uid") != body.uid]
+        elif act == "clear_checked":
+            cur_list = [x for x in cur_list if not x.get("checked") or x.get("pinned")]
+
+        cur_list = cur_list[:80]
+        _HANDOVER_NOTES_CACHE["items"] = cur_list
+        b_map["handover_notes_json"] = json.dumps(cur_list, ensure_ascii=False)
+
+    _read_and_write_special_board(_upd)
+    new_board = build_handover_board_payload(_HANDOVER_NOTES_CACHE.get("items", []))
+    if _BUNDLE_CACHE["data"] is not None:
+        _BUNDLE_CACHE["data"]["handover_board"] = new_board
+
+    return {"ok": True, "message": "인수인계 보드에 반영되었습니다.", "handover_board": new_board}
+
+
+class QmsRelayRoomsPayload(BaseModel):
+    prod_date: str
+    rooms: List[Dict[str, Any]] = []
+
+
+@app.post("/api/qms-relay/inspection")
+def api_receive_qms_relay_inspection(body: QmsRelayRoomsPayload, _u: dict = Depends(require_auth_user)):
+    """사내 PC 중계기가 QMS 일반검사 방(rooms) 실데이터를 전송하면 즉시 예시 모드를 해제하고 실시간 모드로 전환"""
+    _QMS_LIVE_ROOMS_CACHE["date"] = (body.prod_date or "").strip()
+    _QMS_LIVE_ROOMS_CACHE["updated_at"] = now_kst().strftime("%H:%M")
+    _QMS_LIVE_ROOMS_CACHE["rooms"] = body.rooms or []
+
+    new_gi = None
+    if _BUNDLE_CACHE["data"] is not None:
+        proc = _BUNDLE_CACHE["data"].get("process") or {}
+        new_gi = build_general_inspection_board(proc.get("rt_today"), proc.get("rt_yest"))
+        _BUNDLE_CACHE["data"]["general_inspection"] = new_gi
+
+    return {"ok": True, "general_inspection": new_gi}
 # ============================ [api/index.py - PART 4 / 4 끝] ============================

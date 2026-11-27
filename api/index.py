@@ -10486,12 +10486,14 @@ def api_save_weekly_safety_news(body: SafetyNewsSavePayload, _u: dict = Depends(
     return {"ok": True, "message": msg, "safety_news": new_snews}
 
 # ============================================================================
-# [Q-Safety 확장 모듈] 자가품질검사 숨김 DB(_이력DB_자가품질검사) & 연도별 관리 API
+# [Q-Safety 확장 모듈] 자가품질검사 숨김 DB(_이력DB_자가품질검사) & [자가품질]·[등록제품] 실시간 연동 API
 # - open_sheet_isolated(OAuth & 서비스계정 공통 호환) 및 require_auth_user 직결
 # ============================================================================
 from fastapi import Request as _FastAPIRequest
 
 SELF_QUALITY_TAB_NAME = "_이력DB_자가품질검사"
+SELF_QUALITY_LIVE_TAB = "자가품질"
+SELF_QUALITY_REG_TAB = "등록제품"
 SELF_QUALITY_MONTHS = ["3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월", "1월", "2월"]
 SELF_QUALITY_HEADERS = [
     "기준연도", "구분번호", "대분류", "중분류", "소분류",
@@ -10523,7 +10525,7 @@ SELF_QUALITY_CATEGORIES = [
 ]
 
 _SQC_CAT_BY_NO = {c["no"]: c for c in SELF_QUALITY_CATEGORIES}
-_SQC_MEM_CACHE: Dict[str, Any] = {"ts": 0.0, "rows": None}
+_SQC_MEM_CACHE: Dict[str, Any] = {"ts": 0.0, "rows": None, "reg_dairy": [], "reg_rt": []}
 _SQC_LOCK = threading.Lock()
 _SQC_CACHE_TTL_SEC = 180.0
 
@@ -10540,6 +10542,174 @@ def _normalize_sqc_year(yr_raw: Any) -> str:
     if m:
         return f"{m.group(1)}년"
     return _get_default_sqc_fiscal_year()
+
+
+def _sqc_date_to_fiscal_ym(d_obj: date) -> Tuple[str, str]:
+    fy = d_obj.year if d_obj.month >= 3 else (d_obj.year - 1)
+    return f"{fy}년", f"{d_obj.month}월"
+
+
+def _map_sqc_sheet_category_no(type_top: str, proc_bot: str, prod_name: str = "") -> int:
+    t = re.sub(r"[\s\.\·∙\(\)]+", "", str(type_top or "")).lower()
+    p = re.sub(r"[\s\(\)]+", "", str(proc_bot or "")).lower()
+    nm = re.sub(r"\s+", "", str(prod_name or "")).lower()
+    is_ster = ("멸균" in p) or ("멸균" in t)
+
+    if not t or any(err in t for err in ["#n/a", "#ref", "#value", "#error"]):
+        return 0
+    if "농후발효유" in t:
+        return 9
+    if "발효유" in t and "음료" not in t:
+        return 8
+    if "유산균음료" in t:
+        return 10
+    if "유크림" in t:
+        return 7
+    if "강화우유" in t:
+        return 6
+    if "유당분해" in t:
+        return 5
+    if "가공유" in t:
+        return 4 if is_ster else 3
+    if t == "우유" or ("우유" in t and not any(x in t for x in ["가공", "강화", "유당", "두유"])):
+        return 2 if is_ster else 1
+    if "원액두유" in t:
+        return 13 if is_ster else 12
+    if "가공두유" in t or ("두유" in t and "원액" not in t):
+        return 11
+    if "커피" in t:
+        return 14
+    if "혼합음료" in t:
+        return 15
+    if "과채주스" in t:
+        return 17
+    if "과채음료" in t:
+        return 16
+    if "액상차" in t or "다류" in t:
+        return 21
+    if "영양조제" in t or "환자용" in t or "특수의료" in t:
+        if "당뇨" in t or "당밸런스" in nm or "당뇨" in nm:
+            return 19
+        if "암환자" in t or "캔서" in nm or "cancer" in nm or "암환자" in nm:
+            return 20
+        return 18
+    return 0
+
+
+def _parse_sqc_live_tab_rows(rows: List[List[str]]) -> Dict[Tuple[str, int, str], dict]:
+    """[자가품질] 탭(F~M열 2줄 1세트 병합 구조)을 파싱하여 (기준연도, 구분번호, 해당월)별 제품명 매핑 반환"""
+    if not rows or len(rows) < 6:
+        return {}
+
+    hdr_idx = -1
+    c_no, c_prod, c_mfg, c_note = 5, 6, 7, 11
+    fallback_d: Optional[date] = None
+
+    for r_i, r in enumerate(rows[:15]):
+        row_join = " ".join(str(x or "").strip() for x in r)
+        if fallback_d is None and ("~" in row_join or "제조일" in row_join):
+            d_try = parse_date_obj(row_join)
+            if d_try:
+                fallback_d = d_try
+
+        r_ns = [re.sub(r"\s+", "", str(x or "")) for x in r]
+        if "제품명" in r_ns and ("제조일" in r_ns or "제조일자" in r_ns) and ("비고" in r_ns or "식품유형" in r_ns):
+            hdr_idx = r_i
+            c_prod = r_ns.index("제품명")
+            c_mfg = r_ns.index("제조일") if "제조일" in r_ns else r_ns.index("제조일자")
+            c_note = r_ns.index("비고") if "비고" in r_ns else r_ns.index("식품유형")
+            if "번호" in r_ns:
+                c_no = r_ns.index("번호")
+            break
+
+    if hdr_idx < 0:
+        return {}
+
+    def _g(r_idx: int, col_idx: int) -> str:
+        if 0 <= r_idx < len(rows) and 0 <= col_idx < len(rows[r_idx]):
+            return str(rows[r_idx][col_idx] or "").strip()
+        return ""
+
+    grouped: Dict[Tuple[str, int, str], dict] = {}
+    r_cur = hdr_idx + 1
+    while r_cur < len(rows):
+        p_top = _g(r_cur, c_prod)
+        p_bot = _g(r_cur + 1, c_prod) if (r_cur + 1) < len(rows) else ""
+        note_top = _g(r_cur, c_note)
+        note_bot = _g(r_cur + 1, c_note) if (r_cur + 1) < len(rows) else ""
+        mfg_raw = _g(r_cur, c_mfg) or (_g(r_cur + 1, c_mfg) if (r_cur + 1) < len(rows) else "")
+
+        is_two_row = False
+        if (r_cur + 1) < len(rows):
+            nb_ns = re.sub(r"\s+", "", note_bot)
+            if ("살균" in nb_ns or "멸균" in nb_ns or "가열" in nb_ns) or re.match(r"^\d{8,}$", p_bot) or (not p_bot and _g(r_cur + 1, c_no)):
+                is_two_row = True
+
+        step = 2 if is_two_row else 1
+        p_clean = re.sub(r"\s+", " ", p_top).strip()
+        if not p_clean or p_clean in ("-", "제품명") or any(err in p_clean.upper() for err in ["#N/A", "#REF", "#VALUE", "#ERROR"]):
+            r_cur += step
+            continue
+
+        mfg_d = parse_date_obj(mfg_raw) or fallback_d
+        if not mfg_d:
+            r_cur += step
+            continue
+
+        cat_no = _map_sqc_sheet_category_no(note_top, note_bot if is_two_row else "", p_clean)
+        if cat_no not in _SQC_CAT_BY_NO:
+            r_cur += step
+            continue
+
+        fy_str, m_lbl = _sqc_date_to_fiscal_ym(mfg_d)
+        key = (fy_str, cat_no, m_lbl)
+        entry = grouped.setdefault(key, {"prod_1": "", "prod_2": "", "mfg_date": mfg_d.strftime("%Y-%m-%d")})
+        if not entry["prod_1"]:
+            entry["prod_1"] = p_clean
+        elif entry["prod_1"] != p_clean and not entry["prod_2"]:
+            entry["prod_2"] = p_clean
+
+        r_cur += step
+
+    return grouped
+
+
+def _parse_sqc_registered_products_rows(rows: List[List[str]]) -> Tuple[List[str], List[str]]:
+    """[등록제품] 탭이 존재하면 제품명과 유형(살균/멸균)을 읽어 드롭다운 추천 목록에 보강"""
+    if not rows or len(rows) < 2:
+        return [], []
+    dairy_s, rt_s = set(), set()
+    c_name = -1
+    for r_i, r in enumerate(rows[:5]):
+        r_ns = [re.sub(r"\s+", "", str(x or "")) for x in r]
+        for idx, h in enumerate(r_ns):
+            if h in ("제품명", "품목명", "품명"):
+                c_name = idx
+                break
+        if c_name >= 0:
+            rows = rows[r_i + 1:]
+            break
+
+    for r in rows:
+        if not r:
+            continue
+        nm = ""
+        if 0 <= c_name < len(r):
+            nm = re.sub(r"\s+", " ", str(r[c_name] or "")).strip()
+        else:
+            for cell in r[:5]:
+                cs = re.sub(r"\s+", " ", str(cell or "")).strip()
+                if cs and not re.match(r"^\d{5,}$", cs) and cs not in ("살균", "멸균", "( 살균 )", "( 멸균 )") and re.search(r"[가-힣]", cs):
+                    nm = cs
+                    break
+        if not nm or nm in ("제품명", "품목명", "-") or nm.startswith("#"):
+            continue
+        row_join = " ".join(str(x or "") for x in r)
+        if "멸균" in row_join or any(k in row_join for k in ["두유", "음료", "주스", "영양조제", "커피", "액상차"]):
+            rt_s.add(nm)
+        else:
+            dairy_s.add(nm)
+    return sorted(dairy_s), sorted(rt_s)
 
 
 def _open_micro_sheet_for_sqc():
@@ -10581,30 +10751,107 @@ def _ensure_hidden_sqc_worksheet(sh):
         return ws
 
 
-def _load_all_sqc_db_rows(force: bool = False) -> List[List[str]]:
+def _load_and_sync_sqc_db_rows(force: bool = False, overwrite_from_live_sheet: bool = False) -> Tuple[List[List[str]], dict]:
+    """
+    [_이력DB_자가품질검사]와 [자가품질]·[등록제품] 탭을 한 번에 조회하여 동기화:
+    - 일반 조회 시: DB에 비어 있는 (연도, 구분번호, 월) 칸이 [자가품질] 탭에 있으면 자동 보충 후 저장
+    - overwrite_from_live_sheet=True ([반영하기] 실행 시): [자가품질] 탭의 제조일 기준 연도·월 데이터로 즉시 덮어쓰기(Upsert)
+    """
     now_ts = time.time()
-    if (not force) and (_SQC_MEM_CACHE["rows"] is not None) and (now_ts - _SQC_MEM_CACHE["ts"] < _SQC_CACHE_TTL_SEC):
-        return _SQC_MEM_CACHE["rows"]
+    if (not force) and (not overwrite_from_live_sheet) and (_SQC_MEM_CACHE["rows"] is not None) and (now_ts - _SQC_MEM_CACHE["ts"] < _SQC_CACHE_TTL_SEC):
+        return _SQC_MEM_CACHE["rows"], {"synced_cells": 0, "ym_list": []}
 
     with _SQC_LOCK:
-        if (not force) and (_SQC_MEM_CACHE["rows"] is not None) and (time.time() - _SQC_MEM_CACHE["ts"] < _SQC_CACHE_TTL_SEC):
-            return _SQC_MEM_CACHE["rows"]
+        if (not force) and (not overwrite_from_live_sheet) and (_SQC_MEM_CACHE["rows"] is not None) and (time.time() - _SQC_MEM_CACHE["ts"] < _SQC_CACHE_TTL_SEC):
+            return _SQC_MEM_CACHE["rows"], {"synced_cells": 0, "ym_list": []}
 
         sh = _open_micro_sheet_for_sqc()
-        ws = _ensure_hidden_sqc_worksheet(sh)
-        vals = get_values_formatted(ws)
+        ws_db = _ensure_hidden_sqc_worksheet(sh)
+        ws_titles = [w.title for w in api_call_with_retry(sh.worksheets)]
+        t_live = next((t for t in ws_titles if t.strip() == SELF_QUALITY_LIVE_TAB), None)
+        t_reg = next((t for t in ws_titles if t.strip() == SELF_QUALITY_REG_TAB), None)
+
+        batch_tabs = [SELF_QUALITY_TAB_NAME] + ([t_live] if t_live else []) + ([t_reg] if t_reg else [])
+        b_map = batch_fetch_tabs(sh, batch_tabs, "FORMATTED_VALUE")
+
+        vals = b_map.get(SELF_QUALITY_TAB_NAME, [])
         if not vals:
-            safe_ws_update(ws, [SELF_QUALITY_HEADERS])
             vals = [SELF_QUALITY_HEADERS]
 
-        _SQC_MEM_CACHE["rows"] = vals
+        if t_reg and b_map.get(t_reg):
+            reg_d, reg_r = _parse_sqc_registered_products_rows(b_map[t_reg])
+            _SQC_MEM_CACHE["reg_dairy"] = reg_d
+            _SQC_MEM_CACHE["reg_rt"] = reg_r
+
+        live_grouped = _parse_sqc_live_tab_rows(b_map.get(t_live, [])) if t_live else {}
+
+        hdr = vals[0] if vals else SELF_QUALITY_HEADERS
+        idx_map = {str(h).strip(): i for i, h in enumerate(hdr)}
+
+        def _g(r_arr: List[str], c_name: str) -> str:
+            idx = idx_map.get(c_name, -1)
+            return str(r_arr[idx]).strip() if (0 <= idx < len(r_arr)) else ""
+
+        db_map: Dict[Tuple[str, int, str], List[str]] = {}
+        for r_arr in vals[1:]:
+            if not any(str(x).strip() for x in r_arr):
+                continue
+            r_yr = _normalize_sqc_year(_g(r_arr, "기준연도"))
+            try:
+                r_no = int(re.sub(r"\D+", "", _g(r_arr, "구분번호")) or "0")
+            except ValueError:
+                r_no = 0
+            r_m = _g(r_arr, "해당월")
+            if r_no not in _SQC_CAT_BY_NO or r_m not in SELF_QUALITY_MONTHS:
+                continue
+            db_map[(r_yr, r_no, r_m)] = [
+                r_yr, str(r_no), _g(r_arr, "대분류"), _g(r_arr, "중분류"), _g(r_arr, "소분류"),
+                _g(r_arr, "라인구분"), r_m, _g(r_arr, "체크여부") or "Y",
+                _g(r_arr, "1차_제품명"), _g(r_arr, "2차_제품명"), _g(r_arr, "수정일시")
+            ]
+
+        dirty = False
+        synced_ym_set = set()
+        now_str = now_kst().strftime("%Y-%m-%d %H:%M:%S")
+
+        for (fy_s, c_no, m_lbl), l_item in live_grouped.items():
+            cat = _SQC_CAT_BY_NO[c_no]
+            exist_row = db_map.get((fy_s, c_no, m_lbl))
+            if exist_row is None or overwrite_from_live_sheet:
+                prev_p1 = exist_row[8] if exist_row else ""
+                prev_p2 = exist_row[9] if exist_row else ""
+                if exist_row is None or prev_p1 != l_item["prod_1"] or prev_p2 != l_item["prod_2"]:
+                    dirty = True
+                synced_ym_set.add(f"{fy_s} {m_lbl}")
+                db_map[(fy_s, c_no, m_lbl)] = [
+                    fy_s, str(c_no), cat["major"], cat["mid"], cat["sub"],
+                    cat["line_type"], m_lbl, "Y",
+                    l_item["prod_1"], l_item["prod_2"],
+                    (exist_row[10] if (exist_row and prev_p1 == l_item["prod_1"] and prev_p2 == l_item["prod_2"]) else now_str)
+                ]
+
+        sorted_rows = sorted(
+            db_map.values(),
+            key=lambda r: (
+                r[0],
+                int(r[1]) if str(r[1]).isdigit() else 99,
+                SELF_QUALITY_MONTHS.index(r[6]) if r[6] in SELF_QUALITY_MONTHS else 99
+            )
+        )
+        final_matrix = [SELF_QUALITY_HEADERS] + sorted_rows
+
+        if dirty or len(vals) < 1:
+            api_call_with_retry(ws_db.clear)
+            safe_ws_update(ws_db, final_matrix)
+
+        _SQC_MEM_CACHE["rows"] = final_matrix
         _SQC_MEM_CACHE["ts"] = time.time()
-        return vals
+        return final_matrix, {"synced_cells": len(live_grouped), "ym_list": sorted(synced_ym_set)}
 
 
 def _extract_product_suggestions_from_bundle_cache() -> Dict[str, List[str]]:
-    dairy_set = set()
-    rt_set = set()
+    dairy_set = set(_SQC_MEM_CACHE.get("reg_dairy") or [])
+    rt_set = set(_SQC_MEM_CACHE.get("reg_rt") or [])
     b_data = _BUNDLE_CACHE.get("data") if isinstance(_BUNDLE_CACHE, dict) else None
     if isinstance(b_data, dict):
         proc = b_data.get("process") or {}
@@ -10622,7 +10869,7 @@ def _extract_product_suggestions_from_bundle_cache() -> Dict[str, List[str]]:
     }
 
 
-def _build_sqc_response_payload(target_year: str, raw_vals: List[List[str]]) -> dict:
+def _build_sqc_response_payload(target_year: str, raw_vals: List[List[str]], sync_meta: Optional[dict] = None) -> dict:
     hdr = raw_vals[0] if raw_vals else SELF_QUALITY_HEADERS
     idx_map = {str(h).strip(): i for i, h in enumerate(hdr)}
 
@@ -10630,7 +10877,7 @@ def _build_sqc_response_payload(target_year: str, raw_vals: List[List[str]]) -> 
         idx = idx_map.get(col_name, -1)
         return str(row[idx]).strip() if (0 <= idx < len(row)) else ""
 
-    years_found = {_get_default_sqc_fiscal_year(), "2026년", "2027년"}
+    years_found = {_get_default_sqc_fiscal_year(), "2025년", "2026년", "2027년"}
     cell_map: Dict[str, dict] = {}
 
     for row in raw_vals[1:]:
@@ -10667,7 +10914,7 @@ def _build_sqc_response_payload(target_year: str, raw_vals: List[List[str]]) -> 
     cur_m_lbl = f"{now_kst().month}월"
     cur_month_cnt = sum(1 for k in cell_map.keys() if k.endswith(f"_{cur_m_lbl}"))
 
-    return {
+    out = {
         "ok": True,
         "year": target_year,
         "available_years": sorted(years_found),
@@ -10683,14 +10930,33 @@ def _build_sqc_response_payload(target_year: str, raw_vals: List[List[str]]) -> 
         },
         "product_suggestions": _extract_product_suggestions_from_bundle_cache(),
     }
+    if sync_meta:
+        out["sync_meta"] = sync_meta
+    return out
 
 
 @app.get("/api/self-quality")
-def api_get_self_quality(year: str = "", force: int = 0, _u: dict = Depends(require_auth_user)):
+def api_get_self_quality(year: str = "", force: int = 0, sync_sheet: int = 0, _u: dict = Depends(require_auth_user)):
     try:
         target_yr = _normalize_sqc_year(year) if year else _get_default_sqc_fiscal_year()
-        vals = _load_all_sqc_db_rows(force=bool(force))
-        return JSONResponse(_build_sqc_response_payload(target_yr, vals))
+        vals, sync_meta = _load_and_sync_sqc_db_rows(
+            force=bool(force or sync_sheet),
+            overwrite_from_live_sheet=bool(force or sync_sheet)
+        )
+        return JSONResponse(_build_sqc_response_payload(target_yr, vals, sync_meta))
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/self-quality/sync-sheet")
+def api_sync_self_quality_from_sheet(year: str = "", _u: dict = Depends(require_auth_user)):
+    try:
+        target_yr = _normalize_sqc_year(year) if year else _get_default_sqc_fiscal_year()
+        vals, sync_meta = _load_and_sync_sqc_db_rows(force=True, overwrite_from_live_sheet=True)
+        payload = _build_sqc_response_payload(target_yr, vals, sync_meta)
+        ym_txt = ", ".join(sync_meta.get("ym_list") or []) or "변경 없음"
+        payload["message"] = f"[자가품질] 시트 반영 완료 ({sync_meta.get('synced_cells', 0)}개 유형 칸 · {ym_txt})"
+        return JSONResponse(payload)
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)}, status_code=500)
 
@@ -10707,7 +10973,7 @@ async def api_save_self_quality(request: _FastAPIRequest, _u: dict = Depends(req
         prod_2 = str(body.get("prod_2") or "").strip()
 
         if item_no not in _SQC_CAT_BY_NO:
-            return JSONResponse({"ok": False, "error": "유효하지 않은 구분 번호입니다 (1~20)."}, status_code=400)
+            return JSONResponse({"ok": False, "error": "유효하지 않은 구분 번호입니다 (1~21)."}, status_code=400)
         if month_lbl not in SELF_QUALITY_MONTHS:
             return JSONResponse({"ok": False, "error": "유효하지 않은 월 표기입니다 (3월~2월)."}, status_code=400)
         if is_checked and not prod_1:
@@ -10725,7 +10991,7 @@ async def api_save_self_quality(request: _FastAPIRequest, _u: dict = Depends(req
                 idx_map = {str(h).strip(): i for i, h in enumerate(hdr)}
 
                 def _g(r_arr: List[str], c_name: str) -> str:
-                    idx = idx_map.get(col_nm := c_name, -1)
+                    idx = idx_map.get(c_name, -1)
                     return str(r_arr[idx]).strip() if (0 <= idx < len(r_arr)) else ""
 
                 for r_arr in existing[1:]:

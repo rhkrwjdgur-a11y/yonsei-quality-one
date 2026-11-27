@@ -1227,7 +1227,7 @@ def clean_product_for_match(name: str) -> str:
 
 
 def extract_volume_ml_token(text: str) -> str:
-    """제품명·검색어에서 용량 숫자(mL 환산, 예: 1.8L -> 1800, 900ml -> 900, 단독 1800 -> 1800) 추출"""
+    """제품명·2종구분·부자재·배양일보 용량칸에서 용량 숫자(mL/g 환산, 80~2300 전 규격) 추출"""
     s = str(text or "").strip()
     if not s:
         return ""
@@ -1237,7 +1237,10 @@ def extract_volume_ml_token(text: str) -> str:
     m_ml = re.search(r"(\d{2,4})\s*(?:mL|ml|ML|㎖|g)(?!\w)", s)
     if m_ml:
         return m_ml.group(1)
-    m_bare = re.search(r"(?:^|[\s\(\)\[\]\-_+/])(170|180|190|200|500|750|900|930|1000|1800|2300)(?:$|[\s\(\)\[\]\-_+/])", s)
+    m_bare = re.search(
+        r"(?:^|[\s\(\)\[\]\-_+/·])(80|85|100|110|120|125|130|140|150|160|170|180|185|190|195|200|235|250|300|450|500|750|900|930|1000|1800|2300)(?:$|[\s\(\)\[\]\-_+/·])",
+        s
+    )
     if m_bare:
         return m_bare.group(1)
     return ""
@@ -5236,6 +5239,7 @@ def fetch_process_soy_sheet(sheet_urls_map: dict):
                     "생산일자": prod_iso,
                     "원본탭명": t_clean,
                     "포장기": ho_nm,
+                    "용량(mL)": blk.get("용량(mL)", "-"),
                     "배양구분": blk.get("배양구분", "-"),
                     "품목명": p_nm,
                     "표기소비기한_원문": exp_raw,
@@ -7219,6 +7223,41 @@ def note_mentions_tracked_product(note_text: Any, target_prod_names: List[str]) 
     return False
 
 
+OUTER_BOX_PKG_KEYWORDS = ["상자", "박스", "트레이", "케이스", "랩어라운드", "아웃박스", "선물세트", "선물용"]
+
+
+def _is_outer_box_pkg(text: Any) -> bool:
+    ns = re.sub(r"\s+", "", str(text or "")).lower()
+    if not ns or ns == "-":
+        return False
+    return any(k in ns for k in OUTER_BOX_PKG_KEYWORDS)
+
+
+def _resolve_tracked_target_volume(tr_item: dict) -> str:
+    """
+    추적 대상의 목표 용량 추출 우선순위:
+    1) 표시사항제목 끝의 2종 구분 대괄호(예: '[140mL]')
+    2) 매칭_포장품목명 / 매칭_부자재명
+    3) 표시사항제목 본문 (단, '200mL/900mL'처럼 복수 용량 병기 시에는 단일 용량으로 단정하지 않음)
+    """
+    title_s = str(tr_item.get("표시사항제목") or "").strip()
+    m_sfx = re.search(r"\[([^\[\]]+)\]\s*$", title_s)
+    if m_sfx:
+        v_sfx = extract_volume_ml_token(m_sfx.group(1))
+        if v_sfx:
+            return v_sfx
+
+    for k in ("매칭_포장품목명", "매칭_부자재명"):
+        v_k = extract_volume_ml_token(str(tr_item.get(k) or ""))
+        if v_k:
+            return v_k
+
+    all_ml = list(dict.fromkeys(re.findall(r"(\d{2,4})\s*(?:mL|ml|ML|㎖)", title_s)))
+    if len(all_ml) == 1:
+        return all_ml[0]
+    return extract_volume_ml_token(title_s) if len(all_ml) == 0 else ""
+
+
 def _match_sub_inbound_for_item(tr_item: dict, sub_rows_pool: List[dict]) -> List[dict]:
     cand_queries = []
     for k_nm in ("매칭_부자재명", "표시사항제목"):
@@ -7228,7 +7267,8 @@ def _match_sub_inbound_for_item(tr_item: dict, sub_rows_pool: List[dict]) -> Lis
     if not cand_queries:
         return []
 
-    q_vol = extract_volume_ml_token(str(tr_item.get("매칭_부자재명") or ""))
+    q_vol = _resolve_tracked_target_volume(tr_item)
+    target_is_box = _is_outer_box_pkg(f"{tr_item.get('표시사항제목', '')} {tr_item.get('포장재유형', '')}")
     rev_dt = str(tr_item.get("심의완료일") or SUB_TRANSITION_CUTOFF).strip()
     min_dt = max(SUB_TRANSITION_CUTOFF, rev_dt) if rev_dt.startswith("20") else SUB_TRANSITION_CUTOFF
 
@@ -7236,16 +7276,27 @@ def _match_sub_inbound_for_item(tr_item: dict, sub_rows_pool: List[dict]) -> Lis
     for sr in sub_rows_pool:
         if sr["검수일자"] < min_dt:
             continue
-        if sr.get("구분") == "빨대":
+        sr_type = str(sr.get("구분") or "")
+        if sr_type == "빨대":
             continue
 
+        # 1) 본품(팩/슬리브/라벨/병) 추적 시 선물용상자·박스·트레이 입고분 혼입 원천 차단 (반대도 동일)
+        row_is_box = _is_outer_box_pkg(f"{sr_type} {sr.get('제품명', '')}")
+        if target_is_box != row_is_box:
+            continue
+
+        # 2) 부자재 비고란에 실제 변화 키워드(첫입고·초도·신규·리뉴얼·표기/도안변경 등)가 적힌 건만 인정
         note_txt = str(sr.get("특이사항") or "")
         sig_flag = bool(sr.get("_is_change_signal")) or has_sub_inbound_signal(note_txt)
-        # [핵심] 비고(특이사항)란에 첫입고·초도·신규·리뉴얼·표기/도안변경 등 변화 키워드가 없는 일반 구형 입고분은 제외!
         if not sig_flag:
             continue
 
-        s_vol = extract_volume_ml_token(sr.get("용량", "")) or extract_volume_ml_token(sr.get("제품명", ""))
+        # 3) 용량 우선 대조: 시트에 다른 용량(예: 190 vs 140)이 명시돼 있으면 즉시 제외, 용량 미기입 시에는 통과 허용
+        s_vol = (
+            extract_volume_ml_token(sr.get("용량", ""))
+            or extract_volume_ml_token(sr.get("제품명", ""))
+            or extract_volume_ml_token(note_txt)
+        )
         if q_vol and s_vol and q_vol != s_vol:
             continue
 
@@ -7253,18 +7304,21 @@ def _match_sub_inbound_for_item(tr_item: dict, sub_rows_pool: List[dict]) -> Lis
         if not related_ok:
             continue
 
+        vol_exact = bool(q_vol and s_vol == q_vol)
         hits.append({
             "검수일자": sr["검수일자"],
             "부자재명": sr["부자재명"],
-            "구분": sr["구분"],
+            "구분": sr_type,
             "공급업체": sr["공급업체"],
             "입고수량": sr["입고수량"],
             "생산일_LOT": sr["생산일_LOT"],
             "특이사항": note_txt or "-",
-            "has_signal": True
+            "has_signal": True,
+            "vol_exact": vol_exact,
         })
 
-    hits.sort(key=lambda x: x["검수일자"], reverse=True)
+    # 용량이 정확히 일치하는 행을 최우선으로 올리고, 그다음 최신 검수일자순 정렬
+    hits.sort(key=lambda x: (1 if x.get("vol_exact") else 0, x["검수일자"]), reverse=True)
     return hits[:6]
 
 
@@ -7276,11 +7330,15 @@ def _match_pack_logs_for_item(
     dairy_hist_c: List[dict],
     rt_today_obj: Optional[dict] = None,
     rt_yest_obj: Optional[dict] = None,
+    soy_hist: Optional[List[dict]] = None,
     all_waiting_pack_items: Optional[List[dict]] = None
 ) -> List[dict]:
     pack_nm = str(tr_item.get("매칭_포장품목명") or tr_item.get("매칭_부자재명") or "").strip()
     if not pack_nm or pack_nm == "-":
         return []
+
+    is_new_sku = (str(tr_item.get("구분") or "").strip() == "신규")
+    q_vol = _resolve_tracked_target_volume(tr_item)
 
     ref_names = [
         x for x in [pack_nm, str(tr_item.get("매칭_부자재명") or "").strip(), str(tr_item.get("표시사항제목") or "").strip()]
@@ -7295,9 +7353,19 @@ def _match_pack_logs_for_item(
 
     in_dt = str(tr_item.get("부자재입고일") or tr_item.get("심의완료일") or SUB_TRANSITION_CUTOFF).strip()
     min_dt = max(SUB_TRANSITION_CUTOFF, in_dt) if in_dt.startswith("20") else SUB_TRANSITION_CUTOFF
+    rev_dt = str(tr_item.get("심의완료일") or min_dt).strip()
     storage_s = str(tr_item.get("보관구분") or "")
 
-    # 유제품 일자·라인별 특이사항 인덱스 (세부항목: 우유 포장 / 호상 발효유 / 카톤·병 발효유 정밀 매칭)
+    # 우유(카톤)처럼 포장일보에서 용량이 표기되지 않는 품목용 과거 동명 이력 체크
+    had_prior_milk_carton_same_name = False
+    if is_new_sku and ("상온" not in storage_s and "실온" not in storage_s):
+        prior_cutoff = in_dt if in_dt.startswith("20") else rev_dt
+        for pr_old in (dairy_hist_p or []):
+            if str(pr_old.get("생산일자") or "") < prior_cutoff and pr_old.get("라인구분") == "우유(카톤)":
+                if is_related_transition_product(pack_nm, pr_old.get("제품명", "")):
+                    had_prior_milk_carton_same_name = True
+                    break
+
     dairy_notes_by_dt: Dict[str, List[Tuple[str, str, str]]] = {}
     for cr in (dairy_hist_c or []):
         c_dt = str(cr.get("생산일자") or "").strip()
@@ -7312,19 +7380,31 @@ def _match_pack_logs_for_item(
             if txt and txt not in ("-", "이상없음", "없음"):
                 dairy_notes_by_dt.setdefault(c_dt, []).append((str(cr.get("라인구분") or ""), sub_it, txt))
 
+    # 상온(RT) 일자·포장호기별 가동 용량 다중 인덱스 (① 멸균기 CCP 기록 + ② 실시간 멸균기 D열 + ③ 두유배양일보 용량란)
     rt_ho_rem_by_dt: Dict[Tuple[str, str], List[str]] = {}
+    rt_ho_vols_by_dt: Dict[Tuple[str, str], List[str]] = {}
     rt_shared_notes_by_dt: Dict[str, List[str]] = {}
+
+    def _push_rt_vol(dt_k: str, ho_k: str, v_str: str):
+        vt = extract_volume_ml_token(v_str)
+        if dt_k and ho_k and vt:
+            arr = rt_ho_vols_by_dt.setdefault((dt_k, ho_k), [])
+            if vt not in arr:
+                arr.append(vt)
 
     for rc in (rt_hist_c or []):
         c_dt = str(rc.get("생산일자") or "").strip()
         if not c_dt or c_dt < min_dt:
             continue
-        nt = str(rc.get("특이사항") or "").strip()
-        if not nt or nt in ("-", "이상없음", "없음", "적합"):
-            continue
         eq_s = str(rc.get("설비_호기") or "")
         sub_p = str(rc.get("세부항목") or "")
         m_ho = re.search(r"([A-F]호기)", eq_s)
+        if m_ho:
+            _push_rt_vol(c_dt, m_ho.group(1), sub_p)
+            _push_rt_vol(c_dt, m_ho.group(1), str(rc.get("용량") or ""))
+        nt = str(rc.get("특이사항") or "").strip()
+        if not nt or nt in ("-", "이상없음", "없음", "적합"):
+            continue
         if m_ho:
             ho_key = (c_dt, m_ho.group(1))
             combined_ho_nt = f"[{eq_s} {sub_p}] {nt}" if sub_p and sub_p != "-" else nt
@@ -7337,12 +7417,26 @@ def _match_pack_logs_for_item(
     for live_rt in (rt_today_obj, rt_yest_obj):
         if live_rt and live_rt.get("prod_date"):
             l_dt = str(live_rt["prod_date"]).strip()
+            for sr_live in (live_rt.get("ster_records") or []):
+                m_h_st = re.search(r"\(([A-F]호기)\)", str(sr_live.get("멸균기_포장") or ""))
+                if m_h_st:
+                    _push_rt_vol(l_dt, m_h_st.group(1), str(sr_live.get("매칭 제품명") or ""))
             for sn in (live_rt.get("ster_special_notes") or []):
                 if sn and sn not in rt_shared_notes_by_dt.setdefault(l_dt, []):
                     rt_shared_notes_by_dt[l_dt].append(sn)
                 m_ho2 = re.search(r"([A-F]호기)", str(sn))
                 if m_ho2 and sn not in rt_ho_rem_by_dt.setdefault((l_dt, m_ho2.group(1)), []):
                     rt_ho_rem_by_dt[(l_dt, m_ho2.group(1))].append(sn)
+
+    # 두유 배양검사 일보(실시간 + _이력DB_두유배양)에 기록된 호기별 용량(mL) 직결!
+    for sh_r in (soy_hist or []):
+        s_dt = str(sh_r.get("생산일자") or "").strip()
+        if not s_dt or s_dt < min_dt:
+            continue
+        s_ho = str(sh_r.get("포장기") or "").strip()
+        s_vol_raw = str(sh_r.get("용량(mL)") or sh_r.get("용량") or "").strip()
+        if s_ho and s_vol_raw:
+            _push_rt_vol(s_dt, s_ho, s_vol_raw)
 
     rt_ho_prod_cnt: Dict[Tuple[str, str], int] = {}
     rt_ho_has_other_tracked: Dict[Tuple[str, str], bool] = {}
@@ -7365,17 +7459,30 @@ def _match_pack_logs_for_item(
 
     hits = []
 
-    # 1) 냉장(우유·발효유) 포장일보 스캔
+    # 1) 냉장(우유·발효유) 포장일보 스캔 — 병포장·발효유는 용량 확인 필수 / 우유(카톤)만 용량 미기입 예외 허용
     if "상온" not in storage_s and "실온" not in storage_s:
         for dr in (dairy_hist_p or []):
             p_dt = str(dr.get("생산일자") or "").strip()
             if p_dt < min_dt:
                 continue
             r_nm = str(dr.get("제품명") or "").strip()
+            exp_cell = str(dr.get("표기소비기한_원문") or "-").strip()
+            if is_test_production_entry(r_nm, exp_cell):
+                continue
             if not is_related_transition_product(pack_nm, r_nm):
                 continue
 
             d_ln = str(dr.get("라인구분") or "유제품").strip()
+            is_milk_carton = (d_ln == "우유(카톤)")
+            r_vol = extract_volume_ml_token(r_nm) or extract_volume_ml_token(str(dr.get("제품용량") or ""))
+
+            if q_vol:
+                if r_vol and r_vol != q_vol:
+                    continue
+                # 병포장·발효유는 포장일보에 용량이 기록되므로 목표 용량과 일치 확인!
+                if (not is_milk_carton) and (not r_vol):
+                    continue
+
             chk_t = str(dr.get("확인시간") or "").strip()
             inline_sig = has_pack_transition_signal(r_nm) or has_pack_transition_signal(chk_t)
 
@@ -7385,7 +7492,6 @@ def _match_pack_logs_for_item(
             only_this_tracked_today = not dairy_day_has_other_tracked.get(p_dt, False)
 
             matched_sig_notes = []
-            general_notes = []
             for n_ln, n_sub, n_txt in day_notes:
                 n_is_ferm = ("발효" in n_ln) or ("호상" in n_ln) or ("발효" in n_sub) or ("호상" in n_sub)
                 if n_ln and (is_ferm_prod != n_is_ferm):
@@ -7395,9 +7501,6 @@ def _match_pack_logs_for_item(
                         continue
                     if (not is_hosang_prod) and ("호상" in n_sub) and ("카톤" not in n_sub) and ("병" not in n_sub):
                         continue
-
-                if n_txt not in general_notes:
-                    general_notes.append(n_txt)
                 if note_mentions_tracked_product(n_txt, ref_names + [r_nm]):
                     if n_txt not in matched_sig_notes:
                         matched_sig_notes.append(n_txt)
@@ -7405,37 +7508,43 @@ def _match_pack_logs_for_item(
                     if len(_extract_transition_sig_tokens(n_txt)) == 0 and n_txt not in matched_sig_notes:
                         matched_sig_notes.append(n_txt)
 
-            has_sig = inline_sig or (len(matched_sig_notes) > 0)
-            if not has_sig:
-                continue
-            if inline_sig:
-                disp_note = f"제품/확인란 표기 ({chk_t if has_pack_transition_signal(chk_t) else r_nm})"
+            explicit_sig = inline_sig or (len(matched_sig_notes) > 0)
+            if is_new_sku:
+                # 병포장·발효유는 용량이 이미 일치 확인되었으므로 특이사항 없어도 즉시 완료! 우유(카톤)만 동명 구이력 존재 시 수동 확인 유도
+                if explicit_sig or (not is_milk_carton) or (q_vol and r_vol == q_vol) or (not had_prior_milk_carton_same_name):
+                    has_sig = True
+                    disp_note = (" / ".join(matched_sig_notes)) if matched_sig_notes else (chk_t if inline_sig else f"신규품목 첫 본생산 확인 ({r_vol + 'mL' if r_vol else d_ln})")
+                else:
+                    has_sig = False
+                    disp_note = f"우유(카톤) 가동 감지 ({q_vol + 'mL ' if q_vol else ''}신규분 맞으면 확정 클릭)"
             else:
-                disp_note = " / ".join(matched_sig_notes)
+                if not explicit_sig:
+                    continue
+                has_sig = True
+                disp_note = f"제품/확인란 표기 ({chk_t if has_pack_transition_signal(chk_t) else r_nm})" if inline_sig else " / ".join(matched_sig_notes)
 
             hits.append({
                 "생산일자": p_dt,
                 "라인_호기": d_ln,
                 "제품명": r_nm,
-                "소비기한": dr.get("표기소비기한_원문", "-"),
+                "소비기한": exp_cell,
                 "특이사항": disp_note,
                 "has_signal": has_sig
             })
 
-    # 2) 상온 공정일보 스캔
+    # 2) 상온 공정일보 스캔 — 멸균기 D열 + 두유배양일보 용량란으로 전 호기 용량 확인 가능!
     if "냉장" not in storage_s:
         for rr in (rt_hist_p or []):
             p_dt = str(rr.get("생산일자") or "").strip()
             if p_dt < min_dt:
                 continue
             r_nm = str(rr.get("제품명") or "").strip()
-            if not is_related_transition_product(pack_nm, r_nm):
-                continue
-
             ho_s = str(rr.get("포장호기") or "-").strip()
             chk_cell = str(rr.get("포장확인시간") or rr.get("확인시간") or "").strip()
             exp_cell = str(rr.get("표기소비기한_원문") or "").strip()
             if is_test_production_entry(r_nm, exp_cell, rr.get("특이사항", "")):
+                continue
+            if not is_related_transition_product(pack_nm, r_nm):
                 continue
 
             ho_rems_list = list(rt_ho_rem_by_dt.get((p_dt, ho_s), []))
@@ -7443,6 +7552,21 @@ def _match_pack_logs_for_item(
             if direct_ho_rem and direct_ho_rem not in ("-", "이상없음", "없음") and direct_ho_rem not in ho_rems_list:
                 ho_rems_list.append(direct_ho_rem)
             ho_rem_joined = " / ".join(ho_rems_list)
+
+            # 제품명 용량 -> 없으면 해당 일자·포장호기의 멸균기 D열 / 두유배양일보 용량 목록 조회
+            name_vol = extract_volume_ml_token(r_nm) or extract_volume_ml_token(str(rr.get("용량") or ""))
+            ho_vols = [name_vol] if name_vol else list(rt_ho_vols_by_dt.get((p_dt, ho_s), []))
+            rem_vol = extract_volume_ml_token(ho_rem_joined)
+            if rem_vol and rem_vol not in ho_vols:
+                ho_vols.append(rem_vol)
+
+            if q_vol:
+                # 기록된 용량이 있고 목표 용량(예: 140)과 다르면(예: 190) 100% 배제!
+                if ho_vols and (q_vol not in ho_vols):
+                    continue
+                vol_confirmed = (q_vol in ho_vols)
+            else:
+                vol_confirmed = True
 
             daily_memo = str(rr.get("당일전달사항") or "").strip()
             extra_notes = rt_shared_notes_by_dt.get(p_dt, [])
@@ -7475,15 +7599,32 @@ def _match_pack_logs_for_item(
                 elif only_this_rt_today and has_pack_transition_signal(sn) and len(_extract_transition_sig_tokens(sn)) == 0:
                     matched_shared.append(sn)
 
-            has_sig = slot_inline_sig or (len(matched_ho_rems) > 0) or (len(matched_shared) > 0)
-            if not has_sig:
-                continue
-            if slot_inline_sig:
-                disp_note = chk_cell if has_pack_transition_signal(chk_cell) else r_nm
-            elif matched_ho_rems:
-                disp_note = re.sub(r"^\[[^\]]+\]\s*", "", matched_ho_rems[0]).lstrip("- ").strip()
+            explicit_sig = slot_inline_sig or (len(matched_ho_rems) > 0) or (len(matched_shared) > 0)
+            if is_new_sku:
+                # 상온 신규 품목은 멸균·배양 용량(vol_confirmed)이 확인되면 특이사항 미기입이어도 즉시 자동 완료!
+                if explicit_sig or vol_confirmed:
+                    has_sig = True
+                    disp_v = q_vol or (ho_vols[0] if ho_vols else "")
+                    if slot_inline_sig:
+                        disp_note = chk_cell if has_pack_transition_signal(chk_cell) else r_nm
+                    elif matched_ho_rems:
+                        disp_note = re.sub(r"^\[[^\]]+\]\s*", "", matched_ho_rems[0]).lstrip("- ").strip()
+                    elif matched_shared:
+                        disp_note = re.sub(r"^\[[^\]]+\]\s*", "", matched_shared[0]).lstrip("- ").strip()
+                    else:
+                        disp_note = f"신규품목 첫 본생산 확인 ({disp_v + 'mL' if disp_v else '초도가동'})"
+                else:
+                    continue
             else:
-                disp_note = re.sub(r"^\[[^\]]+\]\s*", "", matched_shared[0]).lstrip("- ").strip()
+                if not explicit_sig:
+                    continue
+                has_sig = True
+                if slot_inline_sig:
+                    disp_note = chk_cell if has_pack_transition_signal(chk_cell) else r_nm
+                elif matched_ho_rems:
+                    disp_note = re.sub(r"^\[[^\]]+\]\s*", "", matched_ho_rems[0]).lstrip("- ").strip()
+                else:
+                    disp_note = re.sub(r"^\[[^\]]+\]\s*", "", matched_shared[0]).lstrip("- ").strip()
 
             hits.append({
                 "생산일자": p_dt,
@@ -7519,10 +7660,6 @@ def _bg_persist_auto_promoted_transitions(updated_records: List[dict]):
 
 
 def _find_past_label_review_for_signal(prod_name: str, signal_date: str, all_completed_lbls: List[dict]) -> Optional[dict]:
-    """
-    부자재 DB(10월~)에 변경·신규 입고 비고가 있거나 포장일보에 전환 특이사항이 찍힌 품목에 대해,
-    표시사항 현황 시트의 과거(8~10월 포함) 검토완료 이력 중 가장 가까운 건을 역으로 매칭
-    """
     best_row = None
     best_dt = ""
     for r in all_completed_lbls:
@@ -7550,12 +7687,9 @@ def build_label_transition_pipeline(
     rt_hist_c: Optional[List[dict]] = None,
     dairy_hist_c: Optional[List[dict]] = None,
     rt_today_obj: Optional[dict] = None,
-    rt_yest_obj: Optional[dict] = None
+    rt_yest_obj: Optional[dict] = None,
+    soy_hist: Optional[List[dict]] = None
 ) -> dict:
-    """
-    - 표시사항 자체 미분류 후보는 2026-11-01 이후 유지
-    - 부자재(원부자재 DB 10월~) 변경/신규 입고 건 및 포장일보 전환 특이사항 건은 과거 표시사항 검토이력과 역매칭하여 후보 및 타임라인에 자동 연결!
-    """
     sub_rows_pool = (sub_mat_data or {}).get("nov_plus_rows") or []
     rt_hc_list = rt_hist_c or []
     dy_hc_list = dairy_hist_c or []
@@ -7580,7 +7714,6 @@ def build_label_transition_pipeline(
     all_nov_completed = []
     seen_cand_docs = set()
 
-    # [A] 기본 후보: 2026-11-01 이후 표시사항 검토 완료 건
     for r in (lbl_rows or []):
         if r.get("분류") != "검토완료(확인필)":
             continue
@@ -7615,10 +7748,9 @@ def build_label_transition_pipeline(
         if is_inhouse and (ikey not in handled_doc_nos):
             unclassified_candidates.append(cand_obj)
 
-    # [B] 부자재 10월~ 기준 역매칭 후보: 원부자재 DB(10월~) 변경·신규 비고 건 & 포장일보 전환 특이사항 건
     signal_events: List[dict] = []
     for sr in sub_rows_pool:
-        if sr.get("구분") == "빨대" or any(x in str(sr.get("구분", "")) for x in ["선물", "박스", "트레이"]):
+        if sr.get("구분") == "빨대" or _is_outer_box_pkg(sr.get("구분", "")):
             continue
         if bool(sr.get("_is_change_signal")) or has_sub_inbound_signal(sr.get("특이사항", "")):
             p_nm = str(sr.get("제품명") or "").strip()
@@ -7632,7 +7764,6 @@ def build_label_transition_pipeline(
                     "hint_tag": f"10~11월 부자재 변경입고 감지 ({sr['검수일자'][5:]} · {sr.get('특이사항', '')})"
                 })
 
-    # 상온 포장일보 전환 특이사항(예: 11/25 갈아만든 진한 국산콩 두유 - 기존팩 소진후 신규팩사용) 역스캔
     rt_ho_notes_Lookup: Dict[Tuple[str, str], str] = {}
     for rc in rt_hc_list:
         nt = str(rc.get("특이사항") or "").strip()
@@ -7654,7 +7785,6 @@ def build_label_transition_pipeline(
                 "hint_tag": f"포장일보 전환특이사항 감지 ({dt_p[5:]} {ho_p} · {nt_hit})"
             })
 
-    # 유제품 포장일보 전환 특이사항 역스캔
     for dc in dy_hc_list:
         dt_c = str(dc.get("생산일자") or "").strip()
         nt_c = str(dc.get("특이사항") or "").strip()
@@ -7707,7 +7837,6 @@ def build_label_transition_pipeline(
             unclassified_candidates.append(cand_obj)
             all_nov_completed.append(cand_obj)
         else:
-            # 표시사항 시트 이전(또는 수기 검토) 건이라도 10월~ 부자재DB 변경비고가 확실한 품목은 바로 연결 가능하도록 제공
             syn_id = "SUB_" + hashlib.md5(ev_p.encode("utf-8")).hexdigest()[:6].upper()
             if syn_id in handled_doc_nos or syn_id in seen_cand_docs:
                 continue
@@ -7748,7 +7877,19 @@ def build_label_transition_pipeline(
             excluded_list.append(dict(tr))
             continue
 
-        # 1) 입고대기 -> 원부자재 DB(10월~) 시그널 매칭 시 포장대기로 자동 승격
+        # [자동 자가 치유] 본품(멸균팩/슬리브 등) 추적 건인데 이전 로직에서 선물용상자/박스 입고로 잘못 [자동인식] 승격된 건은 즉시 입고대기로 자동 복원!
+        if stage == "포장대기" and "[자동인식]" in str(tr.get("부자재입고내역") or ""):
+            trg_is_box = _is_outer_box_pkg(f"{tr.get('표시사항제목', '')} {tr.get('포장재유형', '')}")
+            in_is_box = _is_outer_box_pkg(tr.get("부자재입고내역", ""))
+            if (not trg_is_box) and in_is_box:
+                tr["진행단계"] = "입고대기"
+                tr["부자재입고일"] = ""
+                tr["부자재입고내역"] = ""
+                tr["수정일시"] = now_s
+                stage = "입고대기"
+                auto_promoted_dirty = True
+
+        # 1) 입고대기 -> 원부자재 DB 시그널 매칭 시 포장대기로 자동 승격
         if stage == "입고대기":
             det_in = _match_sub_inbound_for_item(tr, sub_rows_pool)
             sig_hit = next((d for d in det_in if d.get("has_signal")), None)
@@ -7770,15 +7911,18 @@ def build_label_transition_pipeline(
                 waiting_in_list.append(cp)
                 continue
 
-        # 2) 포장대기 -> 상온/유제품 포장일보 가동 + 특이사항('기존팩 소진후 신규팩사용/첫생산/신규라벨' 등) 매칭 시 전환완료로 자동 종결
+        # 2) 포장대기 -> 신규(특이사항 미기입 허용) / 리뉴얼(특이사항 필수) 기준 충족 시 전환완료로 자동 종결
         if stage == "포장대기":
             pack_stage_pool = [x for x in (saved_tr_records or []) if x.get("진행단계") == "포장대기"]
-            det_pk = _match_pack_logs_for_item(tr, rt_hist_p, rt_hc_list, dairy_hist_p, dy_hc_list, rt_today_obj, rt_yest_obj, pack_stage_pool)
+            det_pk = _match_pack_logs_for_item(
+                tr, rt_hist_p, rt_hc_list, dairy_hist_p, dy_hc_list,
+                rt_today_obj, rt_yest_obj, soy_hist, pack_stage_pool
+            )
             pk_sig_hit = next((p for p in det_pk if p.get("has_signal")), None)
             if pk_sig_hit and "[포장되돌림]" not in memo_s:
                 tr["진행단계"] = "전환완료"
                 tr["전환포장일"] = pk_sig_hit["생산일자"]
-                tr["전환포장내역"] = f"{pk_sig_hit['라인_호기']} · 소비기한 {pk_sig_hit['소비기한']} · 특이사항: {pk_sig_hit['특이사항']} [자동인식]"
+                tr["전환포장내역"] = f"{pk_sig_hit['라인_호기']} · 소비기한 {pk_sig_hit['소비기한']} · {pk_sig_hit['특이사항']} [자동인식]"
                 tr["수정일시"] = now_s
                 auto_promoted_dirty = True
                 completed_list.append(dict(tr))
@@ -8602,7 +8746,8 @@ def _sync_build_bundle_core(force_all_sheets: bool = False) -> dict:
                 rt_hist_c=rt_hc,
                 dairy_hist_c=dy_hc,
                 rt_today_obj=rt_today,
-                rt_yest_obj=rt_yest
+                rt_yest_obj=rt_yest,
+                soy_hist=soy_hist
             ),
             "raw_db": {
                 "master_cnt": raw_m_cnt if raw_m_cnt > 0 else sub_raw_cnt,
@@ -11466,7 +11611,8 @@ def api_manage_label_transition(body: LabelTransitionActionPayload, _u: dict = D
                 rt_hist_c=proc_cur.get("rt_hist_c", []),
                 dairy_hist_c=proc_cur.get("dairy_hist_c", []),
                 rt_today_obj=proc_cur.get("rt_today"),
-                rt_yest_obj=proc_cur.get("rt_yest")
+                rt_yest_obj=proc_cur.get("rt_yest"),
+                soy_hist=proc_cur.get("soy_hist", [])
             )
             b_cur["label_transition"] = new_tr_data
 

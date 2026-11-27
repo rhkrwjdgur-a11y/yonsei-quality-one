@@ -11459,12 +11459,12 @@ def api_save_law_guideline(body: LawGuidelineSavePayload, _u: dict = Depends(req
         "law": new_law_bundle
     }
 # ============================================================================
-# [Q-Safety 확장 모듈 4] 실시간 일반검사(혼합·3단계 변질경보·다각도 종료예측) & 인수인계 보드 API
+# [Q-Safety 확장 모듈 4] 실시간 일반검사(1~5호기 5슬롯 · 동일원액 병합 · 혼합게이지 · 차기품목) & 인수인계 알림 API
 # ============================================================================
 STERIL_FLOW_LPH = {1: 5000, 2: 6000, 3: 6000, 4: 8000, 5: 6000}
 MIX_TANK_CAP_L = {1: 6000, 2: 10000, 3: 6000, 4: 8000, 5: 6000}
 PACK_SPEED_PPH = {"A": 20000, "B": 24000, "C": 7000, "D": 24000, "E": 24000, "F": 40000}
-DEFAULT_STERIL_BY_PACKER = {"A": 5, "B": 1, "C": 3, "D": 2, "E": 3, "F": 4}
+DEFAULT_STERIL_BY_PACKER = {"A": 3, "B": 1, "C": 5, "D": 1, "E": 2, "F": 4}
 DEFAULT_EXAMPLE_BATCHES = {"A": 4, "B": 5, "C": 2, "D": 5, "E": 5, "F": 6}
 
 GRAIN_3H_KEYWORDS = [
@@ -11496,6 +11496,42 @@ def _fmt_dur_hm(minutes_val: float) -> str:
     return f"{h}시간 {m:02d}분" if h > 0 else f"{m}분"
 
 
+def _core_liquid_key(prod_name: str) -> str:
+    """동일 내용물(원액)의 내수/수출/용량/제품코드 파생 포장을 하나로 묶기 위한 정규화 키"""
+    s = str(prod_name or "").strip()
+    s = re.sub(r"\b1[0127]\d{3}(?:\s*[,/]\s*1[0127]\d{3})*\b", " ", s)
+    s = re.sub(
+        r"\(\s*(?:[^)]*(?:수출|export|미국|베트남|중국|몽골|홍콩|대만|필리핀|호주|캐나다|전용|박스|입|팩|프리즈마|미드|콤비|슬림|mL|ml|L|g)[^)]*)\s*\)",
+        " ",
+        s,
+        flags=re.IGNORECASE,
+    )
+    s = re.sub(r"(?:미국수출|베트남수출|수출용|수출|export)\b", " ", s, flags=re.IGNORECASE)
+    s = re.sub(r"\d+(?:\.\d+)?\s*(?:mL|ml|ML|㎖|L|g|kg)\b", " ", s)
+    return re.sub(r"[\s\(\)\[\]\{\}\-_·,/&\+!]+", "", s).lower()
+
+
+def _clean_base_prod_title(prod_name: str, strip_export: bool = False) -> str:
+    s = str(prod_name or "").strip()
+    s = re.sub(r"\s*1[0127]\d{3}(?:\s*[,/]\s*1[0127]\d{3})*\b", "", s)
+    if strip_export:
+        s = re.sub(
+            r"\(\s*(?:[^)]*(?:수출|export|미국|베트남|중국|몽골|홍콩|대만|필리핀|호주|캐나다)[^)]*)\s*\)",
+            "",
+            s,
+            flags=re.IGNORECASE,
+        )
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _extract_pack_variant_tag(prod_name: str, packer_code: str, fin_hm: str) -> str:
+    s = str(prod_name or "")
+    m = re.search(r"\(([^)]*(?:수출|export|미국|베트남|중국|몽골|홍콩|대만|전용)[^)]*)\)", s, re.IGNORECASE)
+    v_lbl = m.group(1).strip() if m else ("수출" if "수출" in s else "내수")
+    hm_part = f" {fin_hm}" if fin_hm else ""
+    return f"{packer_code}·{v_lbl}{hm_part}" if packer_code and packer_code != "-" else f"{v_lbl}{hm_part}"
+
+
 def classify_spoilage_risk_rule(prod_name: str, category_hint: str = "") -> dict:
     """
     혼합액 체류 변질 위험 3단계 기준:
@@ -11524,30 +11560,29 @@ def classify_spoilage_risk_rule(prod_name: str, category_hint: str = "") -> dict
     return {"limit_min": 210, "warn_min": 175, "limit_label": "3시간 30분", "risk_group": "일반 3.5h"}
 
 
-def get_equipment_rates(steril_no: int, packer_code: str, prod_name: str = "", vol_hint: str = "") -> dict:
-    p_code = re.sub(r"[^A-F]", "", str(packer_code or "").upper())[:1]
-    s_no = steril_no if steril_no in STERIL_FLOW_LPH else DEFAULT_STERIL_BY_PACKER.get(p_code, 2)
+def get_equipment_rates(steril_no: int, packer_codes_str: str, prod_name: str = "", vol_hint: str = "") -> dict:
+    p_codes = list(dict.fromkeys(re.findall(r"[A-F]", str(packer_codes_str or "").upper())))
+    s_no = steril_no if steril_no in STERIL_FLOW_LPH else DEFAULT_STERIL_BY_PACKER.get(p_codes[0] if p_codes else "", 2)
 
-    # 멸균 유량: 1호기 5천 / 2,3,5호기 6천 / 4호기 8천 / 2호기+F포장 연결 시 8천
-    steril_flow = 8000 if (s_no == 2 and p_code == "F") else STERIL_FLOW_LPH.get(s_no, 6000)
-    # 1배치 배합량: 기본 6천 / 4호기 또는 2호기+F포장 연결 시 8천
-    default_batch_vol = 8000 if (s_no == 4 or (s_no == 2 and p_code == "F")) else 6000
-    pack_pph = PACK_SPEED_PPH.get(p_code, 24000)
+    has_f = ("F" in p_codes)
+    steril_flow = 8000 if (s_no == 2 and has_f) else STERIL_FLOW_LPH.get(s_no, 6000)
+    default_batch_vol = 8000 if (s_no == 4 or (s_no == 2 and has_f)) else 6000
+    sum_pack_pph = sum(PACK_SPEED_PPH[c] for c in p_codes if c in PACK_SPEED_PPH) or 24000
 
     m_v = re.search(r"(\d{2,4})\s*(?:mL|ml|ML|㎖)", f"{prod_name} {vol_hint}")
-    unit_ml = int(m_v.group(1)) if m_v else (200 if p_code == "C" else 190)
+    unit_ml = int(m_v.group(1)) if m_v else (200 if p_codes == ["C"] else 190)
 
-    # 포장기 시간당 실제 액 소모량(L/h) 산출 -> 아셉틱 만충 단속을 감안한 실효 병목 유량(eff_drain_lph) 결정
-    pack_drain_lph = round((pack_pph * unit_ml) / 1000.0, 1)
+    pack_drain_lph = round((sum_pack_pph * unit_ml) / 1000.0, 1)
     eff_drain_lph = min(float(steril_flow), pack_drain_lph) if pack_drain_lph > 0 else float(steril_flow)
 
     return {
         "steril_no": s_no,
-        "packer_code": p_code or "-",
+        "packer_codes": p_codes,
+        "packer_label": ("·".join(p_codes) + "포장") if p_codes else "-",
         "steril_flow_lph": steril_flow,
         "tank_cap_l": MIX_TANK_CAP_L.get(s_no, 6000),
         "default_batch_vol_l": default_batch_vol,
-        "pack_speed_pph": pack_pph,
+        "pack_speed_pph": sum_pack_pph,
         "unit_ml": unit_ml,
         "pack_drain_lph": pack_drain_lph,
         "eff_drain_lph": eff_drain_lph,
@@ -11568,6 +11603,7 @@ def evaluate_room_multi_angle(
     vol_hint: str = "",
     fails_cnt: int = 0,
     co_transfer_txt: str = "",
+    variant_tags: Optional[List[str]] = None,
     is_example: bool = False,
     assumed_start: bool = False,
 ) -> dict:
@@ -11585,8 +11621,9 @@ def evaluate_room_multi_angle(
         if dt_m:
             mix_dts.append((idx, dt_m, dt_m.strftime("%H:%M")))
 
-    done_mix_cnt = len(mix_dts)
+    done_mix_cnt = min(len(mix_dts), tot_b)
     mix_all_done = (done_mix_cnt >= tot_b)
+    mix_pct = int(round((done_mix_cnt / float(tot_b)) * 100))
 
     fin_start_dt = _parse_hhmm_to_dt(prod_d, fin_first_time_str)
     fin_started = (fin_start_dt is not None) and (not assumed_start)
@@ -11595,7 +11632,6 @@ def evaluate_room_multi_angle(
     steril_hours = tot_liquid_l / float(eq["steril_flow_lph"])
     pack_hours = est_qty / float(eq["pack_speed_pph"])
     bottleneck_hours = max(steril_hours, pack_hours)
-    # 멸균 유량 > 포장 소모량일 때 아셉틱 만충으로 이송이 끊겼다 재가동되는 버퍼 시간 반영
     aseptic_buffer_min = 12.0 if eq["steril_flow_lph"] > eq["pack_drain_lph"] * 1.15 else 5.0
 
     if fin_start_dt is not None:
@@ -11605,7 +11641,6 @@ def evaluate_room_multi_angle(
     else:
         base_pack_start = None
 
-    # 중간 포장 정지 -> 아셉틱 소진 대기 -> 혼합 이송 간격 지연 발생분(delay_min) 자동 보정
     expected_per_batch_min = (b_vol / max(eq["eff_drain_lph"], 1000.0)) * 60.0
     delay_min = 0.0
     if len(mix_dts) >= 2:
@@ -11614,6 +11649,7 @@ def evaluate_room_multi_angle(
         if span_actual > span_expected + 15.0:
             delay_min = min(span_actual - span_expected, 180.0)
 
+    eta_dt: Optional[datetime] = None
     eta_hm = "-"
     eta_note = ""
     if base_pack_start is not None:
@@ -11627,13 +11663,13 @@ def evaluate_room_multi_angle(
         if delay_min >= 20:
             eta_note = f"포장·이송 지연 +{int(round(delay_min))}분 반영"
 
-    # 혼합탱크(호기별 3기 순환) + 실효 소진량 교차 기반 체류시간 및 변질 위험 판정
+    is_pack_finished = bool(eta_dt is not None and now_dt >= (eta_dt + timedelta(minutes=10)))
+
     hold_status = "ok"
     hold_badge = ""
-
     if mix_all_done:
         hold_status = "done"
-        hold_badge = "✅ 혼합검사 종료"
+        hold_badge = "✅ 혼합종료 · 포장마감" if is_pack_finished else "✅ 혼합검사 종료"
     elif mix_dts:
         last_b_no = mix_dts[-1][0]
         cleared_by_tank_cycle = max(0, last_b_no - 3)
@@ -11652,32 +11688,36 @@ def evaluate_room_multi_angle(
             dur_txt = _fmt_dur_hm(hold_elapsed_min)
             if hold_elapsed_min >= risk["limit_min"]:
                 hold_status = "danger"
-                hold_badge = f"🚨 {oldest_bno}배치 체류 {dur_txt} ({risk['risk_group']} 초과 변질위험!)"
+                hold_badge = f"🚨 {oldest_bno}배치 체류 {dur_txt} ({risk['risk_group']} 초과!)"
             elif hold_elapsed_min >= risk["warn_min"]:
                 hold_status = "warn"
                 hold_badge = f"⚠️ {oldest_bno}배치 체류 {dur_txt} ({risk['risk_group']} 임박)"
             else:
                 hold_status = "ok"
-                hold_badge = f"체류 {dur_txt} ({risk['risk_group']} 정상)"
+                hold_badge = f"체류 {dur_txt} ({risk['risk_group']})"
 
     if not hold_badge:
-        hold_badge = f"관리기준: {risk['risk_group']}"
+        hold_badge = f"기준 {risk['risk_group']}"
 
     p_spd_str = f"{eq['pack_speed_pph']//10000}만" if eq["pack_speed_pph"] % 10000 == 0 else f"{eq['pack_speed_pph']/10000:.1f}만"
     fin_disp = (
         f"완제 {fin_start_hm} 개시" if fin_started
-        else (f"미기입 ({fin_start_hm} 개시 가정)" if assumed_start and fin_start_hm else "완제 개시 대기")
+        else (f"미기입({fin_start_hm}가정)" if assumed_start and fin_start_hm else "완제 대기")
     )
 
     return {
+        "steril_no": eq["steril_no"],
         "steril_ho": f"{eq['steril_no']}호기",
-        "packer_ho": f"{eq['packer_code']}포장" if eq["packer_code"] != "-" else "-",
-        "product_name": prod_name,
+        "packer_ho": eq["packer_label"],
+        "product_name": _clean_base_prod_title(prod_name, strip_export=bool(variant_tags and len(variant_tags) >= 2)),
+        "variant_tags": variant_tags or [],
         "mix_done": done_mix_cnt,
         "mix_total": tot_b,
+        "mix_pct": mix_pct,
         "mix_all_done": mix_all_done,
-        "mix_text": f"혼합 {done_mix_cnt}/{tot_b} 완료" if mix_all_done else f"혼합 {done_mix_cnt}/{tot_b} 진행중",
+        "mix_text": f"혼합 {done_mix_cnt}/{tot_b}",
         "fin_started": fin_started,
+        "fin_start_hm": fin_start_hm,
         "fin_text": fin_disp,
         "risk_group": risk["risk_group"],
         "limit_label": risk["limit_label"],
@@ -11685,50 +11725,137 @@ def evaluate_room_multi_angle(
         "hold_badge": hold_badge,
         "eta_hm": eta_hm,
         "eta_note": eta_note,
+        "is_pack_finished": is_pack_finished,
         "equip_spec": f"{eq['steril_flow_lph']:,}L/h · {p_spd_str}개/h · 배치 {int(b_vol):,}L",
         "fails_cnt": fails_cnt,
         "co_transfer": co_transfer_txt,
         "is_example": is_example,
+        "_sort_hm": fin_start_hm or "23:59",
     }
 
 
+def _pack_into_five_sterilizer_slots(evaluated_runs: List[dict]) -> List[dict]:
+    """멸균 1~5호기 5개 고정 슬롯으로 정렬하고, 호기당 연속 2품목 생산 시 현재 가동 품목 + 차기/전품목 전환 정보 구성"""
+    by_st: Dict[int, List[dict]] = {1: [], 2: [], 3: [], 4: [], 5: []}
+    for r in evaluated_runs:
+        sno = int(r.get("steril_no") or 1)
+        if sno not in by_st:
+            sno = 1
+        by_st[sno].append(r)
+
+    slots: List[dict] = []
+    for sno in (1, 2, 3, 4, 5):
+        runs = sorted(by_st[sno], key=lambda x: x.get("_sort_hm", "23:59"))
+        if not runs:
+            slots.append({
+                "steril_no": sno,
+                "steril_ho": f"{sno}호기",
+                "active": False,
+                "active_idx": 0,
+                "run_cnt": 0,
+                "primary": None,
+                "runs": [],
+                "prev_summary": "",
+                "next_summary": "",
+            })
+            continue
+
+        act_idx = 0
+        for idx, rr in enumerate(runs):
+            if not rr.get("is_pack_finished"):
+                act_idx = idx
+                break
+        else:
+            act_idx = len(runs) - 1
+
+        prev_r = runs[act_idx - 1] if act_idx > 0 else None
+        next_r = runs[act_idx + 1] if (act_idx + 1) < len(runs) else None
+
+        slots.append({
+            "steril_no": sno,
+            "steril_ho": f"{sno}호기",
+            "active": True,
+            "active_idx": act_idx,
+            "run_cnt": len(runs),
+            "primary": runs[act_idx],
+            "runs": runs,
+            "prev_summary": f"전품목 완료: {prev_r['product_name']}" if prev_r else "",
+            "next_summary": f"차기 대기: {next_r['packer_ho']} {next_r['product_name']}" if next_r else "",
+        })
+    return slots
+
+
 def build_general_inspection_board(rt_today: Optional[dict], rt_yest: Optional[dict]) -> dict:
-    """
-    1) QMS 실시간 데이터가 수신된 경우: has_live_qms=True, is_example=False 로 실데이터 반환
-    2) QMS 미연동 상태인 경우: 해당 날짜(당일 우선, 비가동 시 전일) 상온 공정일보의 실제 가동 품목과
-       '포장 확인시간'을 참고하여 다각도 설비 수식이 적용된 (예시) 시뮬레이션 데이터를 생성해 반환
-    """
     now_dt = now_kst()
     today_iso = now_dt.strftime("%Y-%m-%d")
 
+    # 1) QMS 실시간 데이터가 수신된 경우 (동일 멸균기·동일 원액 그룹화 + 1~5호기 5슬롯 구성)
     if _QMS_LIVE_ROOMS_CACHE.get("rooms") and _QMS_LIVE_ROOMS_CACHE.get("date") >= (now_dt.date() - timedelta(days=1)).strftime("%Y-%m-%d"):
         live_dt_str = _QMS_LIVE_ROOMS_CACHE["date"]
         live_d = parse_date_obj(live_dt_str) or now_dt.date()
-        live_items = []
+        grouped_live: Dict[Tuple[int, str], dict] = {}
+
         for rm in _QMS_LIVE_ROOMS_CACHE["rooms"]:
+            st_no = int(rm.get("sterilizer") or 2)
+            p_code = re.sub(r"[^A-F]", "", str(rm.get("packer") or "").upper())[:1]
+            p_nm = str(rm.get("product_name") or "-").strip()
             vals = rm.get("values") or {}
             mix_t = [str(x or "").strip() for x in ((vals.get("혼합액") or {}).get("times") or []) if str(x or "").strip()]
             fin_t_list = [str(x or "").strip() for x in ((vals.get("완제품") or {}).get("times") or []) if str(x or "").strip()]
             fin_first = fin_t_list[0] if fin_t_list else ""
             co_list = rm.get("co_transfer") or []
             co_txt = ", ".join([str(c.get("label") or "") for c in co_list if isinstance(c, dict) and c.get("label")])
+
+            ckey = (st_no, _core_liquid_key(p_nm))
+            g = grouped_live.setdefault(ckey, {
+                "steril_no": st_no,
+                "packers": [],
+                "prod_name": p_nm,
+                "batches": int(rm.get("batches") or max(len(mix_t), 5)),
+                "blend_vol": float(rm.get("blend_volume") or 0),
+                "qty": 0,
+                "mix_t": mix_t,
+                "fin_hms": [],
+                "pack_spec": str(rm.get("pack_spec") or ""),
+                "fails": 0,
+                "co_txt": co_txt,
+                "variant_tags": [],
+            })
+            if p_code and p_code not in g["packers"]:
+                g["packers"].append(p_code)
+            g["qty"] += int(rm.get("quantity") or 0)
+            g["fails"] += int(rm.get("fails") or 0)
+            if len(mix_t) > len(g["mix_t"]):
+                g["mix_t"] = mix_t
+            g["batches"] = max(g["batches"], int(rm.get("batches") or 0))
+            if fin_first:
+                g["fin_hms"].append(fin_first)
+            g["variant_tags"].append(_extract_pack_variant_tag(p_nm, p_code, fin_first))
+
+        live_items = []
+        for (_, _), g in grouped_live.items():
+            first_hm = sorted(g["fin_hms"])[0] if g["fin_hms"] else ""
+            v_tags = g["variant_tags"] if len(g["variant_tags"]) >= 2 else []
             live_items.append(evaluate_room_multi_angle(
                 prod_d=live_d,
                 now_dt=now_dt,
-                steril_no=int(rm.get("sterilizer") or 2),
-                packer_code=str(rm.get("packer") or ""),
-                prod_name=str(rm.get("product_name") or "-"),
-                total_batches=int(rm.get("batches") or max(len(mix_t), 5)),
-                batch_vol_l=float(rm.get("blend_volume") or 0),
-                planned_qty=int(rm.get("quantity") or 0),
-                mix_times_str=mix_t,
-                fin_first_time_str=fin_first,
-                vol_hint=str(rm.get("pack_spec") or ""),
-                fails_cnt=int(rm.get("fails") or 0),
-                co_transfer_txt=co_txt,
+                steril_no=g["steril_no"],
+                packer_code="".join(g["packers"]),
+                prod_name=g["prod_name"],
+                total_batches=g["batches"],
+                batch_vol_l=g["blend_vol"],
+                planned_qty=g["qty"],
+                mix_times_str=g["mix_t"],
+                fin_first_time_str=first_hm,
+                vol_hint=g["pack_spec"],
+                fails_cnt=g["fails"],
+                co_transfer_txt=g["co_txt"],
+                variant_tags=v_tags,
                 is_example=False,
             ))
+
         if live_items:
+            slots_5 = _pack_into_five_sterilizer_slots(live_items)
             return {
                 "has_live_qms": True,
                 "is_example": False,
@@ -11736,9 +11863,11 @@ def build_general_inspection_board(rt_today: Optional[dict], rt_yest: Optional[d
                 "ref_tab": f"QMS 실시간 ({_QMS_LIVE_ROOMS_CACHE.get('updated_at', '')})",
                 "danger_cnt": sum(1 for x in live_items if x["hold_status"] == "danger"),
                 "warn_cnt": sum(1 for x in live_items if x["hold_status"] == "warn"),
+                "slots": slots_5,
                 "items": live_items,
             }
 
+    # 2) QMS 연동 전: 상온 공정일보 가동 품목 · 포장 확인시간 기반 1~5호기 5슬롯 예시 시뮬레이션
     src_view = rt_today if (rt_today and rt_today.get("compact_rows")) else rt_yest
     if not src_view or not src_view.get("compact_rows"):
         return {
@@ -11748,6 +11877,7 @@ def build_general_inspection_board(rt_today: Optional[dict], rt_yest: Optional[d
             "ref_tab": "-",
             "danger_cnt": 0,
             "warn_cnt": 0,
+            "slots": _pack_into_five_sterilizer_slots([]),
             "items": [],
         }
 
@@ -11760,37 +11890,67 @@ def build_general_inspection_board(rt_today: Optional[dict], rt_yest: Optional[d
         if str(cp.get("생산 제품명") or "").strip() not in ("", "(비가동)")
         and not is_test_production_entry(cp.get("생산 제품명", ""), cp.get("소비기한", ""))
     ]
-    ho_counts: Dict[str, int] = {}
-    for cp in valid_crows:
-        pc = re.sub(r"[^A-F]", "", str(cp.get("포장호기") or "").upper())[:1]
-        ho_counts[pc] = ho_counts.get(pc, 0) + 1
 
-    example_items = []
-    seen_ho_prod = set()
+    grouped_ex: Dict[Tuple[int, str], dict] = {}
+    used_st_nos = set()
     for idx_r, cp in enumerate(valid_crows):
         p_nm = str(cp.get("생산 제품명") or "").strip()
         ho_raw = str(cp.get("포장호기") or "-").strip()
         p_code = re.sub(r"[^A-F]", "", ho_raw.upper())[:1]
-        dedup_k = (p_code, p_nm)
-        if dedup_k in seen_ho_prod:
-            continue
-        seen_ho_prod.add(dedup_k)
 
         ster_sum = str(cp.get("멸균기·CCP 요약") or "")
         m_st = re.search(r"(\d)호기", ster_sum)
-        st_no = int(m_st.group(1)) if m_st else DEFAULT_STERIL_BY_PACKER.get(p_code, 2)
+        if m_st:
+            st_no = int(m_st.group(1))
+        else:
+            st_no = DEFAULT_STERIL_BY_PACKER.get(p_code, 2)
+            # 멸균기 미기입 시 비어 있는 호기에 자연스럽게 분산 배치
+            if st_no in used_st_nos and p_code != "F":
+                for cand_s in (1, 2, 3, 5):
+                    if cand_s not in used_st_nos:
+                        st_no = cand_s
+                        break
+        used_st_nos.add(st_no)
 
         chk_raw = str(cp.get("확인시간") or "")
         m_hm = re.search(r"(?<!\d)(\d{1,2}:\d{2})(?!\d)", chk_raw)
         has_real_chk = m_hm is not None
         fin_hm = m_hm.group(1) if has_real_chk else f"0{8 + (idx_r % 2)}:{30 if idx_r % 2 == 0 else 50}"
 
-        eq = get_equipment_rates(st_no, p_code, p_nm)
-        b_vol = eq["default_batch_vol_l"]
-        base_tot = DEFAULT_EXAMPLE_BATCHES.get(p_code, 5)
-        tot_batches = max(2, base_tot // max(1, ho_counts.get(p_code, 1)))
+        ckey = (st_no, _core_liquid_key(p_nm))
+        g = grouped_ex.setdefault(ckey, {
+            "steril_no": st_no,
+            "packers": [],
+            "prod_name": p_nm,
+            "fin_hms": [],
+            "has_real_chk": False,
+            "variant_tags": [],
+        })
+        if p_code and p_code not in g["packers"]:
+            g["packers"].append(p_code)
+        if has_real_chk:
+            g["has_real_chk"] = True
+        if fin_hm:
+            g["fin_hms"].append(fin_hm)
+        v_tag = _extract_pack_variant_tag(p_nm, p_code, fin_hm if has_real_chk else "")
+        if v_tag not in g["variant_tags"]:
+            g["variant_tags"].append(v_tag)
 
-        fin_dt = _parse_hhmm_to_dt(ref_d, fin_hm) or datetime(ref_d.year, ref_d.month, ref_d.day, 9, 0)
+    st_run_counts: Dict[int, int] = {}
+    for (sno, _) in grouped_ex.keys():
+        st_run_counts[sno] = st_run_counts.get(sno, 0) + 1
+
+    example_items = []
+    for (st_no, _), g in grouped_ex.items():
+        first_hm = sorted(g["fin_hms"])[0] if g["fin_hms"] else "09:00"
+        p_joined = "".join(g["packers"])
+        lead_p = g["packers"][0] if g["packers"] else "A"
+        eq = get_equipment_rates(st_no, p_joined, g["prod_name"])
+        b_vol = eq["default_batch_vol_l"]
+        base_tot = DEFAULT_EXAMPLE_BATCHES.get(lead_p, 5)
+        tot_batches = max(3, base_tot // max(1, st_run_counts.get(st_no, 1)))
+
+        fin_dt = _parse_hhmm_to_dt(ref_d, first_hm) or datetime(ref_d.year, ref_d.month, ref_d.day, 9, 0)
         mix1_dt = fin_dt - timedelta(minutes=35)
         step_min = max(42.0, (b_vol / max(eq["eff_drain_lph"], 1000.0)) * 60.0 * 0.90)
 
@@ -11800,21 +11960,24 @@ def build_general_inspection_board(rt_today: Optional[dict], rt_yest: Optional[d
             if b_dt <= sim_now or b_i == 0:
                 sim_mix_times.append(b_dt.strftime("%H:%M"))
 
+        v_tags = g["variant_tags"] if len(g["variant_tags"]) >= 2 else []
         example_items.append(evaluate_room_multi_angle(
             prod_d=ref_d,
             now_dt=sim_now,
             steril_no=st_no,
-            packer_code=p_code,
-            prod_name=p_nm,
+            packer_code=p_joined,
+            prod_name=g["prod_name"],
             total_batches=tot_batches,
             batch_vol_l=b_vol,
             planned_qty=0,
             mix_times_str=sim_mix_times,
-            fin_first_time_str=fin_hm,
+            fin_first_time_str=first_hm,
+            variant_tags=v_tags,
             is_example=True,
-            assumed_start=(not has_real_chk),
+            assumed_start=(not g["has_real_chk"]),
         ))
 
+    slots_5 = _pack_into_five_sterilizer_slots(example_items)
     return {
         "has_live_qms": False,
         "is_example": True,
@@ -11822,6 +11985,7 @@ def build_general_inspection_board(rt_today: Optional[dict], rt_yest: Optional[d
         "ref_tab": src_view.get("tab_title", ref_dt_str),
         "danger_cnt": sum(1 for x in example_items if x["hold_status"] == "danger"),
         "warn_cnt": sum(1 for x in example_items if x["hold_status"] == "warn"),
+        "slots": slots_5,
         "items": example_items,
     }
 
@@ -11831,6 +11995,8 @@ def build_handover_board_payload(raw_items: List[dict]) -> dict:
     for it in (raw_items or []):
         if not isinstance(it, dict) or not str(it.get("text") or "").strip():
             continue
+        if it.get("checked") and not it.get("pinned"):
+            continue
         clean_list.append({
             "uid": str(it.get("uid") or uuid.uuid4().hex[:8]),
             "text": str(it.get("text") or "").strip(),
@@ -11838,27 +12004,24 @@ def build_handover_board_payload(raw_items: List[dict]) -> dict:
             "emp_no": str(it.get("emp_no") or "").strip(),
             "created_at": str(it.get("created_at") or "").strip(),
             "created_iso": str(it.get("created_iso") or "").strip(),
-            "checked": bool(it.get("checked", False)),
-            "checked_by": str(it.get("checked_by") or "").strip(),
-            "checked_at": str(it.get("checked_at") or "").strip(),
             "pinned": bool(it.get("pinned", False)),
         })
 
     clean_list.sort(key=lambda x: (
         0 if x["pinned"] else 1,
-        1 if x["checked"] else 0,
         -(int(re.sub(r"\D+", "", x.get("created_iso", ""))[:14] or "0"))
     ))
     return {
         "items": clean_list,
+        "active_cnt": len(clean_list),
         "total_cnt": len(clean_list),
-        "unchecked_cnt": sum(1 for x in clean_list if not x["checked"]),
+        "unchecked_cnt": len(clean_list),
         "pinned_cnt": sum(1 for x in clean_list if x["pinned"]),
     }
 
 
 class HandoverActionPayload(BaseModel):
-    action: str  # add | toggle_check | toggle_pin | edit | delete | clear_checked
+    action: str  # add | dismiss | toggle_check | toggle_pin | edit | delete
     uid: Optional[str] = ""
     text: Optional[str] = ""
     pinned: Optional[bool] = False
@@ -11891,18 +12054,11 @@ def api_manage_handover_board(body: HandoverActionPayload, cur_user: dict = Depe
                 "emp_no": cur_user.get("사번", ""),
                 "created_at": now_short,
                 "created_iso": now_iso,
-                "checked": False,
-                "checked_by": "",
-                "checked_at": "",
                 "pinned": bool(body.pinned),
             })
-        elif act == "toggle_check":
-            for it in cur_list:
-                if it.get("uid") == body.uid:
-                    nxt = not bool(it.get("checked"))
-                    it["checked"] = nxt
-                    it["checked_by"] = user_label if nxt else ""
-                    it["checked_at"] = now_short if nxt else ""
+        elif act in ("dismiss", "toggle_check", "delete"):
+            # 확인 체크 즉시 목록에서 제거!
+            cur_list = [x for x in cur_list if x.get("uid") != body.uid]
         elif act == "toggle_pin":
             for it in cur_list:
                 if it.get("uid") == body.uid:
@@ -11914,12 +12070,8 @@ def api_manage_handover_board(body: HandoverActionPayload, cur_user: dict = Depe
             for it in cur_list:
                 if it.get("uid") == body.uid:
                     it["text"] = txt
-        elif act == "delete":
-            cur_list = [x for x in cur_list if x.get("uid") != body.uid]
-        elif act == "clear_checked":
-            cur_list = [x for x in cur_list if not x.get("checked") or x.get("pinned")]
 
-        cur_list = cur_list[:80]
+        cur_list = cur_list[:60]
         _HANDOVER_NOTES_CACHE["items"] = cur_list
         b_map["handover_notes_json"] = json.dumps(cur_list, ensure_ascii=False)
 
@@ -11928,7 +12080,7 @@ def api_manage_handover_board(body: HandoverActionPayload, cur_user: dict = Depe
     if _BUNDLE_CACHE["data"] is not None:
         _BUNDLE_CACHE["data"]["handover_board"] = new_board
 
-    return {"ok": True, "message": "인수인계 보드에 반영되었습니다.", "handover_board": new_board}
+    return {"ok": True, "message": "인수인계 사항이 반영되었습니다.", "handover_board": new_board}
 
 
 class QmsRelayRoomsPayload(BaseModel):
@@ -11938,7 +12090,6 @@ class QmsRelayRoomsPayload(BaseModel):
 
 @app.post("/api/qms-relay/inspection")
 def api_receive_qms_relay_inspection(body: QmsRelayRoomsPayload, _u: dict = Depends(require_auth_user)):
-    """사내 PC 중계기가 QMS 일반검사 방(rooms) 실데이터를 전송하면 즉시 예시 모드를 해제하고 실시간 모드로 전환"""
     _QMS_LIVE_ROOMS_CACHE["date"] = (body.prod_date or "").strip()
     _QMS_LIVE_ROOMS_CACHE["updated_at"] = now_kst().strftime("%H:%M")
     _QMS_LIVE_ROOMS_CACHE["rooms"] = body.rooms or []

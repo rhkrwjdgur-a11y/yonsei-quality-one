@@ -9476,6 +9476,156 @@ async function syncSelfQualityFromSheet() {
   }
 }
 // ======================== [public/index.html - PART 4 / 4 끝] ========================
+// ==============================================================================
+// [공통 UX 보호 패치]
+// 1) 모든 저장·등록·제외·확정·삭제 버튼 클릭 즉시 'OO 중...' + 스피너 자동 표시 및 중복클릭 잠금
+// 2) 입력창 텍스트 드래그·마우스 이탈 시 모달/인라인 입력창이 풀리거나 닫히는 현상 원천 차단
+// ==============================================================================
+(function installGlobalUxGuards() {
+  let _lastClickedBtn = null;
+  let _overlayMouseDownOnBg = false;
+
+  // 1. 마지막으로 클릭한 버튼을 추적하여 apiPost 실행 즉시 해당 버튼에 진행상태 표시
+  document.addEventListener('click', function(ev) {
+    const btn = ev.target && ev.target.closest ? ev.target.closest('button, .btn') : null;
+    if (btn) {
+      _lastClickedBtn = btn;
+    }
+  }, true);
+
+  function inferBusyLabel(rawText, urlStr, payloadObj) {
+    const t = String(rawText || '').replace(/\s+/g, ' ').trim();
+    const act = (payloadObj && payloadObj.action) ? String(payloadObj.action) : '';
+    if (act === 'exclude' || t.indexOf('제외') !== -1) return '제외 처리 중...';
+    if (act === 'delete' || t.indexOf('삭제') !== -1) return '삭제 중...';
+    if (act === 'restore' || act === 'revert_stage' || t.indexOf('복구') !== -1 || t.indexOf('되돌') !== -1) return '복구 중...';
+    if (act === 'confirm_inbound' || t.indexOf('입고 확정') !== -1 || t.indexOf('입고확정') !== -1) return '입고 확정 중...';
+    if (act === 'confirm_pack' || t.indexOf('포장 확정') !== -1 || t.indexOf('전환 확정') !== -1) return '포장 확정 중...';
+    if (act === 'register' || t.indexOf('신규') !== -1 || t.indexOf('리뉴얼') !== -1 || t.indexOf('등록') !== -1) return '등록 중...';
+    if (String(urlStr || '').indexOf('sync-sheet') !== -1 || t.indexOf('반영') !== -1 || t.indexOf('갱신') !== -1) return '시트 반영 중...';
+    if (String(urlStr || '').indexOf('ai-') !== -1 || t.indexOf('AI') !== -1) return 'AI 분석 중...';
+    return '저장 중...';
+  }
+
+  // 기존 apiPost 래핑 -> 호출 즉시 버튼 스피너 + 상단 진행 토스트 표시, 완료 후 자동 복원
+  if (typeof window.apiPost === 'function' && !window.apiPost._uxWrapped) {
+    const _origApiPost = window.apiPost;
+    const wrappedApiPost = async function(url, payload) {
+      const targetBtn = (_lastClickedBtn && document.body.contains(_lastClickedBtn) && !_lastClickedBtn.classList.contains('is-btn-busy'))
+        ? _lastClickedBtn
+        : null;
+      _lastClickedBtn = null;
+
+      let origHtml = '';
+      let origDisabled = false;
+      let origMinWidth = '';
+      const busyLabel = inferBusyLabel(targetBtn ? targetBtn.textContent : '', url, payload);
+
+      if (targetBtn) {
+        origHtml = targetBtn.innerHTML;
+        origDisabled = Boolean(targetBtn.disabled);
+        origMinWidth = targetBtn.style.minWidth || '';
+        const rectW = targetBtn.getBoundingClientRect().width;
+        if (rectW > 0) targetBtn.style.minWidth = Math.ceil(rectW) + 'px';
+        targetBtn.disabled = true;
+        targetBtn.classList.add('is-btn-busy');
+        targetBtn.innerHTML = '<span class="btn-inline-spinner"></span>' + busyLabel;
+      }
+
+      if (typeof showToast === 'function') {
+        showToast('⏳ ' + busyLabel + ' (구글 시트에 기록하고 있습니다)', 12000);
+      }
+
+      try {
+        return await _origApiPost.apply(this, arguments);
+      } finally {
+        if (targetBtn && document.body.contains(targetBtn)) {
+          targetBtn.classList.remove('is-btn-busy');
+          targetBtn.disabled = origDisabled;
+          targetBtn.style.minWidth = origMinWidth;
+          targetBtn.innerHTML = origHtml;
+        }
+      }
+    };
+    wrappedApiPost._uxWrapped = true;
+    window.apiPost = wrappedApiPost;
+  }
+
+  // 2. 모달창 입력 중 마우스가 칸/창 밖으로 넘어갔을 때 풀리거나 닫히는 현상 완벽 차단
+  function bindSafeOverlayClose() {
+    const overlay = document.getElementById('modalOverlay');
+    if (!overlay || overlay._safeBound) return;
+    overlay._safeBound = true;
+
+    // 인라인 onclick="if(event.target===this) closeModal()" 무력화 후 mousedown+mouseup 일치 시에만 닫기 허용
+    overlay.removeAttribute('onclick');
+    overlay.onclick = null;
+
+    overlay.addEventListener('mousedown', function(e) {
+      _overlayMouseDownOnBg = (e.target === overlay);
+    });
+
+    overlay.addEventListener('mouseup', function(e) {
+      if (_overlayMouseDownOnBg && e.target === overlay) {
+        // 모달 내부 입력칸에 포커스(작성 중)가 있으면 실수로 바깥을 눌러도 닫히지 않게 한 번 더 보호!
+        const activeEl = document.activeElement;
+        const isTypingInside = activeEl && overlay.contains(activeEl) &&
+          (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+        if (!isTypingInside && typeof closeModal === 'function') {
+          closeModal();
+        }
+      }
+      _overlayMouseDownOnBg = false;
+    });
+  }
+
+  // 3. 인라인 입력창(리뉴얼 제품명 등)에 타이핑 중일 때 마우스 호버/이탈(mouseleave·blur)이나 백그라운드 재렌더링으로 풀리는 현상 차단
+  document.addEventListener('mouseleave', function(e) {
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+      e.stopPropagation();
+    }
+  }, true);
+
+  if (typeof window.renderLabelView === 'function' && !window.renderLabelView._focusGuarded) {
+    const _origRenderLabelView = window.renderLabelView;
+    const guardedRenderLabelView = function() {
+      const activeEl = document.activeElement;
+      const lblView = document.getElementById('view-label');
+      // 사용자가 표시사항·부자재 전환 탭의 입력창에 글자를 치고 있는 도중이면 자동 갱신으로 화면을 덮어쓰지 않도록 보호
+      if (activeEl && lblView && lblView.contains(activeEl) &&
+          (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') &&
+          !window._forceAllowLabelRender) {
+        return;
+      }
+      return _origRenderLabelView.apply(this, arguments);
+    };
+    guardedRenderLabelView._focusGuarded = true;
+    window.renderLabelView = guardedRenderLabelView;
+  }
+
+  // apiPost 완료 직후의 정상 재렌더링은 항상 통과되도록 허용 플래그 연동
+  const _curPost = window.apiPost;
+  if (typeof _curPost === 'function' && !_curPost._renderFlagWrapped) {
+    const postWithFlag = async function() {
+      window._forceAllowLabelRender = true;
+      try {
+        return await _curPost.apply(this, arguments);
+      } finally {
+        setTimeout(function() { window._forceAllowLabelRender = false; }, 300);
+      }
+    };
+    postWithFlag._uxWrapped = true;
+    postWithFlag._renderFlagWrapped = true;
+    window.apiPost = postWithFlag;
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindSafeOverlayClose);
+  } else {
+    bindSafeOverlayClose();
+  }
+})();
 </script>
 </body>
 </html>

@@ -8820,6 +8820,52 @@ class AuthManagePayload(BaseModel):
     role: Optional[str] = "실무자"
 
 
+def _should_stamp_user_access(last_ts_str: str, now_dt: datetime, min_gap_minutes: int = 10) -> bool:
+    s = str(last_ts_str or "").strip()
+    if not s:
+        return True
+    try:
+        prev_dt = datetime.strptime(s[:16], "%Y-%m-%d %H:%M")
+        return (now_dt - prev_dt) >= timedelta(minutes=min_gap_minutes)
+    except Exception:
+        return True
+
+
+def stamp_user_recent_access_sync(emp_no: str, min_gap_minutes: int = 10) -> str:
+    """
+    사번 기준으로 [로그인] 시트 H열(최근접속일시)을 유실 없이 동기 기록한다.
+    - min_gap_minutes=0 : 직접 로그인 시 즉시 기록
+    - min_gap_minutes=10 : [로그인 상태 유지] 재접속·자동갱신 시 10분 이상 지났을 때만 1칸 업데이트 (속도 저하 및 429 방지)
+    """
+    target_emp = re.sub(r"\s+", "", str(emp_no or ""))
+    if not target_emp:
+        return ""
+
+    now_dt = now_kst()
+    now_hm = now_dt.strftime("%Y-%m-%d %H:%M")
+
+    users, _ = load_auth_users_live(force=(min_gap_minutes == 0))
+    idx_u, user = next(((i, u) for i, u in enumerate(users) if u["사번"] == target_emp), (-1, None))
+    if idx_u < 0 or user is None:
+        return ""
+
+    if min_gap_minutes > 0 and not _should_stamp_user_access(user.get("최근접속일시", ""), now_dt, min_gap_minutes):
+        return user.get("최근접속일시", "")
+
+    user["최근접속일시"] = now_hm
+    _AUTH_CACHE["ts"] = time.time()
+
+    try:
+        ws_l, _ = _get_or_create_cost_login_ws()
+        if ws_l is not None:
+            api_call_with_retry(ws_l.update_acell, f"H{idx_u + 2}", now_hm)
+            _AUTH_CACHE["sheet_ok"] = True
+    except Exception:
+        pass
+
+    return now_hm
+
+
 @app.post("/api/auth/login")
 def api_auth_login(body: AuthLoginPayload):
     in_emp = re.sub(r"\s+", "", str(body.emp_no or ""))
@@ -8842,21 +8888,7 @@ def api_auth_login(body: AuthLoginPayload):
     if user.get("상태") != "정상":
         raise HTTPException(status_code=403, detail="접속이 제한된 계정입니다. 관리자에게 문의해 주세요.")
 
-    now_hm = now_kst().strftime("%Y-%m-%d %H:%M")
-    user["최근접속일시"] = now_hm
-    _AUTH_CACHE["ts"] = time.time()
-
-    # 전체 시트 초기화(clear) 대신 해당 행의 H열(최근접속일시) 1칸만 가볍게 업데이트하여 로그인 속도 극대화
-    def _bg_stamp_login(row_no: int, ts_val: str):
-        try:
-            ws_l, _ = _get_or_create_cost_login_ws()
-            if ws_l is not None:
-                ws_l.update_acell(f"H{row_no}", ts_val)
-        except Exception:
-            pass
-
-    if idx_u >= 0:
-        threading.Thread(target=_bg_stamp_login, args=(idx_u + 2, now_hm), daemon=True).start()
+    stamp_user_recent_access_sync(in_emp, min_gap_minutes=0)
 
     tok = create_signed_token(in_emp, days=(14 if body.remember else 1))
     pending_cnt = sum(1 for x in users if x.get("상태") == "승인대기") if user["권한"] == "관리자" else 0
@@ -8925,9 +8957,11 @@ def api_auth_request_access(body: AuthRequestPayload):
 
 @app.get("/api/auth/me")
 def api_auth_me(cur_user: dict = Depends(require_auth_user)):
+    stamp_user_recent_access_sync(cur_user.get("사번", ""), min_gap_minutes=10)
     users, sheet_ok = load_auth_users_live(force=False)
-    pending_cnt = sum(1 for x in users if x.get("상태") == "승인대기") if cur_user["권한"] == "관리자" else 0
-    return {"ok": True, "user": _public_user_info(cur_user), "pending_cnt": pending_cnt, "sheet_ok": sheet_ok}
+    refreshed_u = next((u for u in users if u["사번"] == cur_user.get("사번")), cur_user)
+    pending_cnt = sum(1 for x in users if x.get("상태") == "승인대기") if refreshed_u.get("권한") == "관리자" else 0
+    return {"ok": True, "user": _public_user_info(refreshed_u), "pending_cnt": pending_cnt, "sheet_ok": sheet_ok}
 
 
 @app.get("/api/auth/users")
@@ -9054,6 +9088,7 @@ def _sanitize_json_payload(obj: Any) -> Any:
 @app.get("/api/bundle")
 def api_get_bundle(force: int = 0, _u: dict = Depends(require_auth_user)):
     try:
+        stamp_user_recent_access_sync(_u.get("사번", ""), min_gap_minutes=10)
         raw_bundle = build_full_dashboard_bundle(force_refresh=(force == 1))
         return JSONResponse(content=_sanitize_json_payload(raw_bundle))
     except Exception as e:

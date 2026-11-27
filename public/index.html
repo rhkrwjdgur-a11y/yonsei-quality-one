@@ -900,241 +900,169 @@
       border: 1px solid #FCD34D;
     }
 
-    /* Q4: 상단 [클레임 추이 그래프 ↔ 실시간 일반검사] + 중단 [인수인계 보드] + 하단 [냉장/상온 클레임 역추적] */
-    .q4-tab-switch {
-      display: inline-flex;
-      align-items: center;
-      background: #F1F5F9;
-      border: 1px solid #CBD5E1;
-      border-radius: 7px;
-      padding: 2px;
-      gap: 2px;
-    }
-    .q4-sw-btn {
-      border: none;
-      background: transparent;
-      color: #475569;
-      font-size: var(--fs-xs);
-      font-weight: 800;
-      padding: 4px 9px;
-      border-radius: 5px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      white-space: nowrap;
-    }
-    .q4-sw-btn.active {
-      background: var(--yonsei-blue);
-      color: #FFFFFF;
-      box-shadow: 0 1px 3px rgba(0, 51, 120, 0.2);
-    }
+    /* Q4: 1~5호기 5슬롯 무스크롤 그리드 + 혼합 블록 게이지 + 상단 빨간 전달사항 알림 버튼 */
     .q4-ex-pill {
       display: inline-flex;
       align-items: center;
-      padding: 1px 5px;
-      border-radius: 4px;
-      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 11px;
       font-weight: 900;
       background: #FEF3C7;
       color: #92400E;
       border: 1px solid #FCD34D;
       line-height: 1.2;
     }
-    .q4-sw-btn.active .q4-ex-pill {
-      background: #FDE68A;
-      color: #78350F;
-      border-color: #F59E0B;
+    @keyframes q4PulseRed {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+      50% { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0); }
     }
-
-    .q4-stack-wrap {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      overflow: hidden;
-    }
-    .q4-top-stage {
-      flex: 1.15 1 0;
-      min-height: 0;
-      border: 1px solid #E2E8F0;
-      border-radius: 9px;
-      background: #F8FAFC;
-      padding: 6px 9px;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .q4-claim-meta {
-      display: flex;
+    .btn-ho-alert-red {
+      display: none;
       align-items: center;
-      justify-content: space-between;
-      gap: 6px;
-      font-size: var(--fs-xs);
-      color: #334155;
-      margin-bottom: 3px;
-      flex-shrink: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .q4-chart-box {
-      flex: 1;
-      min-height: 0;
-      position: relative;
-    }
-
-    .q4-gi-subbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 6px;
-      font-size: 10.5px;
-      font-weight: 700;
-      color: #475569;
-      padding-bottom: 4px;
-      margin-bottom: 4px;
-      border-bottom: 1px dashed #CBD5E1;
-      flex-shrink: 0;
-      white-space: nowrap;
-      overflow: hidden;
-    }
-    .q4-gi-scroll {
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
       gap: 4px;
-      padding-right: 2px;
+      padding: 4px 10px;
+      border-radius: 99px;
+      border: 1.5px solid #DC2626;
+      background: #FEF2F2;
+      color: #B91C1C;
+      font-size: var(--fs-xs);
+      font-weight: 900;
+      cursor: pointer;
+      animation: q4PulseRed 1.8s infinite;
+      white-space: nowrap;
     }
-    .q4-gi-scroll::-webkit-scrollbar { width: 4px; }
-    .q4-gi-scroll::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+    .btn-ho-alert-red:hover {
+      background: #DC2626;
+      color: #FFFFFF;
+    }
 
-    .q4-gi-row {
+    .q4-five-slots-wrap {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: repeat(5, minmax(0, 1fr));
+      gap: 5px;
+      overflow: hidden;
+      margin-bottom: 5px;
+    }
+    .q4-slot-card {
       background: #FFFFFF;
       border: 1px solid #CBD5E1;
-      border-left: 3.5px solid #0284C7;
-      border-radius: 7px;
-      padding: 5px 8px;
-      font-size: var(--fs-xs);
-      line-height: 1.35;
+      border-left: 4px solid #0284C7;
+      border-radius: 8px;
+      padding: 4px 10px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 3px;
+      min-height: 0;
+      overflow: hidden;
     }
-    .q4-gi-row.is-done { background: #F0FDF4; border-color: #86EFAC; border-left-color: #059669; }
-    .q4-gi-row.is-warn { background: #FFFBEB; border-color: #FCD34D; border-left-color: #D97706; }
-    .q4-gi-row.is-danger { background: #FEF2F2; border-color: #FCA5A5; border-left-color: #DC2626; }
-    .q4-gi-top {
+    .q4-slot-card.is-done { background: #F0FDF4; border-color: #86EFAC; border-left-color: #059669; }
+    .q4-slot-card.is-warn { background: #FFFBEB; border-color: #FCD34D; border-left-color: #D97706; }
+    .q4-slot-card.is-danger { background: #FEF2F2; border-color: #FCA5A5; border-left-color: #DC2626; }
+    .q4-slot-card.is-idle {
+      background: #F8FAFC;
+      border: 1px dashed #CBD5E1;
+      border-left: 4px solid #94A3B8;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .q4-slot-top {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 6px;
+      min-width: 0;
     }
-    .q4-gi-ho {
+    .q4-slot-ho {
+      font-size: var(--fs-sm);
       font-weight: 900;
       color: var(--yonsei-blue);
       white-space: nowrap;
       flex-shrink: 0;
     }
-    .q4-gi-prod {
-      color: #0F172A;
+    .q4-slot-prod {
+      font-size: var(--fs-sm);
       font-weight: 800;
+      color: #0F172A;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .q4-gi-eta {
-      font-size: 11px;
-      font-weight: 700;
-      color: #0F172A;
-      background: rgba(15, 23, 42, 0.05);
+    .q4-var-chip {
+      font-size: 10px;
+      font-weight: 800;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: #EEF2FF;
+      color: #3730A3;
+      border: 1px solid #C7D2FE;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .q4-next-btn {
+      font-size: 10.5px;
+      font-weight: 800;
       padding: 1px 6px;
+      border-radius: 4px;
+      background: #FEF3C7;
+      color: #92400E;
+      border: 1px solid #F59E0B;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .q4-next-btn:hover { background: #FDE68A; }
+    .q4-slot-eta {
+      font-size: 11px;
+      font-weight: 800;
+      color: #0F172A;
+      background: rgba(15, 23, 42, 0.06);
+      padding: 1.5px 7px;
       border-radius: 4px;
       white-space: nowrap;
       flex-shrink: 0;
     }
-    .q4-gi-bot {
-      margin-top: 2px;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      flex-wrap: wrap;
-      color: #334155;
-    }
 
-    .q4-handover-box {
-      flex: 0.85 1 0;
-      min-height: 76px;
-      border: 1px solid #CBD5E1;
-      border-radius: 9px;
-      background: #FFFFFF;
-      padding: 5px 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      overflow: hidden;
-    }
-    .q4-ho-hdr {
+    .q4-slot-bot {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 6px;
-      flex-shrink: 0;
+      gap: 7px;
+      min-width: 0;
+      font-size: var(--fs-xs);
     }
-    .q4-ho-input-row {
-      display: flex;
+    .q4-mix-gauge-wrap {
+      display: inline-flex;
       align-items: center;
       gap: 5px;
       flex-shrink: 0;
     }
-    .q4-ho-list {
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      padding-right: 2px;
+    .q4-mix-blocks {
+      display: inline-grid;
+      grid-auto-flow: column;
+      gap: 2px;
+      width: 78px;
+      height: 9px;
+      background: #E2E8F0;
+      padding: 1.5px;
+      border-radius: 4px;
     }
-    .q4-ho-list::-webkit-scrollbar { width: 4px; }
-    .q4-ho-list::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
-    .q4-ho-item {
-      display: flex;
-      align-items: flex-start;
-      gap: 6px;
-      padding: 3px 6px;
-      border-radius: 5px;
-      background: #F8FAFC;
-      border: 1px solid #E2E8F0;
-      font-size: var(--fs-xs);
-      line-height: 1.35;
+    .q4-mix-seg {
+      border-radius: 2px;
+      background: #CBD5E1;
+      height: 100%;
     }
-    .q4-ho-item.is-pinned { background: #FFFBEB; border-color: #FDE68A; }
-    .q4-ho-item.is-checked { opacity: 0.62; background: #F1F5F9; }
-    .q4-ho-item.is-checked .q4-ho-txt { text-decoration: line-through; color: #64748B; }
-    .q4-ho-txt {
-      flex: 1;
-      min-width: 0;
-      cursor: pointer;
-      color: #0F172A;
-      font-weight: 700;
-      word-break: keep-all;
-    }
-    .q4-ho-meta { color: var(--yonsei-blue); font-weight: 800; }
-    .q4-ho-del {
-      border: none;
-      background: none;
-      color: #94A3B8;
-      font-size: 11px;
-      cursor: pointer;
-      padding: 0 2px;
-      flex-shrink: 0;
-    }
-    .q4-ho-del:hover { color: #DC2626; }
+    .q4-mix-seg.filled.ok { background: #0284C7; }
+    .q4-mix-seg.filled.done { background: #10B981; }
+    .q4-mix-seg.filled.warn { background: #F59E0B; }
+    .q4-mix-seg.filled.danger { background: #EF4444; }
 
     .q4-trace-dock {
       margin-top: auto;
-      padding-top: 2px;
       flex-shrink: 0;
     }
     .q4-lot-btns {
@@ -1143,7 +1071,7 @@
       gap: 8px;
     }
     .btn-lot-hero {
-      padding: 8px 10px;
+      padding: 7.5px 10px;
       border-radius: 8px;
       border: none;
       font-size: 12.5px;
@@ -2519,51 +2447,20 @@
           </div>
         </div>
 
-        <!-- Q4: 상단 [클레임 그래프 ↔ 실시간 일반검사] + 중단 [인수인계 보드] + 하단 [냉장/상온 클레임 역추적] -->
+        <!-- Q4: 실시간 일반검사 (1~5호기 5슬롯 · 혼합게이지) + 상단 전달사항 알림 버튼 + 하단 역추적 -->
         <div class="quad-card">
           <div class="quad-hdr">
-            <div class="quad-title">● 실시간 일반검사</div>
+            <div class="quad-title">
+              <span>● 실시간 일반검사</span>
+              <span class="q4-ex-pill" id="q4TitleModeBadge">예시</span>
+            </div>
             <div class="quad-actions">
-              <div class="q4-tab-switch">
-                <button type="button" class="q4-sw-btn active" id="q4TopModeClaimBtn" onclick="switchQ4TopMode('CLAIM')">📈 클레임 추이 그래프</button>
-                <button type="button" class="q4-sw-btn" id="q4TopModeGiBtn" onclick="switchQ4TopMode('GI')">🧪 실시간 일반검사 <span class="q4-ex-pill">예시</span></button>
-              </div>
+              <button type="button" class="btn-ho-alert-red" id="btnQ4HandoverAlert" onclick="openHandoverFullModal()">🚨 전달사항 0건</button>
+              <button type="button" class="btn btn-sm" style="font-weight:800; color:#003378; border-color:#93C5FD; background:#EFF6FF;" onclick="openHandoverFullModal()">+ 인수인계 등록</button>
             </div>
           </div>
 
-          <div class="q4-stack-wrap">
-            <!-- 상단 전환 스테이지: 클레임 그래프(기본) / 실시간 일반검사(예시 또는 QMS 실시간) -->
-            <div class="q4-top-stage" id="q4ClaimChartPane">
-              <div class="q4-claim-meta">
-                <span id="q4ClaimMetaTxt">클레임 추이 집계 중...</span>
-                <button type="button" class="link-chip" style="font-size:11px;" onclick="switchView('claim')">상세 분석 ›</button>
-              </div>
-              <div class="q4-chart-box"><canvas id="chartHomeQ4Claim"></canvas></div>
-            </div>
-
-            <div class="q4-top-stage" id="q4GiListPane" style="display:none;"></div>
-
-            <!-- 중단: 교대 · 부서간 인수인계 전달사항 보드 -->
-            <div class="q4-handover-box">
-              <div class="q4-ho-hdr">
-                <div style="display:flex; align-items:center; gap:6px;">
-                  <strong style="font-size:var(--fs-sm); color:#0F172A;">📋 교대 · 인수인계 전달사항</strong>
-                  <span class="badge badge-ok" id="q4HandoverBadge" style="padding:1.5px 7px; font-size:10.5px;">미확인 0</span>
-                </div>
-                <button type="button" class="link-chip" style="font-size:11px;" onclick="openHandoverFullModal()">전체·팝업 관리 ›</button>
-              </div>
-              <div class="q4-ho-input-row">
-                <label style="display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:800; color:#92400E; cursor:pointer; white-space:nowrap;" title="체크 시 상단에 고정됩니다">
-                  <input type="checkbox" id="chkQ4HandoverPin" /> 📌고정
-                </label>
-                <input type="text" id="inpQ4Handover" class="form-ctrl" style="flex:1; height:27px; padding:2px 8px; font-size:12px;"
-                  placeholder="인수인계·전달 멘트 입력 후 Enter (작성자·시간 자동 기록)"
-                  onkeydown="if(event.key==='Enter') submitQuickHandover()" />
-                <button type="button" class="btn btn-primary btn-sm" style="height:27px; padding:0 9px;" onclick="submitQuickHandover()">등록</button>
-              </div>
-              <div class="q4-ho-list" id="q4HandoverList"></div>
-            </div>
-          </div>
+          <div class="q4-five-slots-wrap" id="q4FiveSlotsBox"></div>
 
           <!-- 4x4 분면 맨 하단 고정: 냉장 / 상온 클레임 역추적 -->
           <div class="q4-trace-dock">
@@ -9295,220 +9192,195 @@ window.addEventListener('DOMContentLoaded', async function() {
   });
 });
 // ==============================================================================
-// [Q4 확장 렌더러] 클레임 추이 그래프(기본) ↔ 실시간 일반검사(예시/실시간) + 인수인계 보드 + 자가품질 반영
+// [Q4 확장 렌더러] 1~5호기 5슬롯 일반검사(혼합 블록게이지 · 동일원액 병합 · 차기전환) + 클릭 전용 인수인계 팝업
 // ==============================================================================
-function switchQ4TopMode(mode) {
-  Q4_TOP_MODE = mode;
-  renderQ4Area();
+const Q4_SLOT_VIEW_IDX = {};
+
+function stepQ4SterilSlotRun(sterilNo, delta) {
+  const gi = (BUNDLE && BUNDLE.general_inspection) || {};
+  const slot = (gi.slots || []).find(function(s) { return Number(s.steril_no) === Number(sterilNo); });
+  if (!slot || !slot.runs || slot.runs.length <= 1) return;
+  const curIdx = (Q4_SLOT_VIEW_IDX[sterilNo] !== undefined) ? Q4_SLOT_VIEW_IDX[sterilNo] : (slot.active_idx || 0);
+  Q4_SLOT_VIEW_IDX[sterilNo] = (curIdx + delta + slot.runs.length) % slot.runs.length;
+  renderQ4GeneralInspectionList(gi);
 }
 
 function renderQ4Area() {
   if (!BUNDLE || !BUNDLE.ok) return;
-  const gi = BUNDLE.general_inspection || { has_live_qms: false, is_example: true, ref_date: '', ref_tab: '-', items: [] };
-  const hb = BUNDLE.handover_board || { items: [], total_cnt: 0, unchecked_cnt: 0, pinned_cnt: 0 };
+  const gi = BUNDLE.general_inspection || { has_live_qms: false, is_example: true, ref_date: '', ref_tab: '-', slots: [], items: [] };
+  const hb = BUNDLE.handover_board || { items: [], active_cnt: 0, pinned_cnt: 0 };
 
-  // QMS 실데이터 유입 전에는 클레임 그래프('CLAIM') 기본 표시, QMS 연동 시 실시간 일반검사('GI') 자동 기본 표시
-  const effMode = (Q4_TOP_MODE === 'CLAIM' || Q4_TOP_MODE === 'GI')
-    ? Q4_TOP_MODE
-    : (gi.has_live_qms ? 'GI' : 'CLAIM');
-
-  const btnCl = document.getElementById('q4TopModeClaimBtn');
-  const btnGi = document.getElementById('q4TopModeGiBtn');
-  const paneCl = document.getElementById('q4ClaimChartPane');
-  const paneGi = document.getElementById('q4GiListPane');
-
-  if (btnCl) btnCl.classList.toggle('active', effMode === 'CLAIM');
-  if (btnGi) {
-    btnGi.classList.toggle('active', effMode === 'GI');
-    if (gi.has_live_qms) {
-      const alertSum = (gi.danger_cnt || 0) + (gi.warn_cnt || 0);
-      btnGi.innerHTML = '🧪 실시간 일반검사' + (alertSum > 0 ? (' <span class="badge badge-err" style="font-size:10px; padding:1px 5px; margin-left:3px;">주의 ' + alertSum + '</span>') : '');
-    } else {
-      btnGi.innerHTML = '🧪 실시간 일반검사 <span class="q4-ex-pill">예시</span>';
-    }
+  renderQ4HeaderButtons(gi, hb);
+  renderQ4GeneralInspectionList(gi);
+  if (document.getElementById('handoverModalListBox')) {
+    renderHandoverModalList();
   }
-
-  if (paneCl) paneCl.style.display = (effMode === 'CLAIM') ? 'flex' : 'none';
-  if (paneGi) paneGi.style.display = (effMode === 'GI') ? 'flex' : 'none';
-
-  if (effMode === 'CLAIM') {
-    renderQ4MiniClaimChart();
-  } else {
-    renderQ4GeneralInspectionList(gi);
-  }
-
-  renderQ4HandoverBoard(hb);
 }
 
-function renderQ4MiniClaimChart() {
-  const cl = BUNDLE.claim || {};
-  const metaEl = document.getElementById('q4ClaimMetaTxt');
-  const actYr = cl.active_year || '2026년';
-  const curPack = (cl.year_totals && cl.year_totals[actYr]) || null;
-  const predPpm = (cl.cum_pred_ppm !== undefined && cl.cum_pred_ppm > 0) ? cl.cum_pred_ppm : cl.actual_ppm;
+function renderQ4HeaderButtons(gi, hb) {
+  const modeEl = document.getElementById('q4TitleModeBadge');
+  const btnAlert = document.getElementById('btnQ4HandoverAlert');
 
-  if (metaEl) {
-    metaEl.innerHTML = '<b>' + esc(actYr) + '</b> 누적 <b>' + esc(cl.actual_ppm || 0) + ' PPM</b> (' + Number(cl.total_cnt || 0).toLocaleString() + '건) · 연말예측 <b>' + esc(predPpm || 0) + ' PPM</b> (목표 ' + esc(cl.target_ppm || 1.12) + ' 이하)';
+  if (modeEl) {
+    if (gi.has_live_qms) {
+      const alertSum = (gi.danger_cnt || 0) + (gi.warn_cnt || 0);
+      modeEl.className = 'badge ' + (alertSum > 0 ? 'badge-err' : 'badge-ok');
+      modeEl.textContent = alertSum > 0 ? ('실시간 · 주의 ' + alertSum) : '실시간';
+      modeEl.title = gi.ref_tab || 'QMS 실시간 연동';
+    } else {
+      modeEl.className = 'q4-ex-pill';
+      modeEl.textContent = '예시 (' + (gi.ref_tab || '공정일보') + ')';
+      modeEl.title = '상온 공정일보 포장 확인시간 기반 시뮬레이션 (미숫가루·가공유 2h / 곡물 3h / 일반 3.5h)';
+    }
   }
 
-  destroyChart('homeQ4Claim');
-  const ctx = document.getElementById('chartHomeQ4Claim');
-  if (!ctx) return;
-
-  const months = ['3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월', '1월', '2월'];
-  const mRows = (curPack && curPack.monthly) ? curPack.monthly : (cl.trend_rows || []);
-  const ppmData = months.map(function(_, idx) {
-    const r = mRows[idx];
-    return (r && r._기록여부) ? Number(r['당해_PPM'] !== undefined ? r['당해_PPM'] : (r['2026년_PPM'] || 0)) : null;
-  });
-  const cntData = months.map(function(_, idx) {
-    const r = mRows[idx];
-    return (r && r._기록여부) ? Number(r['당해_건수'] !== undefined ? r['당해_건수'] : (r['2026년_건수'] || 0)) : null;
-  });
-  const fcData = (curPack && curPack.fc_line) ? curPack.fc_line : (cl.fc_line || []);
-
-  CHARTS['homeQ4Claim'] = new Chart(ctx, {
-    data: {
-      labels: months,
-      datasets: [
-        { type: 'bar', label: '클레임 건수(건)', data: cntData, backgroundColor: 'rgba(2, 132, 199, 0.25)', borderColor: 'rgba(2, 132, 199, 0.55)', borderWidth: 1, borderRadius: 3, yAxisID: 'yCnt', barPercentage: 0.52 },
-        { type: 'line', label: actYr + ' PPM', data: ppmData, borderColor: '#003378', backgroundColor: '#003378', yAxisID: 'y', tension: 0.24, borderWidth: 2.4, pointRadius: 3 },
-        { type: 'line', label: '계절예측 PPM', data: fcData, borderColor: '#7C3AED', borderDash: [5, 3], yAxisID: 'y', tension: 0.24, borderWidth: 2, pointRadius: 2, fill: false },
-        { type: 'line', label: '목표(1.12)', data: months.map(function() { return cl.target_ppm || 1.12; }), borderColor: '#EF4444', borderDash: [3, 3], yAxisID: 'y', pointRadius: 0, borderWidth: 1.4, fill: false }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      spanGaps: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: true, position: 'top', labels: { boxWidth: 10, font: { size: 10, weight: 'bold' }, padding: 6 } }
-      },
-      scales: {
-        x: { ticks: { font: { size: 10, weight: 'bold' } }, grid: { display: false } },
-        y: { position: 'left', beginAtZero: true, ticks: { font: { size: 10 } } },
-        yCnt: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { font: { size: 10 } } }
-      }
+  if (btnAlert) {
+    const cnt = Number(hb.active_cnt !== undefined ? hb.active_cnt : (hb.items ? hb.items.length : 0));
+    if (cnt > 0) {
+      btnAlert.style.display = 'inline-flex';
+      btnAlert.textContent = '🚨 전달사항 ' + cnt + '건';
+    } else {
+      btnAlert.style.display = 'none';
     }
-  });
+  }
+}
+
+function buildMixBlockGaugeHtml(doneCnt, totalCnt, statusKey) {
+  const tot = Math.min(Math.max(Number(totalCnt) || 1, 1), 12);
+  const done = Math.min(Math.max(Number(doneCnt) || 0, 0), tot);
+  const cls = (statusKey === 'danger') ? 'danger' : (statusKey === 'warn' ? 'warn' : (statusKey === 'done' ? 'done' : 'ok'));
+  let segs = '';
+  for (let i = 0; i < tot; i++) {
+    segs += '<span class="q4-mix-seg' + (i < done ? (' filled ' + cls) : '') + '"></span>';
+  }
+  return '<span class="q4-mix-blocks">' + segs + '</span>';
 }
 
 function renderQ4GeneralInspectionList(gi) {
-  const pane = document.getElementById('q4GiListPane');
-  if (!pane) return;
+  const box = document.getElementById('q4FiveSlotsBox');
+  if (!box) return;
 
-  const items = gi.items || [];
-  const isEx = Boolean(gi.is_example);
-  const hdrNote = isEx
-    ? '<div class="q4-gi-subbar">' +
-        '<span><span class="q4-ex-pill">예시</span> 상온 공정일보(<b>' + esc(gi.ref_tab || gi.ref_date || '-') + '</b>) 가동 품목 · 포장 확인시간 기반 시뮬레이션</span>' +
-        '<span style="color:#64748B;">미숫가루·가공유 2h / 곡물 3h / 일반 3.5h</span>' +
-      '</div>'
-    : '<div class="q4-gi-subbar">' +
-        '<span style="color:#047857; font-weight:800;">● ' + esc(gi.ref_tab || 'QMS 실시간 연동중') + '</span>' +
-        '<span style="color:#64748B;">미숫가루·가공유 2h / 곡물 3h / 일반 3.5h</span>' +
+  let slots = gi.slots || [];
+  if (!slots.length) {
+    slots = [1, 2, 3, 4, 5].map(function(n) {
+      return { steril_no: n, steril_ho: n + '호기', active: false, runs: [] };
+    });
+  }
+
+  box.innerHTML = slots.map(function(sl) {
+    const sno = sl.steril_no;
+    if (!sl.active || !sl.runs || !sl.runs.length) {
+      return '<div class="q4-slot-card is-idle">' +
+        '<span style="font-size:var(--fs-sm); font-weight:800; color:#64748B;">' + esc(sl.steril_ho) + '</span>' +
+        '<span style="font-size:var(--fs-xs); font-weight:700; color:#94A3B8;">현재 비가동 (대기)</span>' +
       '</div>';
+    }
 
-  if (!items.length) {
-    pane.innerHTML = hdrNote + '<div style="margin:auto; font-size:12px; color:var(--text-muted); font-weight:700; padding:12px;">해당 일자 상온 공정일보에 가동 품목이 없습니다.</div>';
-    return;
-  }
+    const useIdx = (Q4_SLOT_VIEW_IDX[sno] !== undefined && Q4_SLOT_VIEW_IDX[sno] < sl.runs.length)
+      ? Q4_SLOT_VIEW_IDX[sno]
+      : (sl.active_idx || 0);
+    const it = sl.runs[useIdx] || sl.primary;
 
-  pane.innerHTML = hdrNote +
-    '<div class="q4-gi-scroll">' +
-      items.map(function(it) {
-        const tone = it.hold_status === 'danger' ? 'is-danger' : (it.hold_status === 'warn' ? 'is-warn' : (it.hold_status === 'done' ? 'is-done' : 'is-ok'));
-        const badgeCls = it.hold_status === 'danger' ? 'badge-err' : (it.hold_status === 'warn' ? 'badge-warn' : 'badge-ok');
-        const failPill = (it.fails_cnt && it.fails_cnt > 0) ? '<span class="badge badge-err" style="font-size:10px; padding:1px 5px;">이탈 ' + it.fails_cnt + '</span>' : '';
-        const coPill = it.co_transfer ? '<span class="badge badge-purple" style="font-size:10px; padding:1px 5px;" title="' + esc(it.co_transfer) + '">동시이송</span>' : '';
-        const exTag = it.is_example ? '<span class="q4-ex-pill" style="margin-left:3px;">예시</span>' : '';
+    const tone = it.hold_status === 'danger' ? 'is-danger' : (it.hold_status === 'warn' ? 'is-warn' : (it.hold_status === 'done' ? 'is-done' : 'is-ok'));
+    const badgeCls = it.hold_status === 'danger' ? 'badge-err' : (it.hold_status === 'warn' ? 'badge-warn' : 'badge-ok');
 
-        return '<div class="q4-gi-row ' + tone + '" title="설비 기준: ' + esc(it.equip_spec || '') + (it.eta_note ? (' / ' + esc(it.eta_note)) : '') + '">' +
-          '<div class="q4-gi-top">' +
-            '<div style="min-width:0; display:flex; align-items:center; gap:5px;">' +
-              '<span class="q4-gi-ho">' + esc(it.steril_ho) + '·' + esc(it.packer_ho) + '</span>' +
-              '<strong class="q4-gi-prod">' + esc(it.product_name) + '</strong>' +
-              exTag + failPill + coPill +
-            '</div>' +
-            '<span class="q4-gi-eta">예상종료 <b>' + esc(it.eta_hm || '-') + '</b></span>' +
-          '</div>' +
-          '<div class="q4-gi-bot">' +
-            '<span><b>' + esc(it.mix_text) + '</b></span>' +
-            '<span style="color:#CBD5E1;">|</span>' +
-            '<span class="badge ' + badgeCls + '" style="font-size:10.5px; padding:1.5px 6px;">' + esc(it.hold_badge) + '</span>' +
-            '<span style="color:#CBD5E1;">|</span>' +
-            '<span style="color:#334155; font-weight:700;">' + esc(it.fin_text) + '</span>' +
-          '</div>' +
-        '</div>';
-      }).join('') +
-    '</div>';
-}
+    const varTagsHtml = (it.variant_tags && it.variant_tags.length >= 2)
+      ? '<span class="q4-var-chip" title="동일 원액 다중 포장: ' + esc(it.variant_tags.join(' / ')) + '">동일원액 ' + it.variant_tags.length + '종 (' + esc(it.variant_tags.join(', ')) + ')</span>'
+      : '';
 
-function renderQ4HandoverBoard(hb) {
-  const badgeEl = document.getElementById('q4HandoverBadge');
-  const listEl = document.getElementById('q4HandoverList');
-  if (badgeEl) {
-    const uCnt = hb.unchecked_cnt || 0;
-    badgeEl.textContent = uCnt > 0 ? ('미확인 ' + uCnt + '건') : ('전체확인 (' + (hb.total_cnt || 0) + ')');
-    badgeEl.className = 'badge ' + (uCnt > 0 ? 'badge-warn' : 'badge-ok');
-  }
-  if (!listEl) return;
+    let seqSwitchHtml = '';
+    if (sl.runs.length >= 2) {
+      const otherIdx = (useIdx + 1) % sl.runs.length;
+      const otherRun = sl.runs[otherIdx];
+      const btnLbl = (otherIdx > useIdx)
+        ? ('⏭ 차기(' + (otherIdx + 1) + '/' + sl.runs.length + '): ' + otherRun.product_name)
+        : ('⏮ 이전(' + (otherIdx + 1) + '/' + sl.runs.length + '): ' + otherRun.product_name);
+      seqSwitchHtml = '<button type="button" class="q4-next-btn" onclick="stepQ4SterilSlotRun(' + sno + ', 1)" title="클릭하여 같은 호기의 이전/다음 생산 품목 확인">' +
+        esc(btnLbl.length > 20 ? (btnLbl.slice(0, 19) + '…') : btnLbl) +
+      '</button>';
+    }
 
-  const items = hb.items || [];
-  if (!items.length) {
-    listEl.innerHTML = '<div style="font-size:11.5px; color:var(--text-muted); padding:6px 4px; text-align:center;">등록된 교대·부서 인수인계 전달사항이 없습니다. 위 입력창에 작성 후 Enter를 누르세요.</div>';
-    return;
-  }
+    const failPill = (it.fails_cnt && it.fails_cnt > 0)
+      ? '<span class="badge badge-err" style="font-size:10px; padding:1px 5px;">이탈 ' + it.fails_cnt + '</span>'
+      : '';
 
-  listEl.innerHTML = items.slice(0, 15).map(function(it) {
-    const isChk = Boolean(it.checked);
-    const pinMark = it.pinned ? '<span style="color:#B45309; font-weight:900; margin-right:3px;">📌</span>' : '';
-    const chkTip = isChk && it.checked_by ? (' (확인자: ' + it.checked_by + ' ' + (it.checked_at || '') + ')') : '';
-    return '<div class="q4-ho-item' + (isChk ? ' is-checked' : '') + (it.pinned ? ' is-pinned' : '') + '">' +
-      '<input type="checkbox" ' + (isChk ? 'checked' : '') + ' style="width:14px; height:14px; cursor:pointer; flex-shrink:0; margin-top:2px;" ' +
-        'onchange="toggleHandoverCheck(\'' + esc(it.uid) + '\')" title="클릭 시 확인 완료 처리" />' +
-      '<div class="q4-ho-txt" onclick="toggleHandoverCheck(\'' + esc(it.uid) + '\')" title="' + esc(it.text + chkTip) + '">' +
-        pinMark + '<span class="q4-ho-meta">[' + esc(it.created_at || '-') + ' · ' + esc(it.author || '-') + ']</span> ' +
-        '<span>' + esc(it.text) + '</span>' +
+    return '<div class="q4-slot-card ' + tone + '" title="설비 기준: ' + esc(it.equip_spec || '') + (it.eta_note ? (' / ' + esc(it.eta_note)) : '') + '">' +
+      '<div class="q4-slot-top">' +
+        '<div style="min-width:0; display:flex; align-items:center; gap:5px; overflow:hidden;">' +
+          '<span class="q4-slot-ho">' + esc(it.steril_ho) + '·' + esc(it.packer_ho) + '</span>' +
+          '<strong class="q4-slot-prod">' + esc(it.product_name) + '</strong>' +
+          varTagsHtml + failPill +
+        '</div>' +
+        '<div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">' +
+          seqSwitchHtml +
+          '<span class="q4-slot-eta">예상종료 <b>' + esc(it.eta_hm || '-') + '</b></span>' +
+        '</div>' +
       '</div>' +
-      '<button type="button" class="q4-ho-del" onclick="deleteHandoverItem(\'' + esc(it.uid) + '\')" title="삭제">✕</button>' +
+      '<div class="q4-slot-bot">' +
+        '<div class="q4-mix-gauge-wrap">' +
+          buildMixBlockGaugeHtml(it.mix_done, it.mix_total, it.hold_status) +
+          '<strong style="color:#0F172A; white-space:nowrap;">' + esc(it.mix_text) + ' (' + (it.mix_pct || 0) + '%)</strong>' +
+        '</div>' +
+        '<span style="color:#CBD5E1;">|</span>' +
+        '<span class="badge ' + badgeCls + '" style="font-size:10.5px; padding:1px 6px;">' + esc(it.hold_badge) + '</span>' +
+        '<span style="color:#CBD5E1;">|</span>' +
+        '<span style="color:#334155; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + esc(it.fin_text) + '</span>' +
+      '</div>' +
     '</div>';
   }).join('');
 }
 
-async function submitQuickHandover() {
-  const inp = document.getElementById('inpQ4Handover');
-  const pinChk = document.getElementById('chkQ4HandoverPin');
+function openHandoverFullModal() {
+  openModal(
+    '🚨 교대 · 부서간 인수인계 전달사항 (확인 체크 시 즉시 삭제)',
+    '<div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:8px 12px; margin-bottom:10px; font-size:12px; color:#1E3A8A; font-weight:700;">' +
+      '• 등록된 전달사항이 있을 때만 대시보드 우측 상단에 빨간 <b>[🚨 전달사항 N건]</b> 알림이 뜨며, <b>좌측 체크박스(✓)를 누르면 확인 완료되어 즉시 삭제</b>됩니다.' +
+    '</div>' +
+    '<div style="display:flex; gap:6px; margin-bottom:12px; align-items:center;">' +
+      '<label style="font-size:12px; font-weight:800; color:#92400E; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; cursor:pointer;">' +
+        '<input type="checkbox" id="chkModalHoPin" /> 📌 상단고정' +
+      '</label>' +
+      '<input type="text" id="inpModalHoTxt" class="form-ctrl" style="flex:1;" placeholder="인수인계·전달 멘트 입력 후 Enter (작성자·시간 자동 기록)" onkeydown="if(event.key===\'Enter\') submitModalHandover()" />' +
+      '<button class="btn btn-primary btn-sm" style="height:35px; padding:0 12px;" onclick="submitModalHandover()">+ 등록</button>' +
+    '</div>' +
+    '<div id="handoverModalListBox" style="max-height:380px; overflow-y:auto; display:flex; flex-direction:column; gap:7px;"></div>',
+    '<button class="btn" onclick="closeModal()">닫기</button>'
+  );
+  renderHandoverModalList();
+  setTimeout(function() {
+    const inp = document.getElementById('inpModalHoTxt');
+    if (inp) inp.focus();
+  }, 50);
+}
+
+async function submitModalHandover() {
+  const inp = document.getElementById('inpModalHoTxt');
+  const pin = document.getElementById('chkModalHoPin');
   const txt = inp ? (inp.value || '').trim() : '';
   if (!txt) {
-    showToast('전달할 인수인계 내용을 입력해 주세요.', 2200);
+    showToast('전달할 내용을 입력해 주세요.', 2200);
     return;
   }
   try {
-    const res = await apiPost('/api/handover', {
-      action: 'add',
-      text: txt,
-      pinned: Boolean(pinChk && pinChk.checked)
-    });
+    const res = await apiPost('/api/handover', { action: 'add', text: txt, pinned: Boolean(pin && pin.checked) });
     BUNDLE.handover_board = res.handover_board;
     if (inp) inp.value = '';
-    if (pinChk) pinChk.checked = false;
+    if (pin) pin.checked = false;
     saveBundleToBrowserCache(BUNDLE);
-    renderQ4HandoverBoard(BUNDLE.handover_board);
-    showToast('인수인계 보드에 등록되었습니다.');
+    renderQ4Area();
+    showToast('인수인계 전달사항이 등록되었습니다.');
   } catch (e) {
     showToast(e.message, 3000);
   }
 }
 
-async function toggleHandoverCheck(uid) {
+async function dismissHandoverItem(uid) {
   try {
-    const res = await apiPost('/api/handover', { action: 'toggle_check', uid: uid });
+    const res = await apiPost('/api/handover', { action: 'dismiss', uid: uid });
     BUNDLE.handover_board = res.handover_board;
     saveBundleToBrowserCache(BUNDLE);
-    renderQ4HandoverBoard(BUNDLE.handover_board);
-    if (document.getElementById('handoverModalListBox')) renderHandoverModalList();
+    renderQ4Area();
+    showToast('확인 완료 처리되어 목록에서 제거되었습니다.');
   } catch (e) {
     showToast(e.message, 3000);
   }
@@ -9519,69 +9391,7 @@ async function toggleHandoverPin(uid) {
     const res = await apiPost('/api/handover', { action: 'toggle_pin', uid: uid });
     BUNDLE.handover_board = res.handover_board;
     saveBundleToBrowserCache(BUNDLE);
-    renderQ4HandoverBoard(BUNDLE.handover_board);
-    if (document.getElementById('handoverModalListBox')) renderHandoverModalList();
-  } catch (e) {
-    showToast(e.message, 3000);
-  }
-}
-
-async function deleteHandoverItem(uid) {
-  try {
-    const res = await apiPost('/api/handover', { action: 'delete', uid: uid });
-    BUNDLE.handover_board = res.handover_board;
-    saveBundleToBrowserCache(BUNDLE);
-    renderQ4HandoverBoard(BUNDLE.handover_board);
-    if (document.getElementById('handoverModalListBox')) renderHandoverModalList();
-  } catch (e) {
-    showToast(e.message, 3000);
-  }
-}
-
-async function clearCheckedHandoverItems() {
-  if (!confirm('확인 체크된 완료 항목(고정 공지 제외)을 일괄 정리하시겠습니까?')) return;
-  try {
-    const res = await apiPost('/api/handover', { action: 'clear_checked' });
-    BUNDLE.handover_board = res.handover_board;
-    saveBundleToBrowserCache(BUNDLE);
-    renderQ4HandoverBoard(BUNDLE.handover_board);
-    if (document.getElementById('handoverModalListBox')) renderHandoverModalList();
-    showToast('완료된 인수인계 항목이 정리되었습니다.');
-  } catch (e) {
-    showToast(e.message, 3000);
-  }
-}
-
-function openHandoverFullModal() {
-  openModal(
-    '📋 교대 · 부서간 인수인계 전달사항 전체 관리',
-    '<div style="display:flex; gap:6px; margin-bottom:10px; align-items:center;">' +
-      '<label style="font-size:12px; font-weight:800; color:#92400E; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; cursor:pointer;">' +
-        '<input type="checkbox" id="chkModalHoPin" /> 📌 상단고정' +
-      '</label>' +
-      '<input type="text" id="inpModalHoTxt" class="form-ctrl" style="flex:1;" placeholder="신규 인수인계·전달 멘트 입력 후 Enter" onkeydown="if(event.key===\'Enter\') submitModalHandover()" />' +
-      '<button class="btn btn-primary btn-sm" style="height:34px;" onclick="submitModalHandover()">+ 등록</button>' +
-    '</div>' +
-    '<div id="handoverModalListBox" style="max-height:360px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div>',
-    '<button class="btn" style="color:#B45309; margin-right:auto;" onclick="clearCheckedHandoverItems()">✓ 확인완료 항목 일괄 정리</button>' +
-    '<button class="btn" onclick="closeModal()">닫기</button>'
-  );
-  renderHandoverModalList();
-}
-
-async function submitModalHandover() {
-  const inp = document.getElementById('inpModalHoTxt');
-  const pin = document.getElementById('chkModalHoPin');
-  const txt = inp ? (inp.value || '').trim() : '';
-  if (!txt) return;
-  try {
-    const res = await apiPost('/api/handover', { action: 'add', text: txt, pinned: Boolean(pin && pin.checked) });
-    BUNDLE.handover_board = res.handover_board;
-    if (inp) inp.value = '';
-    if (pin) pin.checked = false;
-    saveBundleToBrowserCache(BUNDLE);
-    renderQ4HandoverBoard(BUNDLE.handover_board);
-    renderHandoverModalList();
+    renderQ4Area();
   } catch (e) {
     showToast(e.message, 3000);
   }
@@ -9592,21 +9402,21 @@ function renderHandoverModalList() {
   if (!box) return;
   const items = (BUNDLE && BUNDLE.handover_board && BUNDLE.handover_board.items) || [];
   if (!items.length) {
-    box.innerHTML = '<div style="padding:22px; text-align:center; color:var(--text-muted);">등록된 전달사항이 없습니다.</div>';
+    box.innerHTML = '<div style="padding:26px; text-align:center; color:var(--text-muted); font-weight:700;">현재 미확인 인수인계 전달사항이 없습니다 (대시보드 알림 숨김 상태).</div>';
     return;
   }
   box.innerHTML = items.map(function(it) {
-    const isChk = Boolean(it.checked);
-    return '<div style="display:flex; align-items:flex-start; gap:8px; padding:8px 10px; border-radius:8px; border:1px solid ' + (it.pinned ? '#FCD34D' : '#E2E8F0') + '; background:' + (it.pinned ? '#FFFBEB' : (isChk ? '#F8FAFC' : '#FFFFFF')) + ';">' +
-      '<input type="checkbox" ' + (isChk ? 'checked' : '') + ' style="width:16px; height:16px; margin-top:2px; cursor:pointer;" onchange="toggleHandoverCheck(\'' + esc(it.uid) + '\')" />' +
-      '<div style="flex:1; min-width:0; ' + (isChk ? 'text-decoration:line-through; color:#64748B;' : '') + '">' +
-        '<div style="font-size:12px; font-weight:800; color:#003378; margin-bottom:2px;">[' + esc(it.created_at) + ' · ' + esc(it.author) + ']' +
-          (isChk && it.checked_by ? (' <span style="color:#047857;">(✓ ' + esc(it.checked_by) + ' ' + esc(it.checked_at) + ' 확인)</span>') : '') +
+    return '<div style="display:flex; align-items:flex-start; gap:9px; padding:9px 12px; border-radius:8px; border:1.5px solid ' + (it.pinned ? '#F59E0B' : '#CBD5E1') + '; background:' + (it.pinned ? '#FFFBEB' : '#FFFFFF') + ';">' +
+      '<input type="checkbox" style="width:17px; height:17px; margin-top:2px; cursor:pointer;" onchange="dismissHandoverItem(\'' + esc(it.uid) + '\')" title="체크 시 확인 완료 및 즉시 삭제" />' +
+      '<div style="flex:1; min-width:0;">' +
+        '<div style="font-size:12px; font-weight:800; color:#003378; margin-bottom:2px;">' +
+          (it.pinned ? '<span style="color:#B45309; margin-right:4px;">📌 [고정]</span>' : '') +
+          '[' + esc(it.created_at) + ' · ' + esc(it.author) + ']' +
         '</div>' +
         '<div style="font-size:13.5px; font-weight:700; color:#0F172A; line-height:1.45;">' + esc(it.text) + '</div>' +
       '</div>' +
-      '<button class="btn btn-sm" style="padding:2px 7px;" onclick="toggleHandoverPin(\'' + esc(it.uid) + '\')" title="상단 고정 토글">' + (it.pinned ? '📌해제' : '📌고정') + '</button>' +
-      '<button class="btn btn-sm" style="padding:2px 7px; color:var(--err-fg);" onclick="deleteHandoverItem(\'' + esc(it.uid) + '\')">삭제</button>' +
+      '<button type="button" class="btn btn-sm" style="padding:3px 8px;" onclick="toggleHandoverPin(\'' + esc(it.uid) + '\')" title="상단 고정 토글">' + (it.pinned ? '📌고정해제' : '📌고정') + '</button>' +
+      '<button type="button" class="btn btn-sm" style="padding:3px 8px; color:var(--err-fg);" onclick="dismissHandoverItem(\'' + esc(it.uid) + '\')">삭제</button>' +
     '</div>';
   }).join('');
 }

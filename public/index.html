@@ -9626,6 +9626,84 @@ async function syncSelfQualityFromSheet() {
     bindSafeOverlayClose();
   }
 })();
+// ==============================================================================
+// [리뉴얼 공통원액 · 동시생산 교차확인 알림 배너 & 확인제외 버튼]
+// ==============================================================================
+async function ackRenewalCrossAlert(alertKey) {
+  if (!alertKey) return;
+  try {
+    const res = await apiPost('/api/label-transition', {
+      action: 'ack_cross_alert',
+      memo: alertKey
+    });
+    if (res && res.ok) {
+      if (res.label_transition && window.BUNDLE) {
+        BUNDLE.label_transition = res.label_transition;
+      }
+      if (typeof showToast === 'function') {
+        showToast(res.message || '교차확인 알림이 제외 처리되었습니다.');
+      }
+      if (typeof renderLabelView === 'function') renderLabelView();
+      renderRenewalCrossBannerInLabelView();
+    }
+  } catch (err) {
+    if (typeof showToast === 'function') showToast('처리 중 오류: ' + (err.message || err));
+  }
+}
+
+function renderRenewalCrossBannerInLabelView() {
+  const hostView = document.getElementById('view-label');
+  if (!hostView || !window.BUNDLE) return;
+
+  let wrap = document.getElementById('renewalCrossAlertBannerWrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.id = 'renewalCrossAlertBannerWrap';
+    wrap.style.marginBottom = '12px';
+    hostView.insertBefore(wrap, hostView.firstChild);
+  }
+
+  const alerts = ((BUNDLE.label_transition || {}).renewal_cross_alerts) || [];
+  if (!alerts.length) {
+    wrap.innerHTML = '';
+    wrap.style.display = 'none';
+    return;
+  }
+
+  wrap.style.display = 'block';
+  wrap.innerHTML =
+    '<div style="background:#FFFBEB; border:1.5px solid #F59E0B; border-radius:10px; padding:11px 14px;">' +
+      '<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px; margin-bottom:7px;">' +
+        '<div style="font-size:13px; font-weight:900; color:#92400E;">⚠️ 리뉴얼 공통원액 · 동시생산 교차확인 필요 (' + alerts.length + '건)</div>' +
+        '<span style="font-size:11px; font-weight:700; color:#B45309;">상온·유제품 포장일보 상단 알림에도 동시 표시중 · 확인 완료 조합은 우측 버튼으로 제외 가능</span>' +
+      '</div>' +
+      '<div style="display:flex; flex-direction:column; gap:6px;">' +
+        alerts.map(function(al) {
+          return '<div style="display:flex; align-items:center; justify-content:space-between; gap:10px; background:#FFFFFF; border:1px solid #FDE68A; border-radius:7px; padding:7px 10px;">' +
+            '<div style="min-width:0; font-size:12px; font-weight:700; color:#1E293B; line-height:1.4;">' +
+              '<span style="display:inline-block; padding:1px 6px; border-radius:4px; background:#FEF3C7; color:#B45309; font-size:11px; font-weight:900; margin-right:6px;">' + esc(al.prod_date || '') + ' · ' + esc(al.line_label || '') + '</span>' +
+              esc(al.short_msg || al.msg || '') +
+            '</div>' +
+            '<button type="button" class="btn" style="flex-shrink:0; padding:4px 10px; border-radius:6px; border:1px solid #D97706; background:#FFFBEB; color:#92400E; font-size:11px; font-weight:900; cursor:pointer;" onclick="ackRenewalCrossAlert(\'' + esc(al.alert_key || '') + '\')">✓ 기변경·별도배합 확인 (제외)</button>' +
+          '</div>';
+        }).join('') +
+      '</div>' +
+    '</div>';
+}
+
+(function hookRenewalCrossBanner() {
+  if (typeof window.renderLabelView === 'function' && !window.renderLabelView._crossBannerHooked) {
+    const _prevRenderLbl = window.renderLabelView;
+    const hookedFn = function() {
+      const out = _prevRenderLbl.apply(this, arguments);
+      renderRenewalCrossBannerInLabelView();
+      return out;
+    };
+    hookedFn._crossBannerHooked = true;
+    hookedFn._focusGuarded = _prevRenderLbl._focusGuarded;
+    window.renderLabelView = hookedFn;
+  }
+})();
 </script>
 </body>
 </html>

@@ -307,6 +307,7 @@ LABEL_TRANSITION_COLS = [
     "메모", "수정일시"
 ]
 _LABEL_TRANSITION_CACHE: Dict[str, Any] = {"records": []}
+_RENEWAL_CROSS_ACK_CACHE: Dict[str, Any] = {"keys": []}
 
 SHEET_NAMES = {
     "cost": "원가절감 현황",
@@ -6665,6 +6666,13 @@ def fetch_audit_and_manual_db(sheet_urls_map: dict):
                                     _HANDOVER_NOTES_CACHE["items"] = [x for x in parsed_ho if isinstance(x, dict)]
                             except Exception:
                                 pass
+                        elif b_key == "renewal_cross_ack_json" and b_val:
+                            try:
+                                parsed_ack = json.loads(b_val)
+                                if isinstance(parsed_ack, list):
+                                    _RENEWAL_CROSS_ACK_CACHE["keys"] = [str(x).strip() for x in parsed_ack if str(x).strip()]
+                            except Exception:
+                                pass
 
         return legacy_sched, saved_manual, loaded_lbl_memo_fallback, loaded_micro, loaded_law_prefs, loaded_label_pins, None
     except Exception as e:
@@ -7100,11 +7108,35 @@ def has_sub_inbound_signal(note_text: Any) -> bool:
     return any(re.sub(r"\s+", "", kw).lower() in ns for kw in SUB_INBOUND_SIGNAL_KEYWORDS)
 
 
-def has_pack_transition_signal(note_text: Any) -> bool:
+PACK_SIGNAL_WAIT_NEGATORS = [
+    "사용대기", "적용대기", "투입대기", "전환대기", "포장대기", "입고대기",
+    "적용전", "사용전", "투입전", "변경전",
+    "미적용", "미사용", "미투입", "보류", "취소",
+    "사용예정", "적용예정", "투입예정", "전환예정", "생산예정"
+]
+
+
+def is_pack_signal_waiting_or_negated(note_text: Any) -> bool:
     ns = re.sub(r"\s+", "", str(note_text or "")).lower()
-    if not ns or ns in ("-", "이상없음", "없음"):
+    if not ns:
         return False
-    return any(re.sub(r"\s+", "", kw).lower() in ns for kw in PACK_TRANSITION_SIGNAL_KEYWORDS)
+    return any(neg in ns for neg in PACK_SIGNAL_WAIT_NEGATORS)
+
+
+def has_pack_transition_signal(note_text: Any) -> bool:
+    raw = str(note_text or "").strip()
+    if not raw or raw in ("-", "이상없음", "없음"):
+        return False
+    clauses = [c.strip() for c in re.split(r"[\n/;|]+", raw) if c.strip()]
+    if not clauses:
+        clauses = [raw]
+    for cl in clauses:
+        cl_ns = re.sub(r"\s+", "", cl).lower()
+        if not cl_ns or is_pack_signal_waiting_or_negated(cl_ns):
+            continue
+        if any(re.sub(r"\s+", "", kw).lower() in cl_ns for kw in PACK_TRANSITION_SIGNAL_KEYWORDS):
+            return True
+    return False
 
 
 def _normalize_transition_core(s: str) -> str:
@@ -7676,7 +7708,321 @@ def _find_past_label_review_for_signal(prod_name: str, signal_date: str, all_com
                 best_dt = eff_dt
                 best_row = r
     return best_row
+SHARED_RT_LIQUID_GROUPS = {
+    "RT_CALCIUM_SOY": ["연세두유 칼슘핏", "고칼슘 두유 검은콩 칼마디", "검은콩 칼마디", "연세두유 칼마디"],
+}
 
+RENEWAL_CROSS_BRAND_RE = re.compile(
+    r"(?:연세대학교|연세우유|연세두유|연세|세브란스|황성주\s*박사의|황성주|이롬|"
+    r"비락|두유2u|2u|부산우유|부산|건국우유|건국|삼육두유|삼육|푸르밀|남양|파스퇴르|"
+    r"오늘\s*좋은|오늘좋은|심플러스|simplus|homeplus|홈플러스|마켓컬리|컬리|곰곰|노브랜드|강릉초당|"
+    r"wang|왕|뼈를\s*생각한|전용목장|목장우유|미국수출|베트남수출|중국수출|몽골수출|수출용|수출|export)",
+    re.IGNORECASE,
+)
+
+
+def _renewal_liquid_sig(prod_name: str) -> str:
+    s = str(prod_name or "").strip()
+    s = re.sub(r"\b1[0127]\d{3}(?:\s*[,/]\s*1[0127]\d{3})*\b", " ", s)
+    s = re.sub(r"\([^)]*\)", " ", s)
+    s = re.sub(r"\d+(?:\.\d+)?\s*(?:mL|ml|ML|㎖|L|g|kg|입|팩)\b", " ", s)
+    s = RENEWAL_CROSS_BRAND_RE.sub(" ", s)
+    core = re.sub(r"(?:가공두유|원액두유|두유|멸균우유|살균우유|우유)", " ", s)
+    core_clean = re.sub(r"[\s\(\)\[\]\{\}\-_·,/&\+!]+", "", core).lower()
+    if "칼마디" in core_clean:
+        return "두유_칼마디"
+    if len(core_clean) >= 2:
+        return core_clean
+    return re.sub(r"[\s\(\)\[\]\{\}\-_·,/&\+!]+", "", s).lower() or "default"
+
+
+def _rt_prod_family_tag(prod_name: str) -> str:
+    ns = re.sub(r"\s+", "", str(prod_name or "")).lower()
+    if any(k in ns for k in ["환자", "케어", "당밸런스", "캔서", "뉴트리", "영양조제"]):
+        return "MED_NUTR"
+    if any(k in ns for k in ["두유", "콩", "약콩", "서리태", "흑임자", "오곡", "미숫가루", "검은콩", "칼마디", "칼슘핏"]):
+        return "SOY"
+    if any(k in ns for k in ["과채", "주스", "에이드", "사과", "오렌지", "포도", "매실", "배즙", "유산균음료", "스위플"]):
+        return "JUICE_BEV"
+    if any(k in ns for k in ["커피", "라떼", "아메리카노", "호지차", "녹차", "홍차", "밀크티", "액상차"]):
+        return "COFFEE_TEA"
+    if any(k in ns for k in ["우유", "밀크", "milk", "초코", "바나나", "딸기", "키짱", "비타민플러스", "a2"]):
+        return "RT_MILK"
+    return "OTHER"
+
+
+def _find_dairy_ju_shared_group(prod_name: str, line_hint: str = "") -> str:
+    raw = str(prod_name or "")
+    p_clean = clean_product_for_match(raw)
+    if not p_clean:
+        return ""
+    is_bottle = ("병" in raw) or ("병" in str(line_hint or "")) or any(v in raw for v in ["1800", "2300", "1.8L", "2.3L"])
+    for ju_k, items_csv in DEFAULT_MICRO_FOOTNOTES.items():
+        if ju_k == "주9" and not is_bottle:
+            continue
+        if ju_k in ("주1", "주5") and is_bottle:
+            continue
+        extra_csv = items_csv + (", 마켓컬리, 컬리" if ju_k == "주9" else "")
+        for cand in extra_csv.split(","):
+            c_clean = clean_product_for_match(cand)
+            if c_clean and (c_clean == p_clean or (len(c_clean) >= 2 and (c_clean in p_clean or p_clean in c_clean))):
+                if ("저지방" in p_clean) != ("저지방" in c_clean):
+                    continue
+                return ju_k
+    return ""
+
+
+def _find_rt_shared_group(prod_name: str) -> str:
+    p_clean = clean_product_for_match(prod_name)
+    for gk, members in SHARED_RT_LIQUID_GROUPS.items():
+        for m in members:
+            mc = clean_product_for_match(m)
+            if mc and (mc in p_clean or p_clean in mc):
+                return gk
+    return ""
+
+
+def _is_shared_liquid_sibling(p1: str, p2: str, scope: str, same_day_same_ho: bool = False, ln1: str = "", ln2: str = "") -> Tuple[bool, str]:
+    c1, c2 = clean_product_for_match(p1), clean_product_for_match(p2)
+    if not c1 or not c2 or c1 == c2:
+        return (False, "")
+
+    if scope == "DAIRY":
+        j1 = _find_dairy_ju_shared_group(p1, ln1)
+        j2 = _find_dairy_ju_shared_group(p2, ln2)
+        if j1 and j1 == j2:
+            return (True, f"{j1} 공통원액")
+        sig1, sig2 = _renewal_liquid_sig(p1), _renewal_liquid_sig(p2)
+        if sig1 != "default" and len(sig1) >= 3 and sig1 == sig2:
+            if ("저지방" in c1) == ("저지방" in c2) and ("락토프리" in c1) == ("락토프리" in c2):
+                return (True, "동일원액 파생품목")
+        return (False, "")
+
+    g1, g2 = _find_rt_shared_group(p1), _find_rt_shared_group(p2)
+    if g1 and g1 == g2:
+        return (True, "공통원액 품목")
+    sig1, sig2 = _renewal_liquid_sig(p1), _renewal_liquid_sig(p2)
+    if sig1 != "default" and len(sig1) >= 2 and sig1 == sig2:
+        return (True, "동일원액 OEM·파생품목")
+    if same_day_same_ho:
+        fam1, fam2 = _rt_prod_family_tag(p1), _rt_prod_family_tag(p2)
+        if fam1 != "OTHER" and fam1 == fam2:
+            return (True, "동일호기 동시생산")
+    return (False, "")
+
+
+def detect_renewal_cross_line_alerts(
+    saved_tr_records: List[dict],
+    lbl_rows: List[dict],
+    rt_hist_p: List[dict],
+    dairy_hist_p: List[dict],
+    ack_keys: Optional[List[str]] = None
+) -> List[dict]:
+    """
+    모든 '리뉴얼' 추적 품목(입고대기·포장대기·전환완료)에 대하여 상온·냉장 포장일보를 교차 스캔하여,
+    동일 내용물(공통원액·동일호기 동시생산) 동반 품목 중 리뉴얼 미등록 또는 전환단계 불일치 건을 감지한다.
+    """
+    active_tr = [
+        r for r in (saved_tr_records or [])
+        if r.get("구분") != "제외" and r.get("진행단계") != "제외"
+    ]
+    renewal_items = [r for r in active_tr if str(r.get("구분") or "리뉴얼").strip() == "리뉴얼"]
+    if not renewal_items:
+        return []
+
+    ack_set = set(ack_keys or [])
+    recent_cutoff = (now_kst().date() - timedelta(days=21)).strftime("%Y-%m-%d")
+
+    completed_lbls = [
+        r for r in (lbl_rows or [])
+        if r.get("분류") == "검토완료(확인필)" and is_asan_inhouse_label_candidate(r)
+    ]
+
+    def _find_Matching_tr(prod_nm: str) -> List[dict]:
+        out = []
+        for t in active_tr:
+            t_nm = str(t.get("매칭_포장품목명") or t.get("매칭_부자재명") or t.get("표시사항제목") or "").strip()
+            if t_nm and is_related_transition_product(t_nm, prod_nm):
+                out.append(t)
+        return out
+
+    def _recent_lbl_review_note(prod_nm: str) -> str:
+        best_dt = ""
+        for lr in completed_lbls:
+            dt_s = str(lr.get("최종수정일자") or lr.get("등록일자") or "")
+            if dt_s.startswith("20") and dt_s >= "2026-07-01":
+                ct = strip_duplicate_dept_prefix(lr.get("제목", ""), lr.get("요청부서", ""))
+                if is_related_transition_product(prod_nm, ct) and dt_s > best_dt:
+                    best_dt = dt_s
+        if best_dt:
+            return f"표시사항 시트 최근 검토완료일({best_dt}) 있음 — 이미 변경 완료된 품목이면 확인제외 가능"
+        return "최근 표시사항 전환 등록 이력 없음 — 동시 리뉴얼 대상 누락 또는 구형팩 혼용 여부 확인 필요"
+
+    rt_by_dt: Dict[str, List[dict]] = {}
+    for rr in (rt_hist_p or []):
+        d_s = str(rr.get("생산일자") or "").strip()
+        p_s = str(rr.get("제품명") or "").strip()
+        if d_s >= recent_cutoff and p_s and p_s not in ("-", "(비가동)"):
+            if not is_test_production_entry(p_s, rr.get("표기소비기한_원문", "")):
+                rt_by_dt.setdefault(d_s, []).append(rr)
+
+    dy_by_dt: Dict[str, List[dict]] = {}
+    for dr in (dairy_hist_p or []):
+        d_s = str(dr.get("생산일자") or "").strip()
+        p_s = str(dr.get("제품명") or "").strip()
+        if d_s >= recent_cutoff and p_s and p_s != "-":
+            if not is_test_production_entry(p_s, dr.get("표기소비기한_원문", "")):
+                dy_by_dt.setdefault(d_s, []).append(dr)
+
+    alerts_out: List[dict] = []
+    seen_alert_keys = set()
+
+    for tr in renewal_items:
+        tid = str(tr.get("추적ID") or "").strip()
+        tr_title = str(tr.get("표시사항제목") or "-").strip()
+        tr_stage = str(tr.get("진행단계") or "입고대기").strip()
+        tr_pack_nm = str(tr.get("매칭_포장품목명") or tr.get("매칭_부자재명") or tr_title).strip()
+        storage_s = str(tr.get("보관구분") or "")
+        min_scan_dt = max(recent_cutoff, str(tr.get("심의완료일") or recent_cutoff)[:10])
+
+        # [A] 상온 공정일보 교차 스캔
+        if "냉장" not in storage_s:
+            for dt_s in sorted(rt_by_dt.keys(), reverse=True):
+                if dt_s < min_scan_dt:
+                    continue
+                day_rows = rt_by_dt[dt_s]
+                matched_self_rows = [r for r in day_rows if is_related_transition_product(tr_pack_nm, r.get("제품명", ""))]
+
+                # 1) 리뉴얼 품목이 당일 가동된 경우 -> 같은 날 전 품목과 공통원액/동일호기 비교
+                # 2) 리뉴얼 품목이 이미 전환완료인 경우 -> 다른 날 단독 가동된 명시적 공통원액 품목까지 비교
+                ref_pairs = []
+                if matched_self_rows:
+                    for sr in matched_self_rows:
+                        for cand_r in day_rows:
+                            if cand_r is sr:
+                                continue
+                            same_ho = (str(sr.get("포장호기") or "") == str(cand_r.get("포장호기") or ""))
+                            is_sib, rel_tag = _is_shared_liquid_sibling(
+                                sr.get("제품명", ""), cand_r.get("제품명", ""), "RT", same_day_same_ho=same_ho
+                            )
+                            if is_sib:
+                                ref_pairs.append((sr.get("제품명", ""), cand_r, rel_tag))
+                elif tr_stage == "전환완료" and dt_s >= str(tr.get("전환포장일") or min_scan_dt):
+                    for cand_r in day_rows:
+                        is_sib, rel_tag = _is_shared_liquid_sibling(
+                            tr_pack_nm, cand_r.get("제품명", ""), "RT", same_day_same_ho=False
+                        )
+                        if is_sib:
+                            ref_pairs.append((tr_pack_nm, cand_r, rel_tag))
+
+                for self_nm, sib_r, rel_tag in ref_pairs:
+                    sib_nm = str(sib_r.get("제품명") or "").strip()
+                    sib_ho = str(sib_r.get("포장호기") or "-").strip()
+                    akey = f"{tid}|RT|{clean_product_for_match(sib_nm)}"
+                    if akey in ack_set or akey in seen_alert_keys:
+                        continue
+
+                    sib_trs = _find_Matching_tr(sib_nm)
+                    issue_desc = ""
+                    if not sib_trs:
+                        issue_desc = _recent_lbl_review_note(sib_nm)
+                    elif tr_stage == "전환완료" and all(st.get("진행단계") != "전환완료" for st in sib_trs):
+                        sib_st = sib_trs[0].get("진행단계", "대기")
+                        issue_desc = f"'{self_nm}'은 리뉴얼 전환완료 상태이나 동반 품목은 '{sib_st}(구형팩)' 상태로 가동됨 — 원액·표시 일치 확인 필요"
+
+                    if not issue_desc:
+                        continue
+
+                    seen_alert_keys.add(akey)
+                    line_lbl = f"상온 {sib_ho}"
+                    full_msg = (
+                        f"[공통원액 리뉴얼 교차확인 · {line_lbl}] 리뉴얼 품목 '{tr_title}({tr_stage})'의 {rel_tag}인 "
+                        f"'{sib_nm}'이(가) {dt_s[5:].replace('-', '/')} 함께 생산되었습니다 ({issue_desc})."
+                    )
+                    short_msg = f"리뉴얼 '{tr_title}({tr_stage})' ↔ {rel_tag} '{sib_nm}' 동시·교차 생산 ({issue_desc})"
+                    alerts_out.append({
+                        "alert_key": akey,
+                        "scope": "RT",
+                        "prod_date": dt_s,
+                        "line_label": line_lbl,
+                        "track_id": tid,
+                        "renewal_title": tr_title,
+                        "sibling_name": sib_nm,
+                        "relation_tag": rel_tag,
+                        "level": "yellow",
+                        "msg": full_msg,
+                        "short_msg": short_msg,
+                    })
+
+        # [B] 냉장(우유·발효유) 포장일보 교차 스캔 (주1~주12 공통원액 및 동일원액 파생품목)
+        if "상온" not in storage_s and "실온" not in storage_s:
+            for dt_s in sorted(dy_by_dt.keys(), reverse=True):
+                if dt_s < min_scan_dt:
+                    continue
+                day_rows = dy_by_dt[dt_s]
+                matched_self_rows = [r for r in day_rows if is_related_transition_product(tr_pack_nm, r.get("제품명", ""))]
+
+                ref_pairs = []
+                if matched_self_rows:
+                    for sr in matched_self_rows:
+                        for cand_r in day_rows:
+                            if cand_r is sr:
+                                continue
+                            is_sib, rel_tag = _is_shared_liquid_sibling(
+                                sr.get("제품명", ""), cand_r.get("제품명", ""), "DAIRY",
+                                ln1=sr.get("라인구분", ""), ln2=cand_r.get("라인구분", "")
+                            )
+                            if is_sib:
+                                ref_pairs.append((sr.get("제품명", ""), cand_r, rel_tag))
+                elif tr_stage == "전환완료" and dt_s >= str(tr.get("전환포장일") or min_scan_dt):
+                    for cand_r in day_rows:
+                        is_sib, rel_tag = _is_shared_liquid_sibling(
+                            tr_pack_nm, cand_r.get("제품명", ""), "DAIRY",
+                            ln1=storage_s, ln2=cand_r.get("라인구분", "")
+                        )
+                        if is_sib:
+                            ref_pairs.append((tr_pack_nm, cand_r, rel_tag))
+
+                for self_nm, sib_r, rel_tag in ref_pairs:
+                    sib_nm = str(sib_r.get("제품명") or "").strip()
+                    sib_ln = str(sib_r.get("라인구분") or "유제품").strip()
+                    akey = f"{tid}|DAIRY|{clean_product_for_match(sib_nm)}"
+                    if akey in ack_set or akey in seen_alert_keys:
+                        continue
+
+                    sib_trs = _find_Matching_tr(sib_nm)
+                    issue_desc = ""
+                    if not sib_trs:
+                        issue_desc = _recent_lbl_review_note(sib_nm)
+                    elif tr_stage == "전환완료" and all(st.get("진행단계") != "전환완료" for st in sib_trs):
+                        sib_st = sib_trs[0].get("진행단계", "대기")
+                        issue_desc = f"'{self_nm}'은 리뉴얼 전환완료 상태이나 동반 품목은 '{sib_st}(구형팩)' 상태로 가동됨 — 원액·표시 일치 확인 필요"
+
+                    if not issue_desc:
+                        continue
+
+                    seen_alert_keys.add(akey)
+                    full_msg = (
+                        f"[공통원액 리뉴얼 교차확인 · {sib_ln}] 리뉴얼 품목 '{tr_title}({tr_stage})'의 {rel_tag}인 "
+                        f"'{sib_nm}'이(가) {dt_s[5:].replace('-', '/')} 생산되었습니다 ({issue_desc})."
+                    )
+                    short_msg = f"리뉴얼 '{tr_title}({tr_stage})' ↔ {rel_tag} '{sib_nm}' 생산 ({issue_desc})"
+                    alerts_out.append({
+                        "alert_key": akey,
+                        "scope": "DAIRY",
+                        "prod_date": dt_s,
+                        "line_label": sib_ln,
+                        "track_id": tid,
+                        "renewal_title": tr_title,
+                        "sibling_name": sib_nm,
+                        "relation_tag": rel_tag,
+                        "level": "yellow",
+                        "msg": full_msg,
+                        "short_msg": short_msg,
+                    })
+
+    alerts_out.sort(key=lambda x: x.get("prod_date", ""), reverse=True)
+    return alerts_out
 
 def build_label_transition_pipeline(
     lbl_rows: List[dict],
@@ -7889,6 +8235,16 @@ def build_label_transition_pipeline(
                 stage = "입고대기"
                 auto_promoted_dirty = True
 
+        # [자동 자가 치유] '신규팩 사용대기 / 미적용 / 사용예정' 등 대기성 메모인데 [자동인식]으로 전환완료 처리된 건은 즉시 포장대기로 자동 복원!
+        if stage == "전환완료" and "[자동인식]" in str(tr.get("전환포장내역") or ""):
+            if is_pack_signal_waiting_or_negated(tr.get("전환포장내역", "")):
+                tr["진행단계"] = "포장대기"
+                tr["전환포장일"] = ""
+                tr["전환포장내역"] = ""
+                tr["수정일시"] = now_s
+                stage = "포장대기"
+                auto_promoted_dirty = True
+                
         # 1) 입고대기 -> 원부자재 DB 시그널 매칭 시 포장대기로 자동 승격
         if stage == "입고대기":
             det_in = _match_sub_inbound_for_item(tr, sub_rows_pool)
@@ -7945,6 +8301,14 @@ def build_label_transition_pipeline(
     inbound_detected_cnt = sum(1 for x in waiting_in_list if x.get("has_inbound_detect"))
     pack_detected_cnt = sum(1 for x in waiting_pack_list if x.get("has_pack_detect"))
 
+    renewal_cross_alerts = detect_renewal_cross_line_alerts(
+        saved_tr_records=saved_tr_records or [],
+        lbl_rows=lbl_rows or [],
+        rt_hist_p=rt_hist_p or [],
+        dairy_hist_p=dairy_hist_p or [],
+        ack_keys=_RENEWAL_CROSS_ACK_CACHE.get("keys", [])
+    )
+
     return {
         "cutoff_date": LABEL_TRANSITION_CUTOFF,
         "sub_cutoff_date": SUB_TRANSITION_CUTOFF,
@@ -7955,14 +8319,16 @@ def build_label_transition_pipeline(
             "waiting_pack_cnt": len(waiting_pack_list),
             "pack_detected_cnt": pack_detected_cnt,
             "completed_cnt": len(completed_list),
-            "excluded_cnt": len(excluded_list)
+            "excluded_cnt": len(excluded_list),
+            "cross_alert_cnt": len(renewal_cross_alerts)
         },
         "unclassified_candidates": unclassified_candidates,
         "all_nov_completed": all_nov_completed,
         "waiting_in_list": waiting_in_list,
         "waiting_pack_list": waiting_pack_list,
         "completed_list": completed_list,
-        "excluded_list": excluded_list
+        "excluded_list": excluded_list,
+        "renewal_cross_alerts": renewal_cross_alerts
     }
 # ============================ [api/index.py - PART 3 / 4 끝] ============================
 # ==============================================================================
@@ -8580,6 +8946,38 @@ def _sync_build_bundle_core(force_all_sheets: bool = False) -> dict:
                 if entry_a not in dairy_exp_alerts_map[dt_a]:
                     dairy_exp_alerts_map[dt_a].append(entry_a)
 
+        built_label_tr = build_label_transition_pipeline(
+            lbl_rows=lbl_rows,
+            saved_tr_records=_LABEL_TRANSITION_CACHE.get("records", []),
+            sub_mat_data=sub_mat_data,
+            rt_hist_p=rt_hp,
+            dairy_hist_p=dy_hp,
+            rt_hist_c=rt_hc,
+            dairy_hist_c=dy_hc,
+            rt_today_obj=rt_today,
+            rt_yest_obj=rt_yest,
+            soy_hist=soy_hist
+        )
+
+        rt_dviews_ref = (rt_today or {}).get("date_views") or {}
+        for ca in (built_label_tr.get("renewal_cross_alerts") or []):
+            ca_dt = ca.get("prod_date", "")
+            ca_entry = {"level": "yellow", "msg": ca.get("msg", "")}
+            if ca.get("scope") == "RT":
+                if ca_dt in rt_dviews_ref:
+                    dv_al = rt_dviews_ref[ca_dt].setdefault("exp_alerts", [])
+                    if ca_entry not in dv_al:
+                        dv_al.append(ca_entry)
+                for live_v in (rt_today, rt_yest):
+                    if live_v and live_v.get("prod_date") == ca_dt:
+                        lv_al = live_v.setdefault("exp_alerts", [])
+                        if ca_entry not in lv_al:
+                            lv_al.append(ca_entry)
+            else:
+                dy_al = dairy_exp_alerts_map.setdefault(ca_dt, [])
+                if ca_entry not in dy_al:
+                    dy_al.append(ca_entry)
+
         yest_iso_str = yest_dt.strftime("%Y-%m-%d")
         active_exp_alerts: List[dict] = []
         for al in ((rt_today or {}).get("exp_alerts", []) + (rt_yest or {}).get("exp_alerts", [])):
@@ -8737,18 +9135,7 @@ def _sync_build_bundle_core(force_all_sheets: bool = False) -> dict:
             },
             "label_status": label_analytics,
             "sub_material": sub_mat_data,
-            "label_transition": build_label_transition_pipeline(
-                lbl_rows=lbl_rows,
-                saved_tr_records=_LABEL_TRANSITION_CACHE.get("records", []),
-                sub_mat_data=sub_mat_data,
-                rt_hist_p=rt_hp,
-                dairy_hist_p=dy_hp,
-                rt_hist_c=rt_hc,
-                dairy_hist_c=dy_hc,
-                rt_today_obj=rt_today,
-                rt_yest_obj=rt_yest,
-                soy_hist=soy_hist
-            ),
+            "label_transition": built_label_tr,
             "raw_db": {
                 "master_cnt": raw_m_cnt if raw_m_cnt > 0 else sub_raw_cnt,
                 "sub_cnt": sub_raw_cnt,
@@ -11444,12 +11831,54 @@ def api_manage_label_transition(body: LabelTransitionActionPayload, _u: dict = D
         act = (body.action or "").strip()
         msg = "부자재 전환 추적 내역이 저장되었습니다."
 
+        if act == "ack_cross_alert":
+            ack_key = (body.memo or body.track_id or "").strip()
+            if not ack_key:
+                raise HTTPException(status_code=400, detail="확인 처리할 알림 키가 없습니다.")
+
+            def _upd_ack(b_map: dict, _ts: str):
+                try:
+                    cur_acks = json.loads(b_map.get("renewal_cross_ack_json", "[]"))
+                    if not isinstance(cur_acks, list):
+                        cur_acks = []
+                except Exception:
+                    cur_acks = []
+                if ack_key not in cur_acks:
+                    cur_acks.append(ack_key)
+                cur_acks = cur_acks[-300:]
+                _RENEWAL_CROSS_ACK_CACHE["keys"] = cur_acks
+                b_map["renewal_cross_ack_json"] = json.dumps(cur_acks, ensure_ascii=False)
+
+            _read_and_write_special_board(_upd_ack)
+            new_tr_ack = None
+            if _BUNDLE_CACHE["data"] is not None:
+                b_cur = _BUNDLE_CACHE["data"]
+                proc_cur = b_cur.get("process", {})
+                lbl_rows_cached = _LAST_GOOD_SHEETS.get("lbl", ([], None, None))[0]
+                new_tr_ack = build_label_transition_pipeline(
+                    lbl_rows=lbl_rows_cached,
+                    saved_tr_records=cur_records,
+                    sub_mat_data=b_cur.get("sub_material", {}),
+                    rt_hist_p=proc_cur.get("rt_hist_p", []),
+                    dairy_hist_p=proc_cur.get("dairy_hist_p", []),
+                    rt_hist_c=proc_cur.get("rt_hist_c", []),
+                    dairy_hist_c=proc_cur.get("dairy_hist_c", []),
+                    rt_today_obj=proc_cur.get("rt_today"),
+                    rt_yest_obj=proc_cur.get("rt_yest"),
+                    soy_hist=proc_cur.get("soy_hist", [])
+                )
+                b_cur["label_transition"] = new_tr_ack
+            return {
+                "ok": True,
+                "message": "기변경·별도배합 확인 처리되어 해당 조합의 교차알림이 제외되었습니다.",
+                "label_transition": new_tr_ack
+            }
+
         if act == "register":
             orig_doc = (body.doc_no or body.track_id or "").strip() or str(uuid.uuid4())[:8]
             t_type = "신규" if body.track_type == "신규" else "리뉴얼"
             base_rev_dt = (body.review_date or today_s).strip()
 
-            # 기존 제외 기록이 있었다면 제거 후 등록
             cur_records = [r for r in cur_records if not (r.get("원본문서번호") == orig_doc and r.get("구분") == "제외")]
 
             splits = body.split_items if (body.split_items and len(body.split_items) > 0) else [{

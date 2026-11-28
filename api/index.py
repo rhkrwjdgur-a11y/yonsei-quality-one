@@ -7714,41 +7714,72 @@ SHARED_RT_LIQUID_GROUPS = {
 
 RENEWAL_CROSS_BRAND_RE = re.compile(
     r"(?:연세대학교|연세우유|연세두유|연세|세브란스|황성주\s*박사의|황성주|이롬|"
-    r"비락|두유2u|2u|부산우유|부산|건국우유|건국|삼육두유|삼육|푸르밀|남양|파스퇴르|"
+    r"비락|두유2u|2u|부산우유|부산|건국우유|건국|삼육두유|삼육|푸르밀|남양|파스퇴르|서울우유|"
+    r"cj프레시웨이|프레시웨이|아워홈|푸디스트|킴스클럽|킴스|"
     r"오늘\s*좋은|오늘좋은|심플러스|simplus|homeplus|홈플러스|마켓컬리|컬리|곰곰|노브랜드|강릉초당|"
-    r"wang|왕|뼈를\s*생각한|전용목장|목장우유|미국수출|베트남수출|중국수출|몽골수출|수출용|수출|export)",
+    r"wang|왕|뼈를\s*생각한|전용목장|목장우유|미국수출|베트남수출|중국수출|몽골수출|수출용|수출|export|wt|w\.t)",
     re.IGNORECASE,
 )
+
+# 외포장·단순 용기전환 키워드 (원액 및 타 제품 표시사항에 영향을 주지 않는 포장재 단독 변경)
+NON_LIQUID_PKG_ONLY_KEYWORDS = [
+    "트레이", "상자", "박스", "케이스", "번들", "랩어라운드", "선물",
+    "테트라팩전환", "테트라미드", "실리콘", "빨대", "스푼"
+]
+
+# 원액·배합·공통 표시성분 변경 키워드 (OEM/자사 구분 없이 공통원액 전 품목 동시 확인 필수)
+LIQUID_OR_FORMULA_CHANGE_KEYWORDS = [
+    "배합", "원가절감", "지방표준화", "원료", "성분", "함량", "칼로리", "kcal",
+    "저당", "무가당", "당류", "단백", "칼슘", "비타민", "알레르기", "알레르겐", "원산지"
+]
+
+THIRD_PARTY_OEM_PB_KEYWORDS = [
+    "부산우유", "비락", "두유2u", "cj프레시웨이", "프레시웨이", "아워홈", "푸디스트",
+    "킴스클럽", "심플러스", "simplus", "홈플러스", "homeplus", "마켓컬리", "컬리",
+    "오늘좋은", "오늘 좋은", "곰곰", "노브랜드", "건국", "삼육", "푸르밀", "서울우유", "wang"
+]
+
+
+def _should_check_cross_renewal(tr_item: dict) -> bool:
+    """
+    리뉴얼 항목 중 실제로 공통원액 타 품목에 영향을 줄 수 있는 건만 선별:
+    1) 트레이·외박스·번들·테트라팩전환 등 외포장/용기전환 건은 제외
+    2) 배합변경·원가절감·지방표준화·알레르기·원산지 변경 건은 무조건 교차감지 수행
+    3) 타사 OEM/PB 단독 패키지·디자인 리뉴얼 건은 타사/자사 타 품목에 알람을 띄우지 않도록 제외 (자사 본품 리뉴얼은 포함)
+    """
+    title_s = str(tr_item.get("표시사항제목") or "").strip()
+    pkg_s = str(tr_item.get("포장재유형") or "").strip()
+    sub_s = str(tr_item.get("매칭_부자재명") or "").strip()
+    pack_s = str(tr_item.get("매칭_포장품목명") or "").strip()
+    pool_ns = re.sub(r"\s+", "", f"{title_s} {pkg_s}").lower()
+
+    if any(pk in pool_ns for pk in NON_LIQUID_PKG_ONLY_KEYWORDS):
+        return False
+
+    if any(fk in pool_ns for fk in LIQUID_OR_FORMULA_CHANGE_KEYWORDS):
+        return True
+
+    target_pool = re.sub(r"\s+", "", f"{title_s} {sub_s} {pack_s}").lower()
+    if any(re.sub(r"\s+", "", oem).lower() in target_pool for oem in THIRD_PARTY_OEM_PB_KEYWORDS):
+        return False
+
+    return True
 
 
 def _renewal_liquid_sig(prod_name: str) -> str:
     s = str(prod_name or "").strip()
     s = re.sub(r"\b1[0127]\d{3}(?:\s*[,/]\s*1[0127]\d{3})*\b", " ", s)
+    s = re.sub(r"\(\s*w\.?t\s*\)", " ", s, flags=re.IGNORECASE)
     s = re.sub(r"\([^)]*\)", " ", s)
     s = re.sub(r"\d+(?:\.\d+)?\s*(?:mL|ml|ML|㎖|L|g|kg|입|팩)\b", " ", s)
     s = RENEWAL_CROSS_BRAND_RE.sub(" ", s)
     core = re.sub(r"(?:가공두유|원액두유|두유|멸균우유|살균우유|우유)", " ", s)
-    core_clean = re.sub(r"[\s\(\)\[\]\{\}\-_·,/&\+!]+", "", core).lower()
+    core_clean = re.sub(r"[\s\(\)\[\]\{\}\-_·,/&\+!\.]+", "", core).lower()
     if "칼마디" in core_clean:
         return "두유_칼마디"
     if len(core_clean) >= 2:
         return core_clean
-    return re.sub(r"[\s\(\)\[\]\{\}\-_·,/&\+!]+", "", s).lower() or "default"
-
-
-def _rt_prod_family_tag(prod_name: str) -> str:
-    ns = re.sub(r"\s+", "", str(prod_name or "")).lower()
-    if any(k in ns for k in ["환자", "케어", "당밸런스", "캔서", "뉴트리", "영양조제"]):
-        return "MED_NUTR"
-    if any(k in ns for k in ["두유", "콩", "약콩", "서리태", "흑임자", "오곡", "미숫가루", "검은콩", "칼마디", "칼슘핏"]):
-        return "SOY"
-    if any(k in ns for k in ["과채", "주스", "에이드", "사과", "오렌지", "포도", "매실", "배즙", "유산균음료", "스위플"]):
-        return "JUICE_BEV"
-    if any(k in ns for k in ["커피", "라떼", "아메리카노", "호지차", "녹차", "홍차", "밀크티", "액상차"]):
-        return "COFFEE_TEA"
-    if any(k in ns for k in ["우유", "밀크", "milk", "초코", "바나나", "딸기", "키짱", "비타민플러스", "a2"]):
-        return "RT_MILK"
-    return "OTHER"
+    return re.sub(r"[\s\(\)\[\]\{\}\-_·,/&\+!\.]+", "", s).lower() or "default"
 
 
 def _find_dairy_ju_shared_group(prod_name: str, line_hint: str = "") -> str:
@@ -7782,10 +7813,17 @@ def _find_rt_shared_group(prod_name: str) -> str:
     return ""
 
 
-def _is_shared_liquid_sibling(p1: str, p2: str, scope: str, same_day_same_ho: bool = False, ln1: str = "", ln2: str = "") -> Tuple[bool, str]:
+def _is_shared_liquid_sibling(p1: str, p2: str, scope: str, ln1: str = "", ln2: str = "") -> Tuple[bool, str]:
+    """오직 진짜 동일 원액(공통원액 사전 일치 또는 브랜드 제외 핵심 원액명 100% 일치)일 때만 매칭"""
     c1, c2 = clean_product_for_match(p1), clean_product_for_match(p2)
     if not c1 or not c2 or c1 == c2:
         return (False, "")
+
+    for mod in TRANSITION_STRICT_MODS:
+        if mod == "고칼슘":
+            continue
+        if (mod in c1) != (mod in c2):
+            return (False, "")
 
     if scope == "DAIRY":
         j1 = _find_dairy_ju_shared_group(p1, ln1)
@@ -7794,20 +7832,19 @@ def _is_shared_liquid_sibling(p1: str, p2: str, scope: str, same_day_same_ho: bo
             return (True, f"{j1} 공통원액")
         sig1, sig2 = _renewal_liquid_sig(p1), _renewal_liquid_sig(p2)
         if sig1 != "default" and len(sig1) >= 3 and sig1 == sig2:
-            if ("저지방" in c1) == ("저지방" in c2) and ("락토프리" in c1) == ("락토프리" in c2):
-                return (True, "동일원액 파생품목")
+            return (True, "동일원액 파생품목")
         return (False, "")
 
     g1, g2 = _find_rt_shared_group(p1), _find_rt_shared_group(p2)
     if g1 and g1 == g2:
         return (True, "공통원액 품목")
+
+    if ("고칼슘" in c1) != ("고칼슘" in c2):
+        return (False, "")
+
     sig1, sig2 = _renewal_liquid_sig(p1), _renewal_liquid_sig(p2)
     if sig1 != "default" and len(sig1) >= 2 and sig1 == sig2:
         return (True, "동일원액 OEM·파생품목")
-    if same_day_same_ho:
-        fam1, fam2 = _rt_prod_family_tag(p1), _rt_prod_family_tag(p2)
-        if fam1 != "OTHER" and fam1 == fam2:
-            return (True, "동일호기 동시생산")
     return (False, "")
 
 
@@ -7818,27 +7855,26 @@ def detect_renewal_cross_line_alerts(
     dairy_hist_p: List[dict],
     ack_keys: Optional[List[str]] = None
 ) -> List[dict]:
-    """
-    모든 '리뉴얼' 추적 품목(입고대기·포장대기·전환완료)에 대하여 상온·냉장 포장일보를 교차 스캔하여,
-    동일 내용물(공통원액·동일호기 동시생산) 동반 품목 중 리뉴얼 미등록 또는 전환단계 불일치 건을 감지한다.
-    """
     active_tr = [
         r for r in (saved_tr_records or [])
         if r.get("구분") != "제외" and r.get("진행단계") != "제외"
     ]
-    renewal_items = [r for r in active_tr if str(r.get("구분") or "리뉴얼").strip() == "리뉴얼"]
+    renewal_items = [
+        r for r in active_tr
+        if str(r.get("구분") or "리뉴얼").strip() == "리뉴얼" and _should_check_cross_renewal(r)
+    ]
     if not renewal_items:
         return []
 
     ack_set = set(ack_keys or [])
-    recent_cutoff = (now_kst().date() - timedelta(days=21)).strftime("%Y-%m-%d")
+    recent_cutoff = (now_kst().date() - timedelta(days=14)).strftime("%Y-%m-%d")
 
     completed_lbls = [
         r for r in (lbl_rows or [])
         if r.get("분류") == "검토완료(확인필)" and is_asan_inhouse_label_candidate(r)
     ]
 
-    def _find_Matching_tr(prod_nm: str) -> List[dict]:
+    def _find_matching_tr(prod_nm: str) -> List[dict]:
         out = []
         for t in active_tr:
             t_nm = str(t.get("매칭_포장품목명") or t.get("매칭_부자재명") or t.get("표시사항제목") or "").strip()
@@ -7855,7 +7891,7 @@ def detect_renewal_cross_line_alerts(
                 if is_related_transition_product(prod_nm, ct) and dt_s > best_dt:
                     best_dt = dt_s
         if best_dt:
-            return f"표시사항 시트 최근 검토완료일({best_dt}) 있음 — 이미 변경 완료된 품목이면 확인제외 가능"
+            return f"표시사항 시트 최근 검토완료일({best_dt}) 있음 — 기변경 완료 품목이면 확인제외 가능"
         return "최근 표시사항 전환 등록 이력 없음 — 동시 리뉴얼 대상 누락 또는 구형팩 혼용 여부 확인 필요"
 
     rt_by_dt: Dict[str, List[dict]] = {}
@@ -7883,35 +7919,32 @@ def detect_renewal_cross_line_alerts(
         tr_stage = str(tr.get("진행단계") or "입고대기").strip()
         tr_pack_nm = str(tr.get("매칭_포장품목명") or tr.get("매칭_부자재명") or tr_title).strip()
         storage_s = str(tr.get("보관구분") or "")
-        min_scan_dt = max(recent_cutoff, str(tr.get("심의완료일") or recent_cutoff)[:10])
+        min_scan_dt = max(recent_cutoff, str(tr.get("부자재입고일") or tr.get("심의완료일") or recent_cutoff)[:10])
 
-        # [A] 상온 공정일보 교차 스캔
+        # 포장대기 또는 전환완료 단계에 들어온 리뉴얼 품목은 최근 생산된 모든 공통원액 동반 품목을 날짜 무관 스캔
+        scan_across_days = tr_stage in ("포장대기", "전환완료")
+
         if "냉장" not in storage_s:
             for dt_s in sorted(rt_by_dt.keys(), reverse=True):
-                if dt_s < min_scan_dt:
+                if dt_s < recent_cutoff:
                     continue
                 day_rows = rt_by_dt[dt_s]
                 matched_self_rows = [r for r in day_rows if is_related_transition_product(tr_pack_nm, r.get("제품명", ""))]
 
-                # 1) 리뉴얼 품목이 당일 가동된 경우 -> 같은 날 전 품목과 공통원액/동일호기 비교
-                # 2) 리뉴얼 품목이 이미 전환완료인 경우 -> 다른 날 단독 가동된 명시적 공통원액 품목까지 비교
                 ref_pairs = []
                 if matched_self_rows:
                     for sr in matched_self_rows:
                         for cand_r in day_rows:
                             if cand_r is sr:
                                 continue
-                            same_ho = (str(sr.get("포장호기") or "") == str(cand_r.get("포장호기") or ""))
-                            is_sib, rel_tag = _is_shared_liquid_sibling(
-                                sr.get("제품명", ""), cand_r.get("제품명", ""), "RT", same_day_same_ho=same_ho
-                            )
+                            is_sib, rel_tag = _is_shared_liquid_sibling(sr.get("제품명", ""), cand_r.get("제품명", ""), "RT")
                             if is_sib:
                                 ref_pairs.append((sr.get("제품명", ""), cand_r, rel_tag))
-                elif tr_stage == "전환완료" and dt_s >= str(tr.get("전환포장일") or min_scan_dt):
+                elif scan_across_days and dt_s >= min_scan_dt:
                     for cand_r in day_rows:
-                        is_sib, rel_tag = _is_shared_liquid_sibling(
-                            tr_pack_nm, cand_r.get("제품명", ""), "RT", same_day_same_ho=False
-                        )
+                        if is_related_transition_product(tr_pack_nm, cand_r.get("제품명", "")):
+                            continue
+                        is_sib, rel_tag = _is_shared_liquid_sibling(tr_pack_nm, cand_r.get("제품명", ""), "RT")
                         if is_sib:
                             ref_pairs.append((tr_pack_nm, cand_r, rel_tag))
 
@@ -7922,7 +7955,7 @@ def detect_renewal_cross_line_alerts(
                     if akey in ack_set or akey in seen_alert_keys:
                         continue
 
-                    sib_trs = _find_Matching_tr(sib_nm)
+                    sib_trs = _find_matching_tr(sib_nm)
                     issue_desc = ""
                     if not sib_trs:
                         issue_desc = _recent_lbl_review_note(sib_nm)
@@ -7937,9 +7970,9 @@ def detect_renewal_cross_line_alerts(
                     line_lbl = f"상온 {sib_ho}"
                     full_msg = (
                         f"[공통원액 리뉴얼 교차확인 · {line_lbl}] 리뉴얼 품목 '{tr_title}({tr_stage})'의 {rel_tag}인 "
-                        f"'{sib_nm}'이(가) {dt_s[5:].replace('-', '/')} 함께 생산되었습니다 ({issue_desc})."
+                        f"'{sib_nm}'이(가) {dt_s[5:].replace('-', '/')} 생산되었습니다 ({issue_desc})."
                     )
-                    short_msg = f"리뉴얼 '{tr_title}({tr_stage})' ↔ {rel_tag} '{sib_nm}' 동시·교차 생산 ({issue_desc})"
+                    short_msg = f"리뉴얼 '{tr_title}({tr_stage})' ↔ {rel_tag} '{sib_nm}' 생산 ({issue_desc})"
                     alerts_out.append({
                         "alert_key": akey,
                         "scope": "RT",
@@ -7954,10 +7987,9 @@ def detect_renewal_cross_line_alerts(
                         "short_msg": short_msg,
                     })
 
-        # [B] 냉장(우유·발효유) 포장일보 교차 스캔 (주1~주12 공통원액 및 동일원액 파생품목)
         if "상온" not in storage_s and "실온" not in storage_s:
             for dt_s in sorted(dy_by_dt.keys(), reverse=True):
-                if dt_s < min_scan_dt:
+                if dt_s < recent_cutoff:
                     continue
                 day_rows = dy_by_dt[dt_s]
                 matched_self_rows = [r for r in day_rows if is_related_transition_product(tr_pack_nm, r.get("제품명", ""))]
@@ -7974,8 +8006,10 @@ def detect_renewal_cross_line_alerts(
                             )
                             if is_sib:
                                 ref_pairs.append((sr.get("제품명", ""), cand_r, rel_tag))
-                elif tr_stage == "전환완료" and dt_s >= str(tr.get("전환포장일") or min_scan_dt):
+                elif scan_across_days and dt_s >= min_scan_dt:
                     for cand_r in day_rows:
+                        if is_related_transition_product(tr_pack_nm, cand_r.get("제품명", "")):
+                            continue
                         is_sib, rel_tag = _is_shared_liquid_sibling(
                             tr_pack_nm, cand_r.get("제품명", ""), "DAIRY",
                             ln1=storage_s, ln2=cand_r.get("라인구분", "")
@@ -7990,7 +8024,7 @@ def detect_renewal_cross_line_alerts(
                     if akey in ack_set or akey in seen_alert_keys:
                         continue
 
-                    sib_trs = _find_Matching_tr(sib_nm)
+                    sib_trs = _find_matching_tr(sib_nm)
                     issue_desc = ""
                     if not sib_trs:
                         issue_desc = _recent_lbl_review_note(sib_nm)
